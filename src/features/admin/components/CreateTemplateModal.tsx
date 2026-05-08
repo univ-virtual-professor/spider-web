@@ -7,7 +7,7 @@ import { Textarea } from "@shared/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { Plus, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
-import { addDoc, collection, getDocs, serverTimestamp, updateDoc, doc } from "firebase/firestore";
+import { addDoc, collection, getDocs, serverTimestamp, updateDoc, doc, increment } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import FloatingInput from "@shared/ui/FloatingInput";
 import { TopicMultiSelect } from "@shared/ui/topic-multi-select";
@@ -298,11 +298,13 @@ export default function CreateTemplateModal({ open, onOpenChange, templateToEdit
       };
 
       if (isEdit && templateToEdit?.id) {
-        await updateDoc(doc(db, "templates", templateToEdit.id), payload);
+        // Increment version on every edit so derived tests can detect drift
+        await updateDoc(doc(db, "templates", templateToEdit.id), { ...payload, version: increment(1) });
         toast.success("Template updated successfully");
       } else {
         await addDoc(collection(db, "templates"), {
           ...payload,
+          version: 1,
           createdAt: serverTimestamp(),
         });
         toast.success("Template created successfully");

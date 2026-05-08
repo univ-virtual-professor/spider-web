@@ -1,5 +1,6 @@
 // src/App.tsx
 import React from "react";
+import { ThemeProvider } from "next-themes";
 import { Toaster } from "@shared/ui/toaster";
 import { Toaster as Sonner } from "@shared/ui/sonner";
 import { TooltipProvider } from "@shared/ui/tooltip";
@@ -30,6 +31,7 @@ const queryClient = new QueryClient({
 
 export default function App() {
   return (
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
     <QueryClientProvider client={queryClient}>
       {/* <ReactQueryDevtools initialIsOpen={false} /> */}
       <AuthProvider>
@@ -44,6 +46,7 @@ export default function App() {
         </TenantProvider>
       </AuthProvider>
     </QueryClientProvider>
+    </ThemeProvider>
   );
 }
 

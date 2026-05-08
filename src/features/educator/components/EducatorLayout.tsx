@@ -13,12 +13,13 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   GitBranch,
   BookOpen,
   Zap,
   Database,
   BarChart3,
-  Wand2,
+  UserPlus,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
@@ -39,12 +40,21 @@ import { signOut } from "firebase/auth";
 import { auth, db } from "@shared/lib/firebase";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import ImpersonationBanner from "@shared/components/ImpersonationBanner";
+import NotificationBell from "@shared/components/NotificationBell";
+import EducatorBroadcastModal from "./EducatorBroadcastModal";
+
+type SubItem = {
+  icon: any;
+  label: string;
+  href: string;
+};
 
 type SidebarItem = {
   icon: any;
   label: string;
   href: string;
   badge?: number;
+  children?: SubItem[];
 };
 
 function initials(name: string) {
@@ -57,6 +67,7 @@ export default function EducatorLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -95,13 +106,25 @@ export default function EducatorLayout() {
   const sidebarItems = useMemo<SidebarItem[]>(
     () => [
       { icon: LayoutDashboard, label: "Dashboard", href: "/educator/dashboard" },
-      { icon: BarChart3, label: "Analytics", href: "/educator/analytics" },
-      { icon: GitBranch, label: "Student Management", href: "/educator/divisions" },
-      { icon: FileText, label: "Test Series", href: "/educator/test-series" },
-      { icon: Database, label: "Question Bank", href: "/educator/question-bank" },
-      { icon: Zap, label: "DPP Generator", href: "/educator/dpp" },
+      {
+        icon: GitBranch,
+        label: "Student Management",
+        href: "/educator/divisions",
+        children: [
+          { icon: UserPlus, label: "Invite", href: "/educator/learners?invite=1" },
+          { icon: BarChart3, label: "Analytics", href: "/educator/analytics" },
+        ],
+      },
+      {
+        icon: FileText,
+        label: "Test Series",
+        href: "/educator/test-series",
+        children: [
+          { icon: Database, label: "Question Bank", href: "/educator/question-bank" },
+          { icon: Zap, label: "DPP Generator", href: "/educator/dpp" },
+        ],
+      },
       { icon: BookOpen, label: "Content", href: "/educator/content" },
-      { icon: Wand2, label: "Website Builder", href: "/educator/website-builder" },
       { icon: CreditCard, label: "Billing & Plan", href: "/educator/billing" },
     ],
     []
@@ -111,11 +134,31 @@ export default function EducatorLayout() {
     if (href === "/educator/dashboard") {
       return location.pathname === "/educator" || location.pathname === href;
     }
-    if (href === "/educator/learners") {
-      return location.pathname === href || location.pathname.startsWith("/educator/learners/");
-    }
     return location.pathname === href;
   };
+
+  const isChildActive = (item: SidebarItem) =>
+    !!item.children?.some((c) => location.pathname === c.href.split("?")[0]);
+
+  // Expand all parent items that have children by default
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(() => new Set());
+
+  const toggleExpanded = (href: string) => {
+    setExpandedItems((prev) => {
+      const next = new Set(prev);
+      next.has(href) ? next.delete(href) : next.add(href);
+      return next;
+    });
+  };
+
+  // Auto-expand parent when navigating directly to a child route
+  useEffect(() => {
+    sidebarItems.forEach((item) => {
+      if (item.children?.some((c) => location.pathname === c.href)) {
+        setExpandedItems((prev) => new Set([...prev, item.href]));
+      }
+    });
+  }, [location.pathname, sidebarItems]);
 
   const pageTitle = useMemo(() => {
     if (location.pathname.startsWith("/educator/learners/")) return "Learner Deep Dive";
@@ -180,33 +223,105 @@ export default function EducatorLayout() {
           <nav className="flex-1 overflow-y-auto p-4 space-y-1">
             {sidebarItems.map((item) => {
               const active = isActive(item.href);
+              const childActive = isChildActive(item);
+              const hasChildren = !!item.children?.length;
+              const expanded = expandedItems.has(item.href);
+              // In collapsed mode, highlight parent icon when a child route is active
+              const parentHighlighted = active || (sidebarCollapsed && childActive);
+
               return (
-                <Link
-                  key={item.href}
-                  to={item.href}
-                  onClick={() => setSidebarOpen(false)}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative overflow-hidden",
-                    sidebarCollapsed && "lg:justify-center lg:px-2",
-                    active ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                <div key={item.href}>
+                  {/* Parent row: link area + optional chevron button */}
+                  <div className={cn("relative flex items-center rounded-lg overflow-hidden", parentHighlighted ? "text-primary-foreground" : "text-muted-foreground")}>
+                    {parentHighlighted && (
+                      <motion.div
+                        layoutId="activeTab"
+                        className="absolute inset-0 gradient-bg rounded-lg"
+                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                      />
+                    )}
+
+                    <Link
+                      to={item.href}
+                      onClick={() => setSidebarOpen(false)}
+                      className={cn(
+                        "flex-1 flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors relative z-10",
+                        sidebarCollapsed && "lg:justify-center lg:px-2",
+                        !parentHighlighted && "hover:text-foreground hover:bg-muted rounded-lg"
+                      )}
+                      title={sidebarCollapsed ? item.label : undefined}
+                    >
+                      <item.icon className={cn("h-5 w-5 flex-shrink-0", parentHighlighted && "text-white")} />
+                      {!sidebarCollapsed && (
+                        <span className={cn(parentHighlighted && "text-white")}>{item.label}</span>
+                      )}
+                      {!sidebarCollapsed && item.badge && (
+                        <Badge variant="secondary" className={cn("ml-auto text-xs", parentHighlighted && "bg-white/20 text-white")}>
+                          {item.badge}
+                        </Badge>
+                      )}
+                    </Link>
+
+                    {/* Chevron toggle — only when not collapsed and has children */}
+                    {!sidebarCollapsed && hasChildren && (
+                      <button
+                        onClick={() => toggleExpanded(item.href)}
+                        className={cn(
+                          "relative z-10 p-2 mr-1 rounded-md transition-colors flex-shrink-0",
+                          parentHighlighted ? "text-white/80 hover:text-white hover:bg-white/10" : "hover:bg-muted hover:text-foreground"
+                        )}
+                        aria-label={expanded ? "Collapse" : "Expand"}
+                      >
+                        <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-200", expanded && "rotate-180")} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Sub-items — animated expand/collapse */}
+                  {!sidebarCollapsed && hasChildren && (
+                    <AnimatePresence initial={false}>
+                      {expanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2, ease: "easeInOut" }}
+                          className="overflow-hidden"
+                        >
+                          <div className="ml-4 pl-3 border-l border-border mt-1 space-y-0.5 pb-1">
+                            {item.children!.map((child) => {
+                              const childPath = child.href.split("?")[0];
+                              const cActive = location.pathname === childPath;
+                              return (
+                                <div key={child.href}>
+                                  <Link
+                                    to={child.href}
+                                    onClick={() => setSidebarOpen(false)}
+                                    className={cn(
+                                      "flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 relative overflow-hidden",
+                                      cActive ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                                    )}
+                                  >
+                                    {cActive && (
+                                      <motion.div
+                                        layoutId="activeTab"
+                                        className="absolute inset-0 gradient-bg rounded-lg"
+                                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                      />
+                                    )}
+                                    <child.icon className={cn("h-3.5 w-3.5 relative z-10 flex-shrink-0", cActive && "text-white")} />
+                                    <span className={cn("relative z-10", cActive && "text-white")}>{child.label}</span>
+                                  </Link>
+
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   )}
-                  title={sidebarCollapsed ? item.label : undefined}
-                >
-                  {active && (
-                    <motion.div
-                      layoutId="activeTab"
-                      className="absolute inset-0 gradient-bg rounded-lg"
-                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                    />
-                  )}
-                  <item.icon className={cn("h-5 w-5 relative z-10", active && "text-white")} />
-                  {!sidebarCollapsed && <span className="relative z-10">{item.label}</span>}
-                  {!sidebarCollapsed && item.badge ? (
-                    <Badge variant="secondary" className={cn("ml-auto relative z-10 text-xs", active && "bg-white/20 text-white")}>
-                      {item.badge}
-                    </Badge>
-                  ) : null}
-                </Link>
+                </div>
               );
             })}
           </nav>
@@ -245,6 +360,13 @@ export default function EducatorLayout() {
             <Button variant="ghost" size="icon" onClick={() => navigate("/educator/settings")} title="Settings">
               <Settings className="h-5 w-5 text-muted-foreground" />
             </Button>
+            {profile?.uid && (
+              <NotificationBell
+                uid={profile.uid}
+                canBroadcast
+                onBroadcast={() => setBroadcastOpen(true)}
+              />
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="flex items-center gap-2 px-2">
@@ -293,6 +415,14 @@ export default function EducatorLayout() {
         </main>
       </div>
       </div>
+
+      {profile?.uid && (
+        <EducatorBroadcastModal
+          open={broadcastOpen}
+          onOpenChange={setBroadcastOpen}
+          educatorId={profile.uid}
+        />
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Clock, FileText, Lock, Unlock, Play, Eye, Timer } from "lucide-react";
+import { Clock, FileText, Lock, Unlock, Play, Eye, Timer, CalendarClock } from "lucide-react";
 import { Card, CardContent, CardFooter } from "@shared/ui/card";
 import { Badge } from "@shared/ui/badge";
 import { Button } from "@shared/ui/button";
@@ -8,7 +8,7 @@ import { Test } from "@features/student/types";
 import { useTenant } from "@app/providers/TenantProvider";
 
 interface TestCardProps {
-  test: Test & { isLive?: boolean };
+  test: Test & { isLive?: boolean; isUpcoming?: boolean; startsAtMs?: number };
   attemptsUsed?: number;
   onView: (testId: string) => void;
   onStart: (testId: string) => void;
@@ -41,6 +41,19 @@ function formatTimeLeft(ms: number): string {
   return `${s}s left`;
 }
 
+function formatCountdown(ms: number): string {
+  if (ms <= 0) return "Starting now";
+  const totalSec = Math.floor(ms / 1000);
+  const d = Math.floor(totalSec / 86400);
+  const h = Math.floor((totalSec % 86400) / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
 function safeNum(v: any, fallback: number) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
@@ -53,6 +66,9 @@ export function TestCard({ test, attemptsUsed = 0, onView, onStart, onUnlock }: 
   const [timeLeft, setTimeLeft] = useState<number | null>(
     windowExpiresAt ? Math.max(0, windowExpiresAt - Date.now()) : null
   );
+  const [countdown, setCountdown] = useState<number | null>(
+    test.startsAtMs ? Math.max(0, test.startsAtMs - Date.now()) : null
+  );
 
   useEffect(() => {
     if (!windowExpiresAt) return;
@@ -61,6 +77,14 @@ export function TestCard({ test, attemptsUsed = 0, onView, onStart, onUnlock }: 
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [windowExpiresAt]);
+
+  useEffect(() => {
+    if (!test.startsAtMs) return;
+    const tick = () => setCountdown(Math.max(0, test.startsAtMs! - Date.now()));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [test.startsAtMs]);
 
   // Firestore docs may miss attempts fields on some tests; use safe defaults.
   const attemptsAllowed = Math.max(
@@ -76,7 +100,9 @@ export function TestCard({ test, attemptsUsed = 0, onView, onStart, onUnlock }: 
   return (
     <Card className={cn(
       "card-soft card-hover border-0 overflow-hidden",
-      test.isLive ? "bg-red-50 dark:bg-red-900/10 ring-2 ring-red-500/20" : (subjectColors[test.subject] || "bg-pastel-cream")
+      test.isLive ? "bg-red-50 dark:bg-red-900/10 ring-2 ring-red-500/20" :
+      test.isUpcoming ? "bg-amber-50 dark:bg-amber-900/10 ring-2 ring-amber-400/30" :
+      (subjectColors[test.subject] || "bg-pastel-cream")
     )}>
       <CardContent className="p-5 space-y-4">
         {/* Header */}
@@ -87,6 +113,11 @@ export function TestCard({ test, attemptsUsed = 0, onView, onStart, onUnlock }: 
               {test.isLive && (
                 <Badge variant="destructive" className="animate-pulse py-0 px-1 text-[10px] h-4">
                   LIVE
+                </Badge>
+              )}
+              {test.isUpcoming && (
+                <Badge className="py-0 px-1 text-[10px] h-4 bg-amber-500 text-white">
+                  UPCOMING
                 </Badge>
               )}
             </div>
@@ -150,12 +181,37 @@ export function TestCard({ test, attemptsUsed = 0, onView, onStart, onUnlock }: 
             Available for free during live window
           </div>
         )}
+
+        {test.isUpcoming && countdown !== null && (
+          <div className="flex items-center gap-1 text-xs font-medium text-amber-700">
+            <CalendarClock className="h-3 w-3" />
+            Starting in {formatCountdown(countdown)}
+          </div>
+        )}
       </CardContent>
 
       <CardFooter className="p-4 pt-0 gap-2">
-        {test.isLocked ? (
-          <Button 
-            className="w-full rounded-xl gradient-bg" 
+        {test.isUpcoming ? (
+          <>
+            <Button
+              variant="outline"
+              className="flex-1 rounded-xl bg-background/60"
+              onClick={() => onView(test.id)}
+            >
+              <Eye className="h-4 w-4 mr-2" />
+              View
+            </Button>
+            <Button
+              className="flex-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-white"
+              disabled
+            >
+              <CalendarClock className="h-4 w-4 mr-2" />
+              {countdown !== null && countdown > 0 ? `In ${formatCountdown(countdown)}` : "Starting soon"}
+            </Button>
+          </>
+        ) : test.isLocked ? (
+          <Button
+            className="w-full rounded-xl gradient-bg"
             onClick={() => onUnlock(test.id)}
           >
             <Lock className="h-4 w-4 mr-2" />
@@ -163,15 +219,15 @@ export function TestCard({ test, attemptsUsed = 0, onView, onStart, onUnlock }: 
           </Button>
         ) : (
           <>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               className="flex-1 rounded-xl bg-background/60"
               onClick={() => onView(test.id)}
             >
               <Eye className="h-4 w-4 mr-2" />
               View
             </Button>
-            <Button 
+            <Button
               className="flex-1 rounded-xl gradient-bg"
               onClick={() => onStart(test.id)}
               disabled={attemptsRemaining <= 0}

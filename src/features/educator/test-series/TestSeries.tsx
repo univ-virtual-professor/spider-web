@@ -60,6 +60,7 @@ import {
 } from "@shared/lib/aiQuestionImport";
 import { aiFeatureFlags, getAiFeatureDisabledMessage } from "@shared/lib/aiFeatureFlags";
 import { uploadToImageKit } from "@shared/lib/imagekitUpload";
+import { buildAutoFillSelection } from "@shared/lib/autoFillEngine";
 
 // Component
 import CreateCustomTest from "./CreateCustomTest";
@@ -180,6 +181,8 @@ export default function TestSeries() {
   const [bankTests, setBankTests] = useState<any[]>([]);
   const [folders, setFolders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  /** testId → true if source template has been updated since test creation */
+  const [driftTests, setDriftTests] = useState<Set<string>>(new Set());
 
   // UI
   const [search, setSearch] = useState("");
@@ -301,9 +304,28 @@ export default function TestSeries() {
       const myTestsQ = query(collection(db, "educators", user.uid, "my_tests"));
       const unsubMy = onSnapshot(
         myTestsQ,
-        (snap) => {
+        async (snap) => {
           const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
           setMyTests(rows);
+
+          // Async drift check — non-blocking; errors silently ignored
+          const drifted = new Set<string>();
+          await Promise.all(
+            rows
+              .filter((t: any) => t.sourceTemplateId && t.sourceTemplateVersion != null)
+              .map(async (t: any) => {
+                try {
+                  const tmplSnap = await getDoc(doc(db, "templates", t.sourceTemplateId));
+                  if (!tmplSnap.exists()) return;
+                  const currentVersion = Number(tmplSnap.data()?.version ?? 0);
+                  const testVersion = Number(t.sourceTemplateVersion ?? 0);
+                  if (currentVersion > testVersion) drifted.add(t.id);
+                } catch {
+                  // Non-fatal; drift badge simply won't show
+                }
+              })
+          );
+          setDriftTests(drifted);
         },
         () => {
           toast.error("Failed to load your tests.");
@@ -421,7 +443,7 @@ export default function TestSeries() {
     if (!currentUser) return;
     const sections: any[] = test.sections || [];
     if (!sections.length) { toast.error("No sections configured"); return; }
-    const hasConfig = sections.some(s => s.questionsCount > 0);
+    const hasConfig = sections.some((s: any) => s.questionsCount > 0);
     if (!hasConfig) { toast.error("Set question counts on sections first"); return; }
 
     setAutoFillTestId(test.id);
@@ -442,66 +464,80 @@ export default function TestSeries() {
 
       const allQs: any[] = [...ownQs, ...adminQs];
 
+      // Load question group manifests for group-aware selection
+      const groupsSnap = await getDocs(collection(db, "question_groups"));
+      const groupManifests = new Map(
+        groupsSnap.docs.map(d => [
+          d.id,
+          { groupId: d.id, type: d.data().type as "comprehension" | "case_study", questionCount: Number(d.data().questionCount || 0) },
+        ])
+      );
+
       // Questions already in this test
       const existingSnap = await getDocs(collection(db, "educators", currentUser.uid, "my_tests", test.id, "questions"));
-      const usedIds = new Set(existingSnap.docs.map(d => d.id));
+      const usedIds = new Set(existingSnap.docs.map(d => {
+        const data = d.data() as any;
+        return String(data.bankQuestionId || d.id);
+      }));
       let order = existingSnap.docs.length;
 
+      // Build section constraints from template sections
+      const sectionConstraints = sections.map((s: any) => ({
+        id: s.id || s.name,
+        name: s.name,
+        questionsCount: Number(s.questionsCount) || 0,
+        subject: s.subject,
+        topics: s.topics,
+        tags: s.tags,
+        format: s.format,
+        difficultyLevel: s.difficultyLevel,
+        difficultyTolerance: s.difficultyTolerance ?? 0.25,
+        groupTypes: s.groupTypes,
+      }));
+
+      // Run group-aware selection
+      const { chosen, coverage } = buildAutoFillSelection(allQs, groupManifests, sectionConstraints, {
+        excludeIds: usedIds,
+      });
+
+      // Coverage diagnostics toast
+      const shortfalls = coverage.filter(c => c.shortfall > 0);
+      if (shortfalls.length > 0) {
+        const msg = shortfalls.map(c => `${c.sectionName}: found ${c.found}/${c.needed}`).join(", ");
+        toast.warning(`Partial fill — ${msg}. Add more matching questions to the bank.`);
+      }
+
+      if (!chosen.length) {
+        toast.warning("No matching questions found. Check section subject/format/topic filters.");
+        return;
+      }
+
+      // Batch-write chosen questions to the test
       const CHUNK = 490;
       let batch = writeBatch(db);
       let ops = 0;
-      let totalAdded = 0;
 
-      for (const section of sections) {
-        const needed = Number(section.questionsCount) || 0;
-        if (!needed) continue;
+      for (const q of chosen) {
+        const qRef = doc(collection(db, "educators", currentUser.uid, "my_tests", test.id, "questions"));
+        const { id, _source, ...rest } = q as any;
+        const qData: any = {
+          ...rest,
+          bankQuestionId: id,
+          questionOrder: order++,
+          addedAt: serverTimestamp(),
+        };
+        batch.set(qRef, qData);
+        usedIds.add(id);
+        ops++;
 
-        let pool = allQs.filter((q: any) => {
-          if (usedIds.has(q.id)) return false;
-          if (section.subject) {
-            const qSubject = q.subjectName || q.subject || "";
-            if (!qSubject || qSubject.toLowerCase() !== section.subject.toLowerCase()) return false;
-          }
-          if (section.format && (q.questionType || q.format)) {
-            const qFormat = q.questionType || q.format;
-            if (qFormat !== section.format) return false;
-          }
-          if (section.topics?.length) {
-            const qTopics: string[] = [...(q.topics || []), ...(q.topic ? [q.topic] : [])];
-            if (!qTopics.length || !(section.topics as string[]).some(t => qTopics.includes(t))) return false;
-          }
-          if (section.tags?.length) {
-            const qTags: string[] = q.tags || [];
-            if (!(section.tags as string[]).some((t: string) => qTags.includes(t))) return false;
-          }
-          if (section.difficultyLevel != null && q.difficultyLevel != null) {
-            if (Math.abs(Number(q.difficultyLevel) - Number(section.difficultyLevel)) > 0.25) return false;
-          }
-          return true;
-        });
-
-        // Shuffle and pick
-        pool = pool.sort(() => Math.random() - 0.5).slice(0, needed);
-
-        for (const q of pool) {
-          const qRef = doc(collection(db, "educators", currentUser.uid, "my_tests", test.id, "questions"));
-          const qData: any = { ...q, questionOrder: order++, sectionName: section.name, addedAt: serverTimestamp() };
-          delete qData.id;
-          delete qData._source;
-          batch.set(qRef, qData);
-          usedIds.add(q.id);
-          ops++;
-          totalAdded++;
-
-          if (ops >= CHUNK) {
-            await batch.commit();
-            batch = writeBatch(db);
-            ops = 0;
-          }
+        if (ops >= CHUNK) {
+          await batch.commit();
+          batch = writeBatch(db);
+          ops = 0;
         }
       }
 
-      if (ops > 0 || totalAdded > 0) {
+      if (ops > 0) {
         batch.update(doc(db, "educators", currentUser.uid, "my_tests", test.id), {
           questionsCount: order,
           updatedAt: serverTimestamp(),
@@ -509,11 +545,7 @@ export default function TestSeries() {
         await batch.commit();
       }
 
-      if (totalAdded === 0) {
-        toast.warning("No matching questions found. Check section subject/format/topic filters.");
-      } else {
-        toast.success(`Auto-filled ${totalAdded} question${totalAdded > 1 ? "s" : ""}`);
-      }
+      toast.success(`Auto-filled ${chosen.length} question${chosen.length !== 1 ? "s" : ""}`);
     } catch (e) {
       console.error(e);
       toast.error("Auto-fill failed");
@@ -1234,6 +1266,12 @@ export default function TestSeries() {
                                           <DropdownMenuItem onClick={() => openAccessCode(test)}>
                                             <Key className="mr-2 h-4 w-4" /> Access Code
                                           </DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => {
+                                            setTestToSchedule(test);
+                                            setScheduleOpen(true);
+                                          }}>
+                                            <Clock className="mr-2 h-4 w-4" /> Schedule
+                                          </DropdownMenuItem>
                                           <DropdownMenuItem
                                             className="text-destructive"
                                             onClick={async () => {
@@ -1260,6 +1298,43 @@ export default function TestSeries() {
                                   </CardTitle>
                                 </CardHeader>
                                 <CardContent className="flex-1 flex flex-col gap-4">
+                                  {/* Template drift banner */}
+                                  {driftTests.has(test.id) && (
+                                    <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs dark:border-amber-700 dark:bg-amber-950/40">
+                                      <span className="mt-0.5 text-amber-600 dark:text-amber-400">⚠</span>
+                                      <div className="flex-1">
+                                        <span className="font-semibold text-amber-700 dark:text-amber-400">Template updated</span>
+                                        <span className="ml-1 text-amber-600 dark:text-amber-500">
+                                          — section constraints may be outdated.
+                                        </span>
+                                        <button
+                                          className="ml-2 underline text-amber-700 dark:text-amber-400 hover:no-underline"
+                                          onClick={async () => {
+                                            if (!currentUser || !test.sourceTemplateId) return;
+                                            try {
+                                              const tmplSnap = await getDoc(doc(db, "templates", test.sourceTemplateId));
+                                              if (!tmplSnap.exists()) { toast.error("Template not found"); return; }
+                                              const tmpl = tmplSnap.data() as any;
+                                              await updateDoc(doc(db, "educators", currentUser.uid, "my_tests", test.id), {
+                                                sections: tmpl.sections ?? [],
+                                                markingScheme: tmpl.markingScheme ?? null,
+                                                durationMinutes: tmpl.durationMinutes ?? test.durationMinutes,
+                                                sourceTemplateVersion: Number(tmpl.version ?? 0),
+                                                updatedAt: serverTimestamp(),
+                                              });
+                                              setDriftTests(prev => { const s = new Set(prev); s.delete(test.id); return s; });
+                                              toast.success("Synced section structure from template");
+                                            } catch (e) {
+                                              console.error(e);
+                                              toast.error("Sync failed");
+                                            }
+                                          }}
+                                        >
+                                          Sync from template
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
                                   <p className="text-sm text-muted-foreground line-clamp-2">{test.description}</p>
 
                                   <div className="flex flex-wrap items-center justify-between gap-y-3 mt-auto">
@@ -1579,6 +1654,16 @@ export default function TestSeries() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Schedule dialog */}
+      {currentUser && (
+        <ScheduleTest
+          open={scheduleOpen}
+          onOpenChange={(v) => { setScheduleOpen(v); if (!v) setTestToSchedule(null); }}
+          test={testToSchedule}
+          userId={currentUser.uid}
+        />
       )}
 
     </div>

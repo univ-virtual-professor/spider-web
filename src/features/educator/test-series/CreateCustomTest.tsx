@@ -272,6 +272,15 @@ const CreateCustomTest = ({
             if (resolvedTemplate.syllabus) values.syllabus = resolvedTemplate.syllabus;
             if (resolvedTemplate.requiresUnlock !== undefined) values.requiresUnlock = resolvedTemplate.requiresUnlock;
             if (resolvedTemplate.attemptsAllowed) values.attemptsAllowed = resolvedTemplate.attemptsAllowed;
+            // Track source template for drift detection
+            if (selectedTemplateId && selectedTemplateId !== "none") {
+                const [, rawTemplateId] = selectedTemplateId.split(":");
+                if (rawTemplateId) {
+                    values.sourceTemplateId = rawTemplateId;
+                    // version may be undefined for pre-versioning templates — store 0 so drift check is graceful
+                    values.sourceTemplateVersion = Number(resolvedTemplate.version ?? 0);
+                }
+            }
         }
         await handleCreateCustom(values);
     };

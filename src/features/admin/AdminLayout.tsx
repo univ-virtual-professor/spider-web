@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   BookOpen,
   Users,
-  GraduationCap,
   BarChart3,
   LogOut,
   Menu,
@@ -21,12 +20,15 @@ import {
   Layers,
   BookMarked,
   Receipt,
+  Library,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@shared/ui/sheet";
 import { Avatar, AvatarFallback } from "@shared/ui/avatar";
 import { cn } from "@shared/lib/utils";
-import { Library } from "lucide-react";
+import { useAuth } from "@app/providers/AuthProvider";
+import NotificationBell from "@shared/components/NotificationBell";
+import AdminBroadcastModal from "./components/AdminBroadcastModal";
 
 const sidebarItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/admin" },
@@ -42,12 +44,6 @@ const sidebarItems = [
   { icon: Receipt, label: "Payment Logs", path: "/admin/payment-logs" },
 ];
 
-// Mock admin check - in production use AuthContext
-const useAdminCheck = () => {
-  // For demo purposes, always return true
-  // In production: const { isAdmin, loading } = useAuth();
-  return { isAdmin: true, loading: false };
-};
 
 const ThemeToggle = () => {
   const [isDark, setIsDark] = useState(() => {
@@ -84,14 +80,15 @@ export default function AdminLayout() {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const { isAdmin, loading } = useAdminCheck();
+  const [broadcastOpen, setBroadcastOpen] = useState(false);
+  const { profile, loading } = useAuth();
 
   // Protect admin routes
   useEffect(() => {
-    if (!loading && !isAdmin) {
-      navigate("/login");
+    if (!loading && profile?.role !== "ADMIN") {
+      navigate("/admin/login");
     }
-  }, [isAdmin, loading, navigate]);
+  }, [profile, loading, navigate]);
 
   if (loading) {
     return (
@@ -195,6 +192,13 @@ export default function AdminLayout() {
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
+          {profile?.uid && (
+            <NotificationBell
+              uid={profile.uid}
+              canBroadcast
+              onBroadcast={() => setBroadcastOpen(true)}
+            />
+          )}
           <Avatar className="h-8 w-8">
             <AvatarFallback className="bg-primary/10 text-primary text-xs">AD</AvatarFallback>
           </Avatar>
@@ -211,8 +215,15 @@ export default function AdminLayout() {
               Back
             </Button>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <ThemeToggle />
+            {profile?.uid && (
+              <NotificationBell
+                uid={profile.uid}
+                canBroadcast
+                onBroadcast={() => setBroadcastOpen(true)}
+              />
+            )}
             <div className="flex items-center gap-3">
               <Avatar className="h-9 w-9">
                 <AvatarFallback className="bg-primary/10 text-primary">AD</AvatarFallback>
@@ -241,6 +252,8 @@ export default function AdminLayout() {
           </AnimatePresence>
         </div>
       </main>
+
+      <AdminBroadcastModal open={broadcastOpen} onOpenChange={setBroadcastOpen} />
     </div>
   );
 }

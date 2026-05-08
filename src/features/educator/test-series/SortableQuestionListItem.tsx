@@ -11,6 +11,7 @@ import {
   isQuestionPublished,
   hasPreviewContent,
 } from "./QuestionManager/QuestionManagerUtils";
+import { normalizeQuestionType, QUESTION_TYPE_CONFIG } from "@shared/lib/questionTypes";
 
 import { Trash2, GripVertical,Plus,Edit } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
@@ -156,6 +157,16 @@ const SortableQuestionListItem =({
                         <div className="mt-2 flex flex-wrap justify-between w-full gap-2">
 
                             <div className="flex gap-1.5 flex-wrap">
+                                {(() => {
+                                    const qType = normalizeQuestionType(q.questionType || "MCQ");
+                                    const cfg = QUESTION_TYPE_CONFIG[qType];
+                                    return (
+                                        <Badge variant="outline" className={`text-[10px] rounded-full ${cfg?.badgeColor || ""}`}>
+                                            {cfg?.shortLabel || qType}
+                                        </Badge>
+                                    );
+                                })()}
+
                                 <Badge variant="secondary" className="text-[10px] rounded-full">
                                     {(q.difficulty || "medium").toUpperCase()}
                                 </Badge>

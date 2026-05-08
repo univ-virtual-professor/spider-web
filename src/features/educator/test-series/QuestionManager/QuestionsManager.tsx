@@ -54,6 +54,8 @@ import {
 import { aiFeatureFlags, getAiFeatureDisabledMessage } from "@shared/lib/aiFeatureFlags";
 import { HtmlView } from "@shared/lib/safeHtml";
 import { uploadToImageKit } from "@shared/lib/imagekitUpload";
+import { normalizeQuestionType, isSubjectiveType, type QuestionType } from "@shared/lib/questionTypes";
+import { buildAutoFillSelection } from "@shared/lib/autoFillEngine";
 
 import {
   uid,
@@ -150,6 +152,11 @@ const QuestionsManager = ({
     const [formMarks, setFormMarks] = useState("");
     const [formNegMarks, setFormNegMarks] = useState("");
     const [formActive, setFormActive] = useState(true);
+    const [formQuestionType, setFormQuestionType] = useState<QuestionType>("MCQ");
+    const [formReferenceAnswer, setFormReferenceAnswer] = useState("");
+    const [formReferenceKeywords, setFormReferenceKeywords] = useState("");
+    const [formReferenceAnswerFileUrl, setFormReferenceAnswerFileUrl] = useState("");
+    const [formEvaluationInstructions, setFormEvaluationInstructions] = useState("");
     const [editorSnapshot, setEditorSnapshot] = useState<EditorDraftSnapshot | null>(null);
     const [unsavedConfirmOpen, setUnsavedConfirmOpen] = useState(false);
     const [pendingEditorAction, setPendingEditorAction] = useState<PendingEditorAction | null>(null);
@@ -556,8 +563,13 @@ const QuestionsManager = ({
             marks: formMarks,
             negativeMarks: formNegMarks,
             active: !!formActive,
+            questionType: formQuestionType,
+            referenceAnswer: formReferenceAnswer,
+            referenceKeywords: formReferenceKeywords,
+            referenceAnswerFileUrl: formReferenceAnswerFileUrl,
+            evaluationInstructions: formEvaluationInstructions,
         }),
-        [formQuestion, formOptions, formCorrect, formDifficulty, formSubject, formTopic, formMarks, formNegMarks, formActive]
+        [formQuestion, formOptions, formCorrect, formDifficulty, formSubject, formTopic, formMarks, formNegMarks, formActive, formQuestionType, formReferenceAnswer, formReferenceKeywords, formReferenceAnswerFileUrl, formEvaluationInstructions]
     );
 
     const hasUnsavedQuestionChanges = useMemo(() => {
@@ -939,6 +951,11 @@ const QuestionsManager = ({
         setFormMarks("");
         setFormNegMarks("");
         setFormActive(true);
+        setFormQuestionType("MCQ");
+        setFormReferenceAnswer("");
+        setFormReferenceKeywords("");
+        setFormReferenceAnswerFileUrl("");
+        setFormEvaluationInstructions("");
         setInsertAfterQuestionId(null);
         setEditorSnapshot(null);
     }
@@ -982,6 +999,11 @@ const QuestionsManager = ({
         setFormMarks(q.marks != null ? String(q.marks) : "");
         setFormNegMarks(q.negativeMarks != null ? String(q.negativeMarks) : "");
         setFormActive(isQuestionPublished(q.isActive));
+        setFormQuestionType(normalizeQuestionType(q.questionType || "MCQ"));
+        setFormReferenceAnswer(q.referenceAnswer || "");
+        setFormReferenceKeywords(Array.isArray(q.referenceKeywords) ? q.referenceKeywords.join(", ") : "");
+        setFormReferenceAnswerFileUrl(q.referenceAnswerFileUrl || "");
+        setFormEvaluationInstructions(q.evaluationInstructions || "");
         setEditorSnapshot(buildSnapshotFromQuestion(q));
         setEditorOpen(true);
     }
@@ -1277,18 +1299,14 @@ const QuestionsManager = ({
         setAutoFillGenerating(true);
         try {
             const selectedTopics = Object.keys(autoFillTopicSelected).filter((key) => autoFillTopicSelected[key]);
-            const topicSet = new Set(selectedTopics);
+            const topicSet = selectedTopics.length ? new Set(selectedTopics) : undefined;
 
             const activeSubjectWeights = Object.entries(autoFillSubjectWeight)
                 .filter(([, weight]) => Number(weight) > 0)
                 .map(([subject, weight]) => ({ subject, weight: Number(weight) }));
-            const subjectSet = new Set(activeSubjectWeights.map((entry) => entry.subject));
-
-            let pool = questionBankRows.filter((question) => {
-                if (topicSet.size && !topicSet.has(question.topic || "")) return false;
-                if (subjectSet.size && !subjectSet.has(question.subject || "")) return false;
-                return true;
-            });
+            const subjectSet = activeSubjectWeights.length
+                ? new Set(activeSubjectWeights.map((e) => e.subject))
+                : undefined;
 
             const excludedIds = new Set(existingBankQuestionIds);
             if (autoFillAvoidUsed) {
@@ -1296,79 +1314,53 @@ const QuestionsManager = ({
                 usedIds.forEach((id) => excludedIds.add(id));
             }
 
-            pool = pool.filter((question) => !excludedIds.has(question.id));
+            // Load group manifests for group-aware selection
+            const groupsSnap = await getDocs(collection(db, "question_groups"));
+            const groupManifests = new Map(
+                groupsSnap.docs.map(d => [
+                    d.id,
+                    { groupId: d.id, type: d.data().type as "comprehension" | "case_study", questionCount: Number(d.data().questionCount || 0) },
+                ])
+            );
 
-            if (!pool.length) {
+            // Single virtual section representing this fill target
+            const sectionConstraint = {
+                id: targetSectionId,
+                name: managedSections.find(s => s.id === targetSectionId)?.name || "Section",
+                questionsCount: totalQuestions,
+            };
+
+            const { chosen, coverage } = buildAutoFillSelection(
+                questionBankRows as any[],
+                groupManifests,
+                [sectionConstraint],
+                {
+                    topicFilter: topicSet,
+                    subjectFilter: subjectSet,
+                    excludeIds: excludedIds,
+                    difficultyMix: autoFillDifficultyMix,
+                }
+            );
+
+            const chosenAsBank = chosen as unknown as QuestionBankQuestion[];
+
+            if (!chosenAsBank.length) {
                 toast.error("No eligible questions found for auto-fill");
                 setAutoFillDraftRows([]);
                 setAutoFillDraftSelected({});
                 return;
             }
 
-            const difficultyTargets = allocateByWeight(totalQuestions, [
-                { key: "easy" as const, weight: autoFillDifficultyMix.easy },
-                { key: "medium" as const, weight: autoFillDifficultyMix.medium },
-                { key: "hard" as const, weight: autoFillDifficultyMix.hard },
-            ]);
-
-            const effectiveSubjects = subjectSet.size
-                ? activeSubjectWeights
-                : Array.from(new Set(pool.map((q) => q.subject || "General"))).map((subject) => ({ subject, weight: 1 }));
-            const subjectTargets = allocateByWeight(
-                totalQuestions,
-                effectiveSubjects.map((entry) => ({ key: entry.subject, weight: entry.weight }))
-            );
-
-            const remainingDifficulty: Record<Difficulty, number> = {
-                easy: difficultyTargets.easy,
-                medium: difficultyTargets.medium,
-                hard: difficultyTargets.hard,
-            };
-            const remainingSubject: Record<string, number> = { ...subjectTargets };
-
-            const available = [...pool].sort(() => Math.random() - 0.5);
-            const chosen: QuestionBankQuestion[] = [];
-
-            while (chosen.length < totalQuestions && available.length > 0) {
-                let bestIndex = 0;
-                let bestScore = -Number.MAX_VALUE;
-
-                for (let i = 0; i < available.length; i += 1) {
-                    const candidate = available[i];
-                    const difficulty = candidate.difficulty || "medium";
-                    const subject = candidate.subject || "General";
-
-                    let score = Math.random();
-                    if ((remainingDifficulty[difficulty] || 0) > 0) score += 3;
-                    if ((remainingSubject[subject] || 0) > 0) score += 2;
-                    if ((remainingDifficulty[difficulty] || 0) > 0 && (remainingSubject[subject] || 0) > 0) score += 1;
-
-                    if (score > bestScore) {
-                        bestScore = score;
-                        bestIndex = i;
-                    }
-                }
-
-                const [picked] = available.splice(bestIndex, 1);
-                chosen.push(picked);
-
-                const pickedDifficulty = picked.difficulty || "medium";
-                const pickedSubject = picked.subject || "General";
-                if ((remainingDifficulty[pickedDifficulty] || 0) > 0) remainingDifficulty[pickedDifficulty] -= 1;
-                if ((remainingSubject[pickedSubject] || 0) > 0) remainingSubject[pickedSubject] -= 1;
-            }
-
             const selectedMap: Record<string, boolean> = {};
-            chosen.forEach((question) => {
-                selectedMap[question.id] = true;
-            });
+            chosenAsBank.forEach((q) => { selectedMap[q.id] = true; });
 
             setAutoFillSectionId(targetSectionId);
-            setAutoFillDraftRows(chosen);
+            setAutoFillDraftRows(chosenAsBank);
             setAutoFillDraftSelected(selectedMap);
 
-            if (chosen.length < totalQuestions) {
-                toast.info(`Generated ${chosen.length}/${totalQuestions} questions due to available pool`);
+            const found = coverage[0]?.found ?? chosenAsBank.length;
+            if (found < totalQuestions) {
+                toast.info(`Generated ${found}/${totalQuestions} questions — pool may be insufficient for remaining slots`);
             } else {
                 toast.success("Auto-fill draft generated. Review and add to test.");
             }
@@ -1415,6 +1407,7 @@ const QuestionsManager = ({
                 const question = selectedRows[index];
                 const questionOrder = baseOrder + index;
 
+                const qAny = question as any;
                 const payload: any = {
                     question: question.question,
                     options: Array.isArray(question.options) ? question.options : ["", "", "", ""],
@@ -1430,6 +1423,8 @@ const QuestionsManager = ({
                     source: "question_bank_auto",
                     bankQuestionId: question.id,
                     questionOrder,
+                    // Preserve group linkage so CBT can load passage
+                    ...(qAny.groupId ? { groupId: qAny.groupId, groupOrder: qAny.groupOrder ?? null } : {}),
                     createdAt: serverTimestamp(),
                     updatedAt: serverTimestamp(),
                 };
@@ -1884,16 +1879,17 @@ const QuestionsManager = ({
         const trimmedQuestion = formQuestion.trim();
         const normalizedOptions = formOptions.slice(0, 6).map((value) => value ?? "");
         const nonEmptyOptions = normalizedOptions.filter((value) => value.trim() !== "");
+        const isSubjective = isSubjectiveType(formQuestionType);
 
         if (!trimmedQuestion) {
             toast.error("Question is required");
             return false;
         }
-        if (nonEmptyOptions.length < 2) {
+        if (!isSubjective && nonEmptyOptions.length < 2) {
             toast.error("At least two options are required");
             return false;
         }
-        if (!normalizedOptions[formCorrect] || normalizedOptions[formCorrect].trim() === "") {
+        if (!isSubjective && (!normalizedOptions[formCorrect] || normalizedOptions[formCorrect].trim() === "")) {
             toast.error("Correct option cannot be empty");
             return false;
         }
@@ -1928,6 +1924,7 @@ const QuestionsManager = ({
             topic: formTopic || "",
             isActive: !!formActive,
             updatedAt: serverTimestamp(),
+            questionType: formQuestionType || "MCQ",
         };
 
         if (formMarks.trim() !== "") payload.marks = Number(formMarks);
@@ -1935,6 +1932,16 @@ const QuestionsManager = ({
 
         if (formNegMarks.trim() !== "") payload.negativeMarks = Number(formNegMarks);
         else payload.negativeMarks = null;
+
+        if (isSubjective) {
+            payload.referenceAnswer = formReferenceAnswer || "";
+            payload.referenceKeywords = formReferenceKeywords
+                .split(",")
+                .map((k) => k.trim())
+                .filter(Boolean);
+            payload.referenceAnswerFileUrl = formReferenceAnswerFileUrl || "";
+            payload.evaluationInstructions = formEvaluationInstructions || "";
+        }
 
         const defaultOrder = getNextQuestionOrder();
         const insertAfterQuestion = insertAfterQuestionId
@@ -1975,6 +1982,7 @@ const QuestionsManager = ({
                         negativeMarks: formNegMarks.trim() !== "" ? Number(formNegMarks) : undefined,
                         isActive: !!formActive,
                         questionOrder: insertedAfterAnchorOrder,
+                        questionType: formQuestionType || "MCQ",
                     } as TestQuestion,
                 ]);
 
@@ -2607,6 +2615,16 @@ const QuestionsManager = ({
                                                             saveQuestion={() => {
                                                                 void saveQuestion();
                                                             }}
+                                                            formQuestionType={formQuestionType}
+                                                            setFormQuestionType={setFormQuestionType}
+                                                            formReferenceAnswer={formReferenceAnswer}
+                                                            setFormReferenceAnswer={setFormReferenceAnswer}
+                                                            formReferenceKeywords={formReferenceKeywords}
+                                                            setFormReferenceKeywords={setFormReferenceKeywords}
+                                                            formReferenceAnswerFileUrl={formReferenceAnswerFileUrl}
+                                                            setFormReferenceAnswerFileUrl={setFormReferenceAnswerFileUrl}
+                                                            formEvaluationInstructions={formEvaluationInstructions}
+                                                            setFormEvaluationInstructions={setFormEvaluationInstructions}
                                                         />
                                                     ) : null;
 

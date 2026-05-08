@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Trophy, Target, Clock, TrendingUp, Eye, Loader2 } from "lucide-react";
+import { ArrowLeft, Trophy, Target, Clock, TrendingUp, Eye, BrainCircuit } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Button } from "@shared/ui/button";
@@ -18,6 +18,13 @@ type AttemptResponse = {
   markedForReview: boolean;
   visited: boolean;
   answered: boolean;
+  aiEvaluation?: {
+    score: number;
+    maxScore: number;
+    confidence: number;
+    feedback: string;
+    evaluatedAt?: number;
+  };
 };
 
 type AttemptDoc = {
@@ -41,18 +48,21 @@ type AttemptDoc = {
 
   responses?: Record<string, AttemptResponse>;
 
-  // optional (if you add later)
   aiReviewStatus?: "queued" | "in-progress" | "completed" | "failed";
   aiReview?: any;
 
-  // optional (if you add later)
   rank?: number;
   totalParticipants?: number;
+
+  hasSubjectiveQuestions?: boolean;
+  subjectiveEvaluatedCount?: number;
 };
 
 type QuestionDoc = {
   sectionId?: string;
   type?: "mcq" | "integer";
+  questionType?: string; // "MCQ" | "SHORT_ANSWER" | "UPLOAD"
+  question?: string;
   text?: string;
   options?: string[];
   correctOptionIndex?: number;
@@ -62,6 +72,8 @@ type QuestionDoc = {
   negativeMarks?: number;
   marks?: number;
   questionOrder?: number;
+  referenceAnswer?: string;
+  referenceKeywords?: string[];
 };
 
 type TestDoc = {
@@ -142,6 +154,19 @@ function computeFromQuestionsAndResponses(
 
     if (!isAnswered(userAnswer)) continue;
 
+    const qType = (d.questionType || "").toUpperCase();
+    const isSubjective = qType === "SHORT_ANSWER" || qType === "UPLOAD";
+
+    if (isSubjective) {
+      const aiScore = responses[q.id]?.aiEvaluation?.score;
+      if (Number.isFinite(Number(aiScore))) {
+        const safeScore = safeNumber(aiScore, 0);
+        score += safeScore;
+        perSection[sectionId].score += safeScore;
+      }
+      continue;
+    }
+
     const type = d.type === "integer" ? "integer" : "mcq";
     let isCorrect = false;
 
@@ -196,8 +221,9 @@ export default function StudentResults() {
   const [computedMaxScore, setComputedMaxScore] = useState<number | null>(null);
   const [computedAccuracyPct, setComputedAccuracyPct] = useState<number | null>(null);
   
-  // Store questions for AI analysis
+  // Store questions for AI analysis and subjective display
   const [questionsData, setQuestionsData] = useState<{ id: string; data: QuestionDoc }[]>([]);
+  const [sectionNameMap, setSectionNameMap] = useState<Record<string, string>>({});
 
   const rank = attempt?.rank ?? 0;
   const totalParticipants = attempt?.totalParticipants ?? 0;
@@ -386,8 +412,9 @@ export default function StudentResults() {
 
         if (!mounted) return;
 
-        // Store questions data for AI analysis
+        // Store questions data for AI analysis and subjective display
         setQuestionsData(qs);
+        setSectionNameMap(sectionNameById);
 
         // prefer stored values when present, otherwise computed
         setAttempt({
@@ -398,9 +425,11 @@ export default function StudentResults() {
 
         setSectionScores(derived.sectionScores);
 
-        setComputedScore(derived.score);
-        setComputedMaxScore(derived.maxScore);
-        setComputedAccuracyPct(derived.accuracyPct);
+        setComputedScore(typeof a.score === "number" ? a.score : derived.score);
+        setComputedMaxScore(typeof a.maxScore === "number" ? a.maxScore : derived.maxScore);
+
+        const storedAcc = typeof a.accuracy === "number" ? normalizeAccuracyPercent(a.accuracy) : null;
+        setComputedAccuracyPct(storedAcc ?? derived.accuracyPct);
 
         // Trigger AI analysis if not already completed
         if (isAiPerformanceAnalysisEnabled && (!a.aiReviewStatus || a.aiReviewStatus === "queued") && !a.aiReview) {
@@ -510,10 +539,138 @@ export default function StudentResults() {
         </CardContent>
       </Card>
 
+      {/* AI-Evaluated Answers Card */}
+      {attempt.hasSubjectiveQuestions && attempt.responses && (() => {
+        if (!questionsData.length) return null;
+
+        const responsesMap = attempt.responses || {};
+        const sectionOrder = Array.from(
+          new Set(questionsData.map((q) => String(q.data.sectionId || "main")))
+        );
+
+        const sections = sectionOrder
+          .map((sectionId) => {
+            let indexInSection = 0;
+            const items = questionsData
+              .filter((q) => String(q.data.sectionId || "main") === sectionId)
+              .map((q) => {
+                const resp = responsesMap[q.id];
+                if (!resp?.aiEvaluation) return null;
+                indexInSection += 1;
+                const questionType = String(q.data.questionType || "").toUpperCase();
+                return {
+                  qId: q.id,
+                  index: indexInSection,
+                  questionText: String(q.data.question || q.data.text || `Question ${indexInSection}`),
+                  questionType,
+                  score: resp.aiEvaluation.score,
+                  maxScore: resp.aiEvaluation.maxScore,
+                  confidence: resp.aiEvaluation.confidence,
+                  feedback: resp.aiEvaluation.feedback,
+                };
+              })
+              .filter(Boolean) as Array<{
+                qId: string;
+                index: number;
+                questionText: string;
+                questionType: string;
+                score: number;
+                maxScore: number;
+                confidence: number;
+                feedback: string;
+              }>;
+            return { sectionId, sectionName: sectionNameMap[sectionId] || sectionId, items };
+          })
+          .filter((s) => s.items.length > 0);
+
+        if (!sections.length) return null;
+
+        const allItems = sections.flatMap((s) => s.items);
+        const totalSubjScore = allItems.reduce((acc, e) => acc + e.score, 0);
+        const totalSubjMax = allItems.reduce((acc, e) => acc + e.maxScore, 0);
+
+        const confidencePill = (confidence: number) => {
+          if (confidence >= 0.8) return "bg-green-100 text-green-700";
+          if (confidence >= 0.5) return "bg-amber-100 text-amber-700";
+          return "bg-red-100 text-red-600";
+        };
+
+        return (
+          <Card className="card-soft border-0">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BrainCircuit className="h-5 w-5 text-purple-600" />
+                AI-Evaluated Answers
+                <span className="ml-auto text-base font-semibold text-purple-600">
+                  {totalSubjScore.toFixed(1)}{" "}
+                  <span className="text-muted-foreground font-normal">/ {totalSubjMax}</span>
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {sections.map((section) => (
+                <div key={section.sectionId} className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold">{section.sectionName}</p>
+                    <span className="text-xs text-muted-foreground">{section.items.length} evaluated</span>
+                  </div>
+                  <div className="space-y-3">
+                    {section.items.map((entry) => (
+                      <div key={entry.qId} className="rounded-xl border p-4 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-semibold shrink-0">Q{entry.index}</span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${
+                              entry.questionType === "UPLOAD"
+                                ? "bg-purple-100 text-purple-700 border-purple-200"
+                                : "bg-orange-100 text-orange-700 border-orange-200"
+                            }`}>
+                              {entry.questionType === "UPLOAD" ? "Upload" : "Short Answer"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${confidencePill(entry.confidence)}`}>
+                              {Math.round(entry.confidence * 100)}% confidence
+                            </span>
+                            <span className={`text-sm font-bold ${
+                              entry.score >= entry.maxScore * 0.7 ? "text-green-600" :
+                              entry.score >= entry.maxScore * 0.4 ? "text-amber-600" :
+                              "text-red-500"
+                            }`}>
+                              {entry.score.toFixed(1)}{" "}
+                              <span className="text-muted-foreground font-normal text-xs">/ {entry.maxScore}</span>
+                            </span>
+                          </div>
+                        </div>
+                        <Progress value={entry.maxScore ? (entry.score / entry.maxScore) * 100 : 0} className="h-1.5" />
+                        <details className="group">
+                          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors list-none flex items-center gap-1">
+                            <span className="group-open:hidden">▶ Show AI feedback</span>
+                            <span className="hidden group-open:inline">▼ Hide feedback</span>
+                          </summary>
+                          <p className="text-xs text-muted-foreground leading-relaxed mt-2 pl-2 border-l-2 border-border">
+                            {entry.feedback}
+                          </p>
+                        </details>
+                        {entry.confidence < 0.5 && (
+                          <p className="text-[10px] text-amber-600">
+                            ⚠ Low confidence — may require manual review
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       {/* AI Review */}
       {isAiPerformanceAnalysisEnabled ? (
-        <AIReviewPanel 
-          status={attempt.aiReviewStatus ?? "queued"} 
+        <AIReviewPanel
+          status={attempt.aiReviewStatus ?? "queued"}
           review={attempt.aiReview}
           progress={aiProgress}
           error={aiError}

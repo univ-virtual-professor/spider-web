@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, ShieldOff, ShieldCheck, Search, Folder, ChevronDown, ChevronRight } from "lucide-react";
+import { Loader2, ShieldOff, ShieldCheck, Search, Folder, ChevronDown, ChevronRight, CalendarClock } from "lucide-react";
 import { Input } from "@shared/ui/input";
 import { Button } from "@shared/ui/button";
 import { toast } from "sonner";
@@ -196,10 +196,29 @@ export default function StudentTests() {
     return tests.filter((t) => (t.title || "").toLowerCase().includes(q) || (t.subject || "").toLowerCase().includes(q));
   }, [tests, search]);
 
+  // Separate upcoming scheduled tests from available/past ones
+  const { upcomingTests, availableTests } = useMemo(() => {
+    const upcoming: any[] = [];
+    const available: any[] = [];
+    filteredTests.forEach((t) => {
+      const startMs = t.startTime
+        ? typeof t.startTime.toMillis === "function" ? t.startTime.toMillis() : Number(t.startTime)
+        : null;
+      if (startMs && startMs > now && t.isScheduleActive === true) {
+        upcoming.push({ ...t, _startsAtMs: startMs });
+      } else {
+        available.push(t);
+      }
+    });
+    // Sort upcoming by nearest first
+    upcoming.sort((a, b) => a._startsAtMs - b._startsAtMs);
+    return { upcomingTests: upcoming, availableTests: available };
+  }, [filteredTests, now]);
+
   const groupedTests = useMemo(() => {
     const groups: Record<string, { name: string; type: "subject" | "uncategorized", tests: any[] }> = {};
 
-    filteredTests.forEach(t => {
+    availableTests.forEach(t => {
       if (t.subject) {
         const normalizedName = normalizeSubjectName(t.subject);
         const subKey = `subject_${normalizedName.toLowerCase().replace(/\s+/g, "_")}`;
@@ -217,7 +236,7 @@ export default function StudentTests() {
     });
 
     return groups;
-  }, [filteredTests]);
+  }, [availableTests]);
 
   // Unlock codes (kept, but only reachable if allowed)
   // Accepts optional expectedTestId to ensure student is unlocking the intended test
@@ -370,6 +389,31 @@ export default function StudentTests() {
         }} />
         <div className="text-sm text-muted-foreground">Press Enter to unlock</div>
       </div>
+
+      {/* Upcoming scheduled tests */}
+      {upcomingTests.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40 rounded-xl p-3">
+            <CalendarClock className="h-5 w-5 text-amber-600" />
+            <h3 className="font-semibold text-amber-900 dark:text-amber-200">Upcoming Tests</h3>
+            <Badge variant="secondary" className="rounded-full ml-1 bg-amber-100 text-amber-700">
+              {upcomingTests.length}
+            </Badge>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {upcomingTests.map((t) => (
+              <TestCard
+                key={t.id}
+                test={{ ...t, isLocked: false, isUpcoming: true, startsAtMs: t._startsAtMs, windowExpiresAt: null }}
+                attemptsUsed={attemptCounts[t.id] || 0}
+                onView={() => nav(`/student/tests/${t.id}`)}
+                onStart={() => nav(`/student/tests/${t.id}`)}
+                onUnlock={() => {}}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="space-y-8">
         {Object.entries(groupedTests).map(([groupId, group]) => {

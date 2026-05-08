@@ -89,20 +89,18 @@ function mapQuestion(id: string, data: any): AttemptQuestion {
   );
   const correctIndex = parsedCorrectIndex ?? 0;
 
-  // Always normalize to +5 marks and -1 negative marks
-  const positive = 5;
-
-  const negative = 1;
+  const positive = data.marks ?? data.positiveMarks ?? 5;
+  const negative = Math.abs(data.negativeMarks ?? 1);
 
   return {
     id,
     sectionId: data.sectionId || "main",
     type: "mcq",
-    stem: data.question || data.text || "",   // ✅ FIX
+    stem: data.question || data.text || "",
     options: opts.map((t, i) => ({ id: String(i), text: String(t) })),
     correctAnswer: String(correctIndex),
     explanation: data.explanation || "",
-    marks: { correct: positive, incorrect: Math.abs(negative) },
+    marks: { correct: positive, incorrect: negative },
     passage: data.passage || null,
     sortOrder: safeNumber(data.questionOrder, Number.MAX_SAFE_INTEGER),
   };

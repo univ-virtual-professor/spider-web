@@ -5,6 +5,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  limit,
 } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
@@ -115,7 +116,7 @@ export default function DppGenerator() {
   useEffect(() => {
     if (!educatorUid) return;
     const unsub = onSnapshot(
-      query(collection(db, "educators", educatorUid, "dpps"), orderBy("generatedAt", "desc")),
+      query(collection(db, "educators", educatorUid, "dpps"), orderBy("generatedAt", "desc"), limit(5)),
       (snap) => setDpps(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })))
     );
     return () => unsub();

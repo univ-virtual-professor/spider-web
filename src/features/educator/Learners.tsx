@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowRight, Check, ChevronDown, ChevronUp, Copy, Download,
   Loader2, RefreshCw, Search, Upload, UserCheck, UserPlus, UserX, Pencil,
@@ -72,6 +72,8 @@ async function apiFetch(path: string, options: RequestInit = {}) {
 
 export default function Learners() {
   const nav = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isInviteMode = searchParams.get("invite") === "1";
   const { firebaseUser, role, loading: authLoading } = useAuth();
   const educatorId = firebaseUser?.uid || "";
 
@@ -108,7 +110,7 @@ export default function Learners() {
   const [selSubjectIds, setSelSubjectIds] = useState<string[]>([]);
 
   // Invite link
-  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(isInviteMode);
   const [generatingLink, setGeneratingLink] = useState(false);
   const [inviteUrl, setInviteUrl] = useState("");
   const [copied, setCopied] = useState(false);
@@ -219,12 +221,14 @@ export default function Learners() {
     : 0;
 
   const filtered = useMemo(() => {
+    let list = learners;
+    if (isInviteMode) list = list.filter((l) => !l.batchId || !seatMap[l.id]);
     const q = search.trim().toLowerCase();
-    if (!q) return learners;
-    return learners.filter(
+    if (!q) return list;
+    return list.filter(
       (l) => (l.name || "").toLowerCase().includes(q) || (l.email || "").toLowerCase().includes(q)
     );
-  }, [learners, search]);
+  }, [learners, search, isInviteMode, seatMap]);
 
   async function postWithToken(path: string, body: any) {
     if (!firebaseUser) throw new Error("Not logged in");

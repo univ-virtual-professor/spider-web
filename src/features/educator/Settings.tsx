@@ -730,12 +730,9 @@ export default function Settings() {
             <CardTitle className="text-base flex items-center gap-2">
               <Bell className="h-5 w-5" />
               Notification Preferences
-              <p className="text-xl text-red-700">
-                (Coming soon) 
-              </p>
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6 blur-sm">
+          <CardContent className="space-y-6">
             <div className="space-y-4">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -745,7 +742,7 @@ export default function Settings() {
                   </div>
                   <Switch
                     checked={notifications.email}
-                    
+                    onCheckedChange={(v) => setNotifications((prev) => ({ ...prev, email: v }))}
                   />
                 </div>
 
@@ -756,7 +753,7 @@ export default function Settings() {
                   </div>
                   <Switch
                     checked={notifications.sms}
-                    
+                    onCheckedChange={(v) => setNotifications((prev) => ({ ...prev, sms: v }))}
                   />
                 </div>
 
@@ -767,7 +764,7 @@ export default function Settings() {
                   </div>
                   <Switch
                     checked={notifications.push}
-                    
+                    onCheckedChange={(v) => setNotifications((prev) => ({ ...prev, push: v }))}
                   />
                 </div>
               </div>

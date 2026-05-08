@@ -92,6 +92,19 @@ function formatWindowTime(ms: number): string {
   return `${s}s`;
 }
 
+function formatCountdownDetailed(ms: number): string {
+  if (ms <= 0) return "now";
+  const totalSec = Math.floor(ms / 1000);
+  const d = Math.floor(totalSec / 86400);
+  const h = Math.floor((totalSec % 86400) / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
 function isExpired(expiresAt: any) {
   if (!expiresAt) return false;
   const ts = expiresAt as Timestamp;
@@ -472,7 +485,12 @@ export default function StudentTestDetails() {
         </Link>
       </Button>
 
-      <Card className={cn("card-soft border-0", isLive ? "bg-red-50 dark:bg-red-900/10 border-2 border-red-500/20" : "bg-pastel-mint")}>
+      <Card className={cn(
+        "card-soft border-0",
+        isLive ? "bg-red-50 dark:bg-red-900/10 border-2 border-red-500/20" :
+        isUpcoming ? "bg-amber-50 dark:bg-amber-900/10 border-2 border-amber-400/30" :
+        "bg-pastel-mint"
+      )}>
         <CardContent className="p-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
@@ -507,8 +525,16 @@ export default function StudentTestDetails() {
               </div>
 
               {test.startTime && (
-                <div className="mt-3 text-xs font-medium text-muted-foreground">
-                  Schedule: {new Date(test.startTime).toLocaleString()} - {new Date(test.endTime!).toLocaleTimeString()}
+                <div className="mt-3 space-y-1">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    Schedule: {new Date(test.startTime).toLocaleString()} – {new Date(test.endTime!).toLocaleTimeString()}
+                  </div>
+                  {isUpcoming && (
+                    <div className="flex items-center gap-1.5 text-sm font-semibold text-amber-700 dark:text-amber-400">
+                      <Timer className="h-4 w-4" />
+                      Starts in {formatCountdownDetailed(test.startTime - currentTime)}
+                    </div>
+                  )}
                 </div>
               )}
 

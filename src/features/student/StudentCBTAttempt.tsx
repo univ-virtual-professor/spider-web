@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertTriangle, Save, LayoutGrid } from "lucide-react";
+import { AlertTriangle, Save, LayoutGrid, Upload } from "lucide-react";
 import { toast } from "sonner";
 
+import { normalizeQuestionType, isSubjectiveType } from "@shared/lib/questionTypes";
+import { uploadToImageKit } from "@shared/lib/imagekitUpload";
 import { TimerChip } from "@features/student/components/TimerChip";
 import { cn } from "@shared/lib/utils";
 import { HtmlView } from "@shared/lib/safeHtml";
@@ -31,18 +33,75 @@ import {
   where,
 } from "firebase/firestore";
 
-type AttemptResponse = { answer: string | null; markedForReview: boolean; visited: boolean; answered: boolean };
+/**
+ * Fetches question_groups docs for any groupId found in the question list
+ * and injects the passage into each matching question.
+ * Falls back to the inline `passage` field already set by mapQuestion().
+ * One Firestore read per unique groupId — cached in a Map.
+ */
+async function enrichQuestionsWithPassages(qs: AttemptQuestion[]): Promise<AttemptQuestion[]> {
+  const uniqueGroupIds = [...new Set(qs.map(q => q.groupId).filter(Boolean) as string[])];
+  if (!uniqueGroupIds.length) return qs;
+
+  const cache = new Map<string, { title: string; content: string; contentFormat: "html" | "latex" }>();
+
+  await Promise.all(
+    uniqueGroupIds.map(async (gid) => {
+      try {
+        const snap = await getDoc(doc(db, "question_groups", gid));
+        if (snap.exists()) {
+          const d = snap.data() as any;
+          cache.set(gid, {
+            title: String(d.title || ""),
+            content: String(d.passageContent || ""),
+            contentFormat: d.passageContentFormat === "latex" ? "latex" : "html",
+          });
+        }
+      } catch {
+        // Non-fatal: question renders without passage
+      }
+    })
+  );
+
+  return qs.map((q) => {
+    if (!q.groupId) return q;
+    const groupPassage = cache.get(q.groupId);
+    if (!groupPassage) return q; // fall back to inline passage already set
+    return { ...q, passage: groupPassage };
+  });
+}
+
+type AttemptResponse = {
+  answer: string | null;
+  markedForReview: boolean;
+  visited: boolean;
+  answered: boolean;
+  aiEvaluation?: {
+    score: number;
+    maxScore: number;
+    confidence: number;
+    feedback: string;
+    evaluatedAt?: number;
+  };
+};
 
 type AttemptQuestion = {
   id: string;
   sectionId: string;
-  type: "mcq" | "integer";
+  type: "mcq" | "integer" | "short_answer" | "upload";
   stem: string;
   options?: { id: string; text: string }[];
   correctAnswer?: string;
+  referenceAnswer?: string;
+  referenceKeywords?: string[];
+  referenceAnswerFileUrl?: string;
+  evaluationInstructions?: string;
   explanation?: string;
   marks: { correct: number; incorrect: number };
-  passage?: { title: string; content: string } | null;
+  passage?: { title: string; content: string; contentFormat?: "html" | "latex" } | null;
+  /** groupId links questions in the same comprehension/case-study block */
+  groupId?: string;
+  groupOrder?: number;
   /** Used for display ordering; not shown to students */
   sortOrder: number;
 };
@@ -114,20 +173,35 @@ const mapQuestion = (id: string, data: any): AttemptQuestion => {
     opts.length || 4
   );
   const correctIndex = parsedCorrectIndex ?? 0;
-  // Always normalize to +5 marks and -1 negative marks
-  const positive = 5;
-  const negative = 1;
+  const positive = safeNumber((data as any).marks ?? data.positiveMarks, 5);
+  const negative = Math.abs(safeNumber(data.negativeMarks, 1));
+
+  // Determine question type using canonical normalizer
+  const rawType = normalizeQuestionType(data.questionType);
+  let mappedType: AttemptQuestion["type"] = "mcq";
+  if (rawType === "SHORT_ANSWER") mappedType = "short_answer";
+  else if (rawType === "UPLOAD") mappedType = "upload";
+  else if (data.type === "integer") mappedType = "integer";
 
   return {
     id,
     sectionId: data.sectionId || "main",
-    type: "mcq",
-    stem: data.question || "",   // ✅ FIXED
-    options: opts.map((t, i) => ({ id: String(i), text: String(t) })),
-    correctAnswer: String(correctIndex),
+    type: mappedType,
+    stem: data.question || "",
+    options: mappedType === "mcq" ? opts.map((t, i) => ({ id: String(i), text: String(t) })) : undefined,
+    correctAnswer: mappedType === "mcq" || mappedType === "integer" ? String(correctIndex) : undefined,
+    referenceAnswer: data.referenceAnswer || "",
+    referenceKeywords: Array.isArray(data.referenceKeywords) ? data.referenceKeywords : [],
+    referenceAnswerFileUrl: data.referenceAnswerFileUrl ? String(data.referenceAnswerFileUrl) : "",
+    evaluationInstructions: data.evaluationInstructions ? String(data.evaluationInstructions) : "",
     explanation: data.explanation || "",
     marks: { correct: positive, incorrect: negative },
-    passage: null,
+    // Passage resolved later via enrichQuestionsWithPassages()
+    passage: data.passage
+      ? { title: data.passage.title || "", content: data.passage.content || "", contentFormat: data.passage.contentFormat }
+      : null,
+    groupId: data.groupId ? String(data.groupId) : undefined,
+    groupOrder: data.groupOrder != null ? Number(data.groupOrder) : undefined,
     sortOrder: safeNumber(data.questionOrder, Number.MAX_SAFE_INTEGER),
   };
 };
@@ -188,6 +262,8 @@ export default function StudentCBTAttempt() {
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
 
   const [saving, setSaving] = useState(false);
+  const [evaluatingSubjective, setEvaluatingSubjective] = useState(false);
+  const [evaluationProgress, setEvaluationProgress] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [timerStartSeconds, setTimerStartSeconds] = useState(0);
 
@@ -197,6 +273,8 @@ export default function StudentCBTAttempt() {
   // Proctoring state
   const [exitCount, setExitCount] = useState(0);
   const [violationModalOpen, setViolationModalOpen] = useState(false);
+  const ignoreProctoringRef = useRef(false);
+  const resumeFullscreenRef = useRef(false);
 
   const attemptIdStorageKey = useMemo(
     () => `${LS_ATTEMPT_ID_PREFIX}${tenantSlug || "main"}__${testId || ""}`,
@@ -410,6 +488,7 @@ export default function StudentCBTAttempt() {
             .filter((q) => q.data()?.isActive !== false)
             .map((q) => mapQuestion(q.id, q.data()))
             .sort((a, b) => a.sortOrder - b.sortOrder);
+          qs = await enrichQuestionsWithPassages(qs);
         }
 
         if (!meta || !qs.length) {
@@ -436,6 +515,7 @@ export default function StudentCBTAttempt() {
               .filter((q) => q.data()?.isActive !== false)
               .map((q) => mapQuestion(q.id, q.data()))
               .sort((a, b) => a.sortOrder - b.sortOrder);
+            qs = await enrichQuestionsWithPassages(qs);
           }
         }
 
@@ -896,6 +976,11 @@ export default function StudentCBTAttempt() {
         continue;
       }
 
+      // Subjective types are scored by AI separately — skip here
+      if (q.type === "short_answer" || q.type === "upload") {
+        continue;
+      }
+
       if (q.type === "integer") {
         if (String(ans).trim() === String(q.correctAnswer ?? "").trim()) {
           score += safeNumber(q.marks.correct, 0);
@@ -936,33 +1021,118 @@ export default function StudentCBTAttempt() {
       setSaving(true);
       await flushPendingSaves();
 
-      const submissionResponses = effectiveResponses;
-      const { score, maxScore, correctCount, incorrectCount, accuracy } = computeScore(submissionResponses);
+      const submissionResponses = { ...effectiveResponses };
       const counts = computeResponseCounts(submissionResponses);
       const totalSec = durationSec || testMeta.durationMinutes * 60;
       const startedAtMs = attemptStartedAtMs || Date.now();
       const remaining = computeRemainingSeconds(startedAtMs, totalSec);
       const timeTakenSec = Math.max(0, totalSec - remaining);
 
+      // Identify subjective questions that have answers
+      const subjectiveToEvaluate = questions.filter((q) => {
+        if (q.type !== "short_answer" && q.type !== "upload") return false;
+        const ans = submissionResponses[q.id]?.answer;
+        return ans !== null && ans !== undefined && String(ans).trim() !== "";
+      });
+
+      // Compute objective score first
+      const objectiveResult = computeScore(submissionResponses);
+      let finalScore = objectiveResult.score;
+      const finalMaxScore = objectiveResult.maxScore;
+
+      // AI evaluation for subjective questions
+      if (subjectiveToEvaluate.length > 0) {
+        setSaving(false);
+        setSubmitDialogOpen(false);
+        setEvaluatingSubjective(true);
+        setEvaluationProgress(`Evaluating ${subjectiveToEvaluate.length} subjective answer${subjectiveToEvaluate.length > 1 ? "s" : ""}...`);
+        await exitFullscreenSafe();
+
+        try {
+          const evaluations = subjectiveToEvaluate.map((q) => ({
+            questionId: q.id,
+            questionText: q.stem,
+            questionType: q.type === "upload" ? "UPLOAD" as const : "SHORT_ANSWER" as const,
+            referenceAnswer: q.referenceAnswer || "",
+            referenceKeywords: q.referenceKeywords || [],
+            referenceAnswerImageUrl: q.referenceAnswerFileUrl || "",
+            evaluationInstructions: q.evaluationInstructions || "",
+            studentAnswer: String(submissionResponses[q.id]?.answer || ""),
+            maxScore: safeNumber(q.marks.correct, 5),
+          }));
+
+          setEvaluationProgress(`AI is analyzing your answers... (0/${subjectiveToEvaluate.length})`);
+
+          const res = await fetch("/api/ai/evaluate-subjective", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ evaluations }),
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const aiResults: Record<string, any> = data.results || {};
+
+            let evaluatedCount = 0;
+            for (const q of subjectiveToEvaluate) {
+              const aiResult = aiResults[q.id];
+              if (aiResult) {
+                submissionResponses[q.id] = {
+                  ...submissionResponses[q.id],
+                  aiEvaluation: {
+                    score: safeNumber(aiResult.score, 0),
+                    maxScore: safeNumber(aiResult.maxScore, safeNumber(q.marks.correct, 5)),
+                    confidence: safeNumber(aiResult.confidence, 0.5),
+                    feedback: aiResult.feedback || "",
+                    evaluatedAt: aiResult.evaluatedAt || Date.now(),
+                  },
+                };
+                finalScore += safeNumber(aiResult.score, 0);
+                evaluatedCount += 1;
+                setEvaluationProgress(`AI is analyzing your answers... (${evaluatedCount}/${subjectiveToEvaluate.length})`);
+              }
+            }
+          } else {
+            console.error("AI evaluation failed:", res.status);
+            setEvaluationProgress("AI evaluation encountered an issue. Saving with partial scores...");
+            await new Promise((r) => setTimeout(r, 1500));
+          }
+        } catch (evalErr) {
+          console.error("AI evaluation error:", evalErr);
+          setEvaluationProgress("AI evaluation encountered an issue. Saving with partial scores...");
+          await new Promise((r) => setTimeout(r, 1500));
+        }
+      }
+
+      const totalAnswered = questions.filter((q) => {
+        const ans = submissionResponses[q.id]?.answer;
+        return ans !== null && ans !== undefined && String(ans).trim() !== "";
+      }).length;
+      const finalAccuracy = totalAnswered > 0 && finalMaxScore > 0 ? finalScore / finalMaxScore : 0;
+
+      setEvaluationProgress("Saving your results...");
+
       await updateDoc(doc(db, "attempts", attemptId), {
         status: "submitted",
         submittedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         responses: submissionResponses,
-        score,
-        maxScore,
-        correctCount,
-        incorrectCount,
+        score: finalScore,
+        maxScore: finalMaxScore,
+        correctCount: objectiveResult.correctCount,
+        incorrectCount: objectiveResult.incorrectCount,
         unansweredCount: counts.unansweredCount,
         markedForReviewCount: counts.markedForReviewCount,
         notVisitedCount: counts.notVisitedCount,
         notAnsweredCount: counts.notAnsweredCount,
-        accuracy,
+        accuracy: finalAccuracy,
         timeTakenSec,
+        hasSubjectiveQuestions: subjectiveToEvaluate.length > 0,
+        subjectiveEvaluatedCount: subjectiveToEvaluate.filter((q) => submissionResponses[q.id]?.aiEvaluation).length,
       });
 
       localStorage.removeItem(attemptIdStorageKey);
-      await exitFullscreenSafe();
+      if (!evaluatingSubjective) await exitFullscreenSafe();
 
       // Invalidate cached attempt counts & dashboard so they refresh immediately
       queryClient.invalidateQueries({ queryKey: ["studentAttemptCounts"] });
@@ -976,6 +1146,8 @@ export default function StudentCBTAttempt() {
       toast.error("Failed to submit test");
     } finally {
       setSaving(false);
+      setEvaluatingSubjective(false);
+      setEvaluationProgress("");
       setSubmitDialogOpen(false);
     }
   };
@@ -1028,25 +1200,37 @@ export default function StudentCBTAttempt() {
     if (!isStarted) return;
 
     const handleVisibilityChange = () => {
+      if (ignoreProctoringRef.current) return;
       if (document.visibilityState === "hidden") {
         handleViolation();
       }
     };
 
     const handleFullscreenChange = () => {
+      if (ignoreProctoringRef.current) return;
       const { isStarted: started, submitDialogOpen: subOpen, violationModalOpen: violOpen, instructionsOpen: instOpen } = proctorStateRef.current;
-      // If user exits fullscreen AND they are not currently in instructions or submitting or already warned
       if (!document.fullscreenElement && started && !subOpen && !violOpen && !instOpen) {
         handleViolation();
       }
     };
 
+    const handleWindowFocus = () => {
+      const { isStarted: started } = proctorStateRef.current;
+      if (resumeFullscreenRef.current && started) {
+        resumeFullscreenRef.current = false;
+        void requestFullscreenSafe();
+      }
+      ignoreProctoringRef.current = false;
+    };
+
     document.addEventListener("visibilitychange", handleVisibilityChange);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
+    window.addEventListener("focus", handleWindowFocus);
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      window.removeEventListener("focus", handleWindowFocus);
     };
   }, [isStarted, handleViolation]);
 
@@ -1063,6 +1247,61 @@ export default function StudentCBTAttempt() {
 
   if (loading || authLoading || tenantLoading) return <div className="text-center py-12">Loading...</div>;
   if (loadError || !testMeta || !currentQuestion) return <div className="text-center py-12">{loadError || "Failed to load test"}</div>;
+
+  // AI Evaluation Overlay — shown while Gemini grades subjective answers
+  if (evaluatingSubjective) {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 9999,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "linear-gradient(135deg, #0f172a 0%, #1e293b 100%)",
+          color: "#fff",
+        }}
+      >
+        <div
+          style={{
+            width: 80,
+            height: 80,
+            borderRadius: "50%",
+            border: "4px solid rgba(99, 102, 241, 0.3)",
+            borderTopColor: "#6366f1",
+            animation: "cbt-eval-spin 1s linear infinite",
+            marginBottom: 32,
+          }}
+        />
+        <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8, letterSpacing: "-0.02em" }}>
+          Evaluating Your Answers
+        </h2>
+        <p style={{ fontSize: 14, color: "#94a3b8", maxWidth: 400, textAlign: "center", lineHeight: 1.6, marginBottom: 16 }}>
+          AI is reviewing your subjective answers to provide accurate scoring. This may take a moment.
+        </p>
+        <div
+          style={{
+            padding: "8px 20px",
+            background: "rgba(99, 102, 241, 0.15)",
+            borderRadius: 12,
+            fontSize: 13,
+            fontWeight: 600,
+            color: "#a5b4fc",
+            border: "1px solid rgba(99, 102, 241, 0.25)",
+          }}
+        >
+          {evaluationProgress || "Preparing..."}
+        </div>
+        <style>{`
+          @keyframes cbt-eval-spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   const timerKey = isStarted ? `running_${attemptId || "new"}` : `paused_${attemptId || "new"}`;
 
@@ -1153,37 +1392,59 @@ export default function StudentCBTAttempt() {
       {/* Question grid (current section only) */}
       <div style={{ padding: "15px", overflowY: "auto", maxHeight: "calc(100% - 160px)" }}>
         <div className="question-grid">
-          {sectionQuestions.map((sq, idx) => (
-            <button
-              key={sq.id}
-              onClick={() => {
-                const globalIdx = questions.findIndex(q => q.id === sq.id);
-                if (globalIdx >= 0) goToIndex(globalIdx);
-                onClose?.(); 
-              }}
-              style={{
-                ...getQuestionBtnStyle(sq.id),
-                width: "100%",
-                aspectRatio: "1",
-                borderRadius: "50%",
-                fontSize: "13px",
-                fontWeight: "bold",
-                cursor: "pointer",
-                transition: "transform 0.1s",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-                padding: 0,
-                lineHeight: "1",
-                textAlign: "center",
-              }}
-              onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.92)")}
-              onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
-            >
-              <span style={{ display: "block", width: "100%", textAlign: "center", color: "inherit" }}>{idx + 1}</span>
-            </button>
-          ))}
+          {sectionQuestions.map((sq, idx) => {
+            const isGrouped = !!sq.groupId;
+            // Determine if this question starts a new group vs continuing one
+            const prevQ = sectionQuestions[idx - 1];
+            const isGroupStart = isGrouped && (!prevQ || prevQ.groupId !== sq.groupId);
+            const nextQ = sectionQuestions[idx + 1];
+            const isGroupEnd = isGrouped && (!nextQ || nextQ.groupId !== sq.groupId);
+
+            return (
+              <div
+                key={sq.id}
+                style={{
+                  position: "relative",
+                  ...(isGrouped && {
+                    borderLeft: "3px solid #f59e0b",
+                    ...(isGroupStart && { borderTop: "3px solid #f59e0b", borderTopLeftRadius: 4, marginTop: 4 }),
+                    ...(isGroupEnd && { borderBottom: "3px solid #f59e0b", borderBottomLeftRadius: 4, marginBottom: 4 }),
+                    paddingLeft: 2,
+                  }),
+                }}
+              >
+                <button
+                  onClick={() => {
+                    const globalIdx = questions.findIndex(q => q.id === sq.id);
+                    if (globalIdx >= 0) goToIndex(globalIdx);
+                    onClose?.();
+                  }}
+                  style={{
+                    ...getQuestionBtnStyle(sq.id),
+                    width: "100%",
+                    aspectRatio: "1",
+                    borderRadius: "50%",
+                    fontSize: "13px",
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                    transition: "transform 0.1s",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+                    padding: 0,
+                    lineHeight: "1",
+                    textAlign: "center",
+                  }}
+                  onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.92)")}
+                  onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                  title={isGrouped ? "Part of passage/case-study group" : undefined}
+                >
+                  <span style={{ display: "block", width: "100%", textAlign: "center", color: "inherit" }}>{idx + 1}</span>
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -1362,13 +1623,31 @@ export default function StudentCBTAttempt() {
             </div>
 
             <div style={{ padding: "12px 16px" }}>
-              {/* Passage */}
-              {!!currentQuestion.passage && (
-                <div style={{ padding: 12, background: "#fef9c3", border: "1px solid #fde68a", borderRadius: 6, marginBottom: 12, fontSize: 13 }}>
-                  <div style={{ fontWeight: 700, marginBottom: 4 }}>{currentQuestion.passage.title}</div>
-                  <div style={{ whiteSpace: "pre-line", color: "#374151" }}>{currentQuestion.passage.content}</div>
-                </div>
-              )}
+              {/* Passage / Case Study block */}
+              {!!currentQuestion.passage && (() => {
+                const p = currentQuestion.passage!;
+                const isTable = p.content.trimStart().startsWith("<table");
+                return (
+                  <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
+                    {p.title && (
+                      <div className="flex items-center gap-1.5 border-b border-amber-200 dark:border-amber-800 px-3 py-2">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                          {isTable ? "Case Study" : "Passage"}
+                        </span>
+                        <span className="text-xs text-amber-600 dark:text-amber-500 truncate">{p.title}</span>
+                      </div>
+                    )}
+                    <div
+                      className={cn(
+                        "p-3 text-sm leading-relaxed text-gray-700 dark:text-gray-300",
+                        isTable && "overflow-x-auto"
+                      )}
+                    >
+                      <HtmlView html={p.content} />
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Question stem */}
               <div style={{ fontSize: 13, color: "#1f2937", lineHeight: 1.7, marginBottom: 16 }}>
@@ -1430,6 +1709,157 @@ export default function StudentCBTAttempt() {
                   />
                 </div>
               )}
+
+              {/* Short Answer type */}
+              {currentQuestion.type === "short_answer" && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#6b7280", marginBottom: 6, textTransform: "uppercase" }}>Your Answer :</div>
+                  <textarea
+                    placeholder="Type your answer here..."
+                    value={selectedAnswer || ""}
+                    onChange={(e) => handleSelectOption(e.target.value)}
+                    disabled={!isStarted}
+                    rows={6}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      border: "1.5px solid #d1d5db",
+                      borderRadius: 8,
+                      fontSize: 14,
+                      lineHeight: 1.6,
+                      outline: "none",
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                      background: isStarted ? "#fff" : "#f3f4f6",
+                    }}
+                  />
+                  <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+                    <span style={{ fontSize: 11, color: "#9ca3af" }}>Write a clear, complete answer. This will be evaluated by AI.</span>
+                    <span style={{ fontSize: 11, color: "#9ca3af" }}>{(selectedAnswer || "").length} chars</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Upload Answer type */}
+              {currentQuestion.type === "upload" && (() => {
+                const isUploading = saving && selectedAnswer === "__uploading__";
+                return (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#6b7280", marginBottom: 6, textTransform: "uppercase" }}>Upload Your Answer :</div>
+                    {selectedAnswer && selectedAnswer !== "__uploading__" ? (
+                      <div style={{ position: "relative", display: "inline-block" }}>
+                        <img
+                          src={selectedAnswer}
+                          alt="Uploaded answer"
+                          style={{ maxWidth: "100%", maxHeight: 300, borderRadius: 8, border: "1.5px solid #d1d5db", objectFit: "contain" }}
+                        />
+                        <button
+                          onClick={() => handleSelectOption("")}
+                          disabled={!isStarted}
+                          style={{
+                            position: "absolute",
+                            top: 4,
+                            right: 4,
+                            background: "#ef4444",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "50%",
+                            width: 28,
+                            height: 28,
+                            fontSize: 14,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <label
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          padding: "32px 16px",
+                          border: isUploading ? "2px solid #6366f1" : "2px dashed #d1d5db",
+                          borderRadius: 12,
+                          cursor: isStarted && !isUploading ? "pointer" : "not-allowed",
+                          background: isUploading ? "#eef2ff" : "#f9fafb",
+                          transition: "all 0.2s",
+                          opacity: isUploading ? 0.8 : 1,
+                        }}
+                        onClick={() => {
+                          if (!isStarted || isUploading) return;
+                          resumeFullscreenRef.current = Boolean(document.fullscreenElement);
+                          ignoreProctoringRef.current = true;
+                        }}
+                      >
+                        {isUploading ? (
+                          <>
+                            <div style={{
+                              width: 36, height: 36, borderRadius: "50%",
+                              border: "3px solid #c7d2fe", borderTopColor: "#6366f1",
+                              animation: "cbt-eval-spin 0.8s linear infinite",
+                              marginBottom: 8,
+                            }} />
+                            <span style={{ fontSize: 13, color: "#6366f1", fontWeight: 600 }}>Uploading your answer...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Upload size={32} style={{ color: "#9ca3af", marginBottom: 8 }} />
+                            <span style={{ fontSize: 13, color: "#6b7280", fontWeight: 600 }}>Click to upload image</span>
+                            <span style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>JPG, PNG up to 10MB</span>
+                          </>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          disabled={!isStarted || isUploading}
+                          style={{ display: "none" }}
+                          onChange={async (e) => {
+                            ignoreProctoringRef.current = false;
+                            const file = e.target.files?.[0];
+                            e.target.value = "";
+                            if (!file) return;
+                            if (file.size > 10 * 1024 * 1024) {
+                              toast.error("File too large. Max 10MB.");
+                              return;
+                            }
+                            if (!file.type.startsWith("image/")) {
+                              toast.error("Only image files are allowed.");
+                              return;
+                            }
+                            try {
+                              handleSelectOption("__uploading__");
+                              setSaving(true);
+                              const { url } = await uploadToImageKit(
+                                file,
+                                `student_ans_${currentQuestion.id}_${Date.now()}.${file.name.split(".").pop() || "jpg"}`,
+                                "/student-answers",
+                                "student"
+                              );
+                              handleSelectOption(url);
+                              toast.success("Image uploaded successfully");
+                            } catch (err: any) {
+                              console.error("[StudentCBT] Upload failed:", err);
+                              handleSelectOption("");
+                              toast.error(err?.message || "Upload failed. Please try again.");
+                            } finally {
+                              setSaving(false);
+                            }
+                          }}
+                        />
+                      </label>
+                    )}
+                    <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+                      Upload a clear photo of your handwritten answer.
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -1701,6 +2131,9 @@ export default function StudentCBTAttempt() {
         .mobile-palette-sheet button.absolute svg {
           width: 20px !important;
           height: 20px !important;
+        }
+        @keyframes cbt-eval-spin {
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>

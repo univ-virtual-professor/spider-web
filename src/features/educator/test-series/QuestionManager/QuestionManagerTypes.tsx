@@ -35,6 +35,15 @@ export type TestQuestion = {
 
     isActive?: boolean;
 
+    // Question type
+    questionType?: string;
+
+    // Subjective answer reference
+    referenceAnswer?: string;
+    referenceKeywords?: string[];
+    referenceAnswerFileUrl?: string;
+    evaluationInstructions?: string;
+
     // AI import metadata
     source?: "ai_import" | "ai_import_partial" | string;
     bankQuestionId?: string;
@@ -82,6 +91,11 @@ export type EditorDraftSnapshot = {
     marks: string;
     negativeMarks: string;
     active: boolean;
+    questionType: string;
+    referenceAnswer: string;
+    referenceKeywords: string;
+    referenceAnswerFileUrl: string;
+    evaluationInstructions: string;
 };
 
 export type PendingEditorAction =

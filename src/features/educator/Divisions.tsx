@@ -12,8 +12,9 @@ import {
   Timestamp,
   updateDoc,
   where,
+  writeBatch as firestoreBatch,
 } from "firebase/firestore";
-import { db } from "@shared/lib/firebase";
+import { db, auth } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { toast } from "sonner";
 import { Button } from "@shared/ui/button";
@@ -35,7 +36,7 @@ import {
 } from "@shared/ui/select";
 import { Label } from "@shared/ui/label";
 import { Badge } from "@shared/ui/badge";
-import { Loader2, Plus, Pencil, Trash2, Users } from "lucide-react";
+import { Loader2, Plus, Pencil, Trash2, Users, UserCheck, UserX } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -61,6 +62,8 @@ type Batch = {
 };
 type Subject = { id: string; name: string };
 type Plan = { id: string; name: string; pricePerSeat: number };
+
+const API = import.meta.env.VITE_MONKEY_KING_API_URL;
 
 export default function Divisions() {
   const { profile } = useAuth();
@@ -106,6 +109,19 @@ export default function Divisions() {
   const [learners, setLearners] = useState<{ id: string; name: string; email: string; status: string; joinedAt: any }[]>([]);
   const [loadingLearners, setLoadingLearners] = useState(false);
 
+  // Seat management
+  const [seatMap, setSeatMap] = useState<Record<string, boolean>>({});
+  const [seatLimit, setSeatLimit] = useState(0);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  // Assign-batch dialog
+  const [assignTarget, setAssignTarget] = useState<{ id: string; name?: string; branchId?: string; courseId?: string; batchId?: string } | null>(null);
+  const [assignBranch, setAssignBranch] = useState("");
+  const [assignCourse, setAssignCourse] = useState("");
+  const [assignBatch, setAssignBatch] = useState("");
+  const [assigning, setAssigning] = useState(false);
+
+
   useEffect(() => {
     if (!educatorId) return;
 
@@ -115,7 +131,15 @@ export default function Divisions() {
         const data = snap.data();
         setMaxBranches(data.maxBranches ?? 5);
         setAllowedSubjectIds(data.allowedSubjectIds ?? []);
+        setSeatLimit(data.seatLimit ?? 0);
       }
+    });
+
+    // Billing seats (for grant/revoke)
+    const unsubSeats = onSnapshot(collection(db, "educators", educatorId, "billingSeats"), (snap) => {
+      const map: Record<string, boolean> = {};
+      snap.docs.forEach((d) => { map[d.id] = String((d.data() as any)?.status || "").toLowerCase() === "active"; });
+      setSeatMap(map);
     });
 
     // Load branches
@@ -139,7 +163,7 @@ export default function Divisions() {
     });
 
     setLoading(false);
-    return () => { branchUnsub(); };
+    return () => { branchUnsub(); unsubSeats(); };
   }, [educatorId]);
 
   // Load courses when branches change
@@ -214,6 +238,65 @@ export default function Divisions() {
     });
     return () => unsub();
   }, [educatorId, lBatchId]);
+
+  const usedSeats = Object.values(seatMap).filter(Boolean).length;
+  const canAssign = seatLimit > 0 && usedSeats < seatLimit;
+
+  async function postWithToken(path: string, body: any) {
+    const token = await auth.currentUser?.getIdToken();
+    const res = await fetch(`${API}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.detail || "Request failed");
+    return data;
+  }
+
+  async function grantSeat(studentId: string) {
+    setBusyId(studentId);
+    try { await postWithToken("/api/billing/assign-seat", { studentId }); toast.success("Seat granted"); }
+    catch (e: any) { toast.error(e?.message || "Failed"); }
+    finally { setBusyId(null); }
+  }
+
+  async function revokeSeat(studentId: string) {
+    setBusyId(studentId);
+    try { await postWithToken("/api/billing/revoke-seat", { studentId }); toast.success("Seat revoked"); }
+    catch (e: any) { toast.error(e?.message || "Failed"); }
+    finally { setBusyId(null); }
+  }
+
+  async function toggleActive(studentId: string, next: "ACTIVE" | "INACTIVE") {
+    try {
+      await updateDoc(doc(db, "educators", educatorId, "students", studentId), { status: next });
+      toast.success(`Set to ${next}`);
+    } catch (e: any) { toast.error(e?.message || "Failed"); }
+  }
+
+  function openAssignBatch(l: { id: string; name?: string; branchId?: string; courseId?: string; batchId?: string }) {
+    setAssignTarget(l);
+    setAssignBranch(l.branchId || "");
+    setAssignCourse(l.courseId || "");
+    setAssignBatch(l.batchId || "");
+  }
+
+  async function saveAssignBatch() {
+    if (!assignTarget || !assignBranch || !assignCourse || !assignBatch) return;
+    const batchInfo = batches.find((b) => b.id === assignBatch);
+    setAssigning(true);
+    try {
+      const batch = firestoreBatch(db);
+      batch.update(doc(db, "educators", educatorId, "students", assignTarget.id), { branchId: assignBranch, courseId: assignCourse, batchId: assignBatch });
+      batch.update(doc(db, "users", assignTarget.id), { branchId: assignBranch, courseId: assignCourse, batchId: assignBatch });
+      batch.update(doc(db, "educators", educatorId, "billingSeats", assignTarget.id), { branchId: assignBranch, courseId: assignCourse, batchId: assignBatch });
+      await batch.commit();
+      toast.success(`Assigned to ${batchInfo?.name || assignBatch}`);
+      setAssignTarget(null);
+    } catch (e: any) { toast.error(e?.message || "Failed"); }
+    finally { setAssigning(false); }
+  }
 
   // ── Branch CRUD ─────────────────────────────────────────────────────────
   function openCreateBranch() {
@@ -381,10 +464,6 @@ export default function Divisions() {
             <h1 className="text-2xl font-bold">Student Management</h1>
             <p className="text-muted-foreground text-sm">Manage branches, courses, batches, and enrolled learners</p>
           </div>
-          <Button className="w-full sm:w-auto" variant="outline" onClick={() => navigate("/educator/learners")}>
-            <Users className="h-4 w-4 mr-2" />
-            Learners &amp; Invites
-          </Button>
         </div>
       </div>
 
@@ -565,7 +644,7 @@ export default function Divisions() {
         </TabsContent>
         {/* Learners Tab */}
         <TabsContent value="learners" className="space-y-4">
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3 items-end">
             {branches.length !== 1 && (
               <div className="space-y-1 min-w-[160px]">
                 <p className="text-xs font-medium text-muted-foreground">Branch</p>
@@ -604,57 +683,87 @@ export default function Divisions() {
               </div>
             )}
             {lBatchId && (
-              <div className="flex items-end">
-                <Badge variant="secondary" className="h-8 px-3 text-sm">
-                  {learners.length} / {batches.find((b) => b.id === lBatchId)?.seatLimit ?? 0} seats
-                </Badge>
-              </div>
+              <Badge variant="secondary" className="h-8 px-3 text-sm">
+                {learners.length} / {batches.find((b) => b.id === lBatchId)?.seatLimit ?? 0} seats
+              </Badge>
             )}
           </div>
 
           {!lBatchId ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">
-              Select a batch above to see enrolled learners.
-            </p>
+            <p className="text-sm text-muted-foreground py-6 text-center">Select a batch above to see enrolled learners.</p>
           ) : loadingLearners ? (
             <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>
           ) : (
             <Card>
               <CardContent className="p-0">
                 <div className="w-full overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Joined</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {learners.map((l) => (
-                      <TableRow key={l.id}>
-                        <TableCell className="font-medium">{l.name || l.id}</TableCell>
-                        <TableCell className="text-muted-foreground">{l.email}</TableCell>
-                        <TableCell>
-                          <Badge variant={l.status === "ACTIVE" ? "default" : "secondary"}>
-                            {l.status || "ACTIVE"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {l.joinedAt?.toDate ? l.joinedAt.toDate().toLocaleDateString() : "-"}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {learners.length === 0 && (
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                          No learners enrolled in this batch yet.
-                        </TableCell>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Seat</TableHead>
+                        <TableHead>Joined</TableHead>
+                        <TableHead className="w-36">Actions</TableHead>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {learners.map((l) => {
+                        const seatOn = Boolean(seatMap[l.id]);
+                        const inactive = l.status === "INACTIVE";
+                        const busy = busyId === l.id;
+                        return (
+                          <TableRow key={l.id}>
+                            <TableCell>
+                              <button className="text-left hover:underline font-medium" onClick={() => navigate(`/educator/learners/${l.id}`)}>
+                                {l.name || l.id}
+                                <div className="text-xs text-muted-foreground font-normal">{l.email}</div>
+                              </button>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={inactive ? "secondary" : "default"} className="text-xs">
+                                {l.status || "ACTIVE"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <span className={`text-xs font-medium ${seatOn ? "text-green-600" : "text-orange-500"}`}>
+                                {seatOn ? "Granted" : "None"}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {l.joinedAt?.toDate ? l.joinedAt.toDate().toLocaleDateString() : "-"}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Button size="sm" variant="outline" className="h-7 px-2" onClick={() => openAssignBatch(l)} title={l.batchId ? "Change batch" : "Assign batch"}>
+                                  <Pencil className="h-3 w-3" />
+                                </Button>
+                                {!seatOn ? (
+                                  <Button size="sm" variant="outline" className="h-7 px-2" disabled={!canAssign || busy || inactive} onClick={() => grantSeat(l.id)} title="Grant seat">
+                                    {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserCheck className="h-3 w-3" />}
+                                  </Button>
+                                ) : (
+                                  <Button size="sm" variant="outline" className="h-7 px-2" disabled={busy} onClick={() => revokeSeat(l.id)} title="Revoke seat">
+                                    {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
+                                  </Button>
+                                )}
+                                <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => toggleActive(l.id, inactive ? "ACTIVE" : "INACTIVE")}>
+                                  {inactive ? "Activate" : "Deactivate"}
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                      {learners.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                            No learners enrolled in this batch yet.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
                 </div>
               </CardContent>
             </Card>
@@ -718,6 +827,54 @@ export default function Divisions() {
                 {busy && <Loader2 className="animate-spin h-4 w-4 mr-2" />}Save
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign / Change Batch Dialog */}
+      <Dialog open={!!assignTarget} onOpenChange={(o) => { if (!o) setAssignTarget(null); }}>
+        <DialogContent className="max-w-[95vw] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{assignTarget?.batchId ? "Change Batch" : "Assign Batch"} — {assignTarget?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label>Branch</Label>
+              <Select value={assignBranch} onValueChange={(v) => { setAssignBranch(v); setAssignCourse(""); setAssignBatch(""); }}>
+                <SelectTrigger><SelectValue placeholder="Select branch" /></SelectTrigger>
+                <SelectContent>
+                  {branches.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Program</Label>
+              <Select value={assignCourse} onValueChange={(v) => { setAssignCourse(v); setAssignBatch(""); }} disabled={!assignBranch}>
+                <SelectTrigger><SelectValue placeholder="Select program" /></SelectTrigger>
+                <SelectContent>
+                  {courses.filter((c) => c.branchId === assignBranch).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Batch</Label>
+              <Select value={assignBatch} onValueChange={setAssignBatch} disabled={!assignCourse}>
+                <SelectTrigger><SelectValue placeholder="Select batch" /></SelectTrigger>
+                <SelectContent>
+                  {batches.filter((b) => b.courseId === assignCourse && b.branchId === assignBranch).map((b) => (
+                    <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setAssignTarget(null)}>Cancel</Button>
+            <Button disabled={!assignBatch || assigning} onClick={saveAssignBatch}>
+              {assigning && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Save
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

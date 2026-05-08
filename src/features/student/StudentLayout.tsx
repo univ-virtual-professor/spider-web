@@ -14,7 +14,6 @@ import {
   LogOut,
   Menu,
   X,
-  Bell,
   Moon,
   Sun,
   ChevronLeft,
@@ -51,6 +50,7 @@ import {
 } from "firebase/firestore";
 import { getAuth, signOut } from "firebase/auth";
 import ImpersonationBanner from "@shared/components/ImpersonationBanner";
+import NotificationBell from "@shared/components/NotificationBell";
 
 type UserDoc = {
   displayName?: string;
@@ -187,7 +187,6 @@ export default function StudentLayout() {
       { icon: BookOpen, label: "Content", href: "/student/content" },
       { icon: Bot, label: "AI Tutor", href: "/student/chatbot" },
       { icon: Trophy, label: "Rankings", href: "/student/rankings" },
-      { icon: Settings, label: "Settings", href: "/student/settings" },
     ],
     []
   );
@@ -355,25 +354,25 @@ export default function StudentLayout() {
               {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
 
+            {/* Settings */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate("/student/settings")}
+              title="Settings"
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Settings className="h-5 w-5" />
+            </Button>
+
             {/* Notifications */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative rounded-xl">
-                  <Bell className="h-5 w-5" />
-                  {unreadThreadsCount > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-primary rounded-full" />}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-80 rounded-xl">
-                <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="flex flex-col items-start gap-1 cursor-pointer">
-                  <span className="font-medium">Messages</span>
-                  <span className="text-xs text-muted-foreground">
-                    {unreadThreadsCount > 0 ? `You have ${unreadThreadsCount} unread conversation(s).` : "No new messages."}
-                  </span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {profile?.uid && (
+              <NotificationBell
+                uid={profile.uid}
+                supportThreadCount={unreadThreadsCount}
+                supportThreadLink="/student/messages"
+              />
+            )}
 
             {/* User Menu */}
             <DropdownMenu>
@@ -395,12 +394,6 @@ export default function StudentLayout() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link to="/student/settings">
-                    <Settings className="h-4 w-4 mr-2" />
-                    Settings
-                  </Link>
-                </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link to="/student/messages" className="flex items-center justify-between w-full">
                     <div className="flex items-center">

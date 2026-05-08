@@ -148,6 +148,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       if (scope === "website" || scope === "content") {
         user = await requireUser(req, { roles: ["ADMIN", "EDUCATOR"] });
+      } else if (scope === "student") {
+        user = await requireUser(req, { roles: ["ADMIN", "EDUCATOR", "STUDENT"] });
       } else {
         user = await requireUser(req, { roles: ["ADMIN"] });
       }

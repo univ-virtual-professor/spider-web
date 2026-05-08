@@ -12,6 +12,8 @@ import {
   Image as ImageIcon,
   Check,
   FileSpreadsheet,
+  BookOpen,
+  FlaskConical,
 } from "lucide-react";
 import JSZip from "jszip";
 import Papa from "papaparse";
@@ -22,16 +24,19 @@ import { db } from "@shared/lib/firebase";
 import {
   Timestamp,
   addDoc,
+  arrayUnion,
   collection,
   deleteDoc,
   doc,
   getDoc,
   getDocs,
+  increment,
   limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   writeBatch,
 } from "firebase/firestore";
@@ -60,6 +65,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@shared/ui/select";
+import { Switch } from "@shared/ui/switch";
+import { Textarea } from "@shared/ui/textarea";
 import { uploadToImageKit } from "@shared/lib/imagekitUpload";
 import { Paginator } from "@shared/ui/Paginator";
 import { MultiSelect } from "@shared/ui/MultiSelect";
@@ -513,6 +520,18 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
   const [csvInfo, setCsvInfo] = useState<{ total: number; done: number; errors: number } | null>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
 
+  // ── Passage / group inline editor state ──────────────────────────────────
+  const [qCourseId, setQCourseId] = useState("");
+  const [isGrouped, setIsGrouped] = useState(false);
+  const [groupMode, setGroupMode] = useState<"new" | "existing">("new");
+  const [groupId, setGroupId] = useState("");
+  const [groupType, setGroupType] = useState<"comprehension" | "case_study">("comprehension");
+  const [passageTitle, setPassageTitle] = useState("");
+  const [passageContent, setPassageContent] = useState("");
+  const [passageFormat, setPassageFormat] = useState<"html" | "latex">("html");
+  const [existingGroupsList, setExistingGroupsList] = useState<{ id: string; title: string; type: string; questionCount: number }[]>([]);
+  const [loadingExistingGroups, setLoadingExistingGroups] = useState(false);
+
 async function processImageFile(file: File) {
   setImgUploading(true);
   setImgUrl("");
@@ -752,6 +771,7 @@ useEffect(() => {
   const resetEditor = () => {
     setEditingId(null);
     setCourse("");
+    setQCourseId("");
     setTopic("");
     setDifficulty("medium");
     setTags("");
@@ -768,6 +788,14 @@ useEffect(() => {
     setQImgUrl("");
     setOImgUrls(["", "", "", ""]);
     setEImgUrl("");
+    setIsGrouped(false);
+    setGroupMode("new");
+    setGroupId("");
+    setGroupType("comprehension");
+    setPassageTitle("");
+    setPassageContent("");
+    setPassageFormat("html");
+    setExistingGroupsList([]);
   };
 
   const openCreate = () => {
@@ -778,6 +806,8 @@ useEffect(() => {
   const openEdit = (x: QBQuestion) => {
     setEditingId(x.id);
     setCourse(x.course || "");
+    const matchedCourseId = allCourses.find((c) => c.name === x.course)?.id || (x as any).courseId || "";
+    setQCourseId(matchedCourseId);
     setTopic(x.topic || "");
     setDifficulty(ensureDifficulty(x.difficulty));
     setTags((x.tags || []).join(", "));
@@ -794,6 +824,26 @@ useEffect(() => {
     setQImgUrl(x.questionImage || "");
     setOImgUrls(x.optionImages?.length ? [...x.optionImages, "", "", "", ""].slice(0, 4) : ["", "", "", ""]);
     setEImgUrl(x.explanationImage || "");
+    // Load group/passage state
+    const xAny = x as any;
+    if (xAny.groupId) {
+      setIsGrouped(true);
+      setGroupMode("existing");
+      setGroupId(xAny.groupId);
+      getDoc(doc(db, "question_groups", xAny.groupId)).then((snap) => {
+        if (snap.exists()) {
+          const d = snap.data() as any;
+          setGroupType(d.type || "comprehension");
+          setPassageTitle(d.title || "");
+          setPassageContent(d.passageContent || "");
+          setPassageFormat(d.passageContentFormat || "html");
+        }
+      });
+    } else {
+      setIsGrouped(false);
+      setGroupMode("new");
+      setGroupId("");
+    }
     setEditorOpen(true);
   };
 
@@ -828,9 +878,10 @@ useEffect(() => {
     try {
       const isMcq = qFormat === "single_correct_mcq" || qFormat === "multicorrect_mcq";
       const topicsArr = topicsInput.split(",").map((s) => s.trim()).filter(Boolean);
-      const matchedSubject = subjects.find((s) => s.id === qSubjectId);
+      const matchedSubject = allSubjects.find((s) => s.id === qSubjectId);
+      const matchedCourse = allCourses.find((c) => c.id === qCourseId);
 
-      const base: Partial<QBQuestion> = {
+      const base: Partial<QBQuestion> & Record<string, any> = {
         format: qFormat,
         difficulty,
         tags: normalizeTags(tags),
@@ -845,8 +896,13 @@ useEffect(() => {
         updatedAt: serverTimestamp() as any,
       };
 
-      // Optional fields — omit if empty to avoid undefined in Firestore
-      if (course.trim()) base.course = course.trim();
+      // Course — store both name (backward compat) and ID
+      if (matchedCourse) {
+        base.course = matchedCourse.name;
+        base.courseId = matchedCourse.id;
+      } else if (course.trim()) {
+        base.course = course.trim();
+      }
       if (topic.trim()) base.topic = topic.trim();
       if (topicsArr.length) base.topics = topicsArr;
       if (qSubjectId && matchedSubject) {
@@ -858,23 +914,72 @@ useEffect(() => {
       if (oImgUrls.some(Boolean)) base.optionImages = oImgUrls;
       if (eImgUrl.trim()) base.explanationImage = eImgUrl.trim();
 
-      base.searchText = [course, topicsArr.join(" "), stripHtml(question), stripHtml(options.join(" ")), stripHtml(explanation)]
+      base.searchText = [(matchedCourse?.name || course), topicsArr.join(" "), stripHtml(question), stripHtml(options.join(" ")), stripHtml(explanation)]
         .join(" ")
         .toLowerCase()
         .slice(0, 5000);
 
-      const payload = base;
+      let savedId: string;
 
       if (editingId) {
         const ref = questionBankDoc(editingId);
         if (!ref) throw new Error("Missing educator identity");
-        await updateDoc(ref, payload as any);
+        await updateDoc(ref, base as any);
+        savedId = editingId;
         toast({ title: "Saved", description: "Question updated." });
       } else {
-        payload.createdAt = serverTimestamp() as any;
+        base.createdAt = serverTimestamp() as any;
         if (!questionBankCollection) throw new Error("Missing educator identity");
-        const ref = await addDoc(questionBankCollection, payload as any);
+        const ref = await addDoc(questionBankCollection, base as any);
+        savedId = ref.id;
         toast({ title: "Added", description: `Question added (${ref.id}).` });
+      }
+
+      // Handle passage group
+      if (isGrouped) {
+        const effectiveGroupId = groupId || doc(collection(db, "question_groups")).id;
+        if (!groupId) setGroupId(effectiveGroupId);
+
+        const groupRef = doc(db, "question_groups", effectiveGroupId);
+        const groupSnap = await getDoc(groupRef);
+        const existingIds: string[] = groupSnap.exists() ? ((groupSnap.data() as any)?.questionIds ?? []) : [];
+        const isNewInGroup = !existingIds.includes(savedId);
+        const questionOrder = isNewInGroup ? existingIds.length : existingIds.indexOf(savedId);
+
+        // Write groupId + groupOrder to question doc
+        const qRef = questionBankDoc(savedId);
+        if (qRef) await updateDoc(qRef, { groupId: effectiveGroupId, groupOrder: questionOrder });
+
+        const groupPayload: Record<string, any> = {
+          type: groupType,
+          title: passageTitle,
+          passageContent,
+          passageContentFormat: passageFormat,
+          updatedAt: serverTimestamp(),
+        };
+        if (matchedSubject?.id) groupPayload.subjectId = matchedSubject.id;
+
+        if (groupSnap.exists()) {
+          if (isNewInGroup) {
+            groupPayload.questionIds = arrayUnion(savedId);
+            groupPayload.questionCount = increment(1);
+          }
+          await updateDoc(groupRef, groupPayload);
+        } else {
+          await setDoc(groupRef, {
+            ...groupPayload,
+            questionIds: [savedId],
+            questionCount: 1,
+            createdAt: serverTimestamp(),
+          });
+        }
+      } else if (editingId) {
+        // Editing and toggled off — remove groupId if it was set
+        const existing = items.find((i) => i.id === editingId) as any;
+        if (existing?.groupId) {
+          const qRef = questionBankDoc(editingId);
+          if (qRef) await updateDoc(qRef, { groupId: null, groupOrder: null });
+        }
       }
 
       setEditorOpen(false);
@@ -904,6 +1009,23 @@ useEffect(() => {
       toast({ title: "Delete failed", description: "Please try again.", variant: "destructive" });
     } finally {
       setBusy(false);
+    }
+  };
+
+  const loadExistingGroups = async () => {
+    setLoadingExistingGroups(true);
+    try {
+      const snap = await getDocs(query(collection(db, "question_groups"), orderBy("createdAt", "desc")));
+      setExistingGroupsList(snap.docs.map((d) => ({
+        id: d.id,
+        title: (d.data() as any).title || "",
+        type: (d.data() as any).type || "comprehension",
+        questionCount: (d.data() as any).questionCount || 0,
+      })));
+    } catch {
+      toast({ title: "Failed to load groups", variant: "destructive" });
+    } finally {
+      setLoadingExistingGroups(false);
     }
   };
 
@@ -1107,6 +1229,7 @@ useEffect(() => {
     const headers = [
       "ques","ques_img","opt_1","opt_1_img","opt_2","opt_2_img","opt_3","opt_3_img","opt_4","opt_4_img",
       "correct_ans","soln","soln_img","topics","format","subject","difficulty","marks","negative_marks","course","tags",
+      "group_id","group_type","passage","passage_format","group_title","group_order",
     ];
     const rows = [
       [
@@ -1115,12 +1238,28 @@ useEffect(() => {
         "1,2",
         "Factoring: $(x-2)(x-3)=0$ gives roots $x=2$ and $x=3$.","",
         "Quadratic Equations","multicorrect_mcq","Mathematics","medium","5","-1","JEE","algebra",
+        "","","","","","",
       ],
       [
         "State Newton's second law of motion.","",
         "","","","","","","","",
         "","Net force equals $F = ma$ where $m$ is mass and $a$ is acceleration.","",
         "Laws of Motion","subjective_long","Physics","easy","10","0","NEET","",
+        "","","","","","",
+      ],
+      [
+        "Which of the following correctly describes photosynthesis?","",
+        "Glucose is produced","","CO2 is consumed","","O2 is released","","All of the above","",
+        "1,2,3,4","Photosynthesis: $6CO_2 + 6H_2O \\rightarrow C_6H_{12}O_6 + 6O_2$","",
+        "Photosynthesis","multicorrect_mcq","Biology","medium","5","-1","NEET","biology",
+        "grp_1","comprehension","Read the following passage about photosynthesis and answer the questions below.","html","Photosynthesis Passage","1",
+      ],
+      [
+        "What is the primary raw material for photosynthesis?","",
+        "Water","","Glucose","","Oxygen","","Nitrogen","",
+        "1","Water ($H_2O$) and carbon dioxide ($CO_2$) are primary raw materials.","",
+        "Photosynthesis","single_correct_mcq","Biology","easy","5","-1","NEET","biology",
+        "grp_1","comprehension","","html","Photosynthesis Passage","2",
       ],
     ];
     const csv = [headers, ...rows]
@@ -1177,14 +1316,58 @@ useEffect(() => {
 
       setCsvInfo({ total, done: 0, errors: 0 });
 
-      let batch = writeBatch(db);
-      let ops = 0;
-
       const targetCol = questionBankCollection;
       if (!targetCol) throw new Error("Missing educator identity");
 
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
+      // Pre-pass: collect group metadata keyed by CSV group_id
+      type GroupMeta = { type: string; passage: string; passageFormat: string; title: string; localIds: string[]; firestoreId: string };
+      const groupMap = new Map<string, GroupMeta>();
+      for (const row of rows) {
+        const csvGroupId = (row.group_id || "").trim();
+        if (!csvGroupId) continue;
+        if (!groupMap.has(csvGroupId)) {
+          const firestoreId = doc(collection(db, "question_groups")).id;
+          groupMap.set(csvGroupId, {
+            type: (row.group_type || "comprehension").trim(),
+            passage: (row.passage || "").trim(),
+            passageFormat: (row.passage_format || "html").trim(),
+            title: (row.group_title || "").trim(),
+            localIds: [],
+            firestoreId,
+          });
+        } else if ((row.passage || "").trim()) {
+          // Update passage from the first row that has it
+          const g = groupMap.get(csvGroupId)!;
+          if (!g.passage) {
+            g.passage = (row.passage || "").trim();
+            g.title = g.title || (row.group_title || "").trim();
+          }
+        }
+      }
+
+      // Pre-generate Firestore doc refs so we know question IDs before writing
+      type RowRef = { ref: ReturnType<typeof doc>; row: Record<string, string>; csvGroupId: string };
+      const rowRefs: RowRef[] = rows.map((row) => ({
+        ref: doc(targetCol),
+        row,
+        csvGroupId: (row.group_id || "").trim(),
+      }));
+
+      // Assign question IDs to groups
+      for (const { ref, csvGroupId, row } of rowRefs) {
+        if (!csvGroupId) continue;
+        const g = groupMap.get(csvGroupId);
+        if (!g) continue;
+        const groupOrder = parseInt((row.group_order || "").trim(), 10);
+        const insertIndex = Number.isFinite(groupOrder) && groupOrder > 0 ? groupOrder - 1 : g.localIds.length;
+        g.localIds.splice(insertIndex, 0, ref.id);
+      }
+
+      let batch = writeBatch(db);
+      let ops = 0;
+
+      for (let i = 0; i < rowRefs.length; i++) {
+        const { ref, row, csvGroupId } = rowRefs[i];
         const ques = (row.ques || "").trim();
         const fmt = (row.format || "").trim().toLowerCase() as QBQuestion["format"];
 
@@ -1218,6 +1401,7 @@ useEffect(() => {
         ];
 
         const courseVal = (row.course || "").trim();
+        const matchedCourse = allCourses.find((c) => c.name.toLowerCase() === courseVal.toLowerCase());
         const searchText = [courseVal, subjectName, topicsArr.join(" "), ques, opts.join(" "), row.soln || ""]
           .join(" ")
           .toLowerCase()
@@ -1234,6 +1418,7 @@ useEffect(() => {
           marks: marksVal,
           negativeMarks: negMarksVal,
           course: courseVal || undefined,
+          courseId: matchedCourse?.id || undefined,
           topic: topicsArr[0] || undefined,
           topics: topicsArr.length ? topicsArr : undefined,
           tags: tagsArr.length ? tagsArr : undefined,
@@ -1254,13 +1439,20 @@ useEffect(() => {
           payload.correctOptions = correctAnswers;
         }
 
-        // Firestore rejects undefined values — strip them before writing
+        // Attach group info if this question belongs to a group
+        if (csvGroupId) {
+          const g = groupMap.get(csvGroupId);
+          if (g) {
+            payload.groupId = g.firestoreId;
+            payload.groupOrder = g.localIds.indexOf(ref.id);
+          }
+        }
+
         const cleanPayload = Object.fromEntries(
           Object.entries(payload).filter(([, v]) => v !== undefined)
         );
 
-        const newRef = doc(targetCol);
-        batch.set(newRef, cleanPayload);
+        batch.set(ref, cleanPayload);
         ops++;
 
         if (ops >= 450) {
@@ -1277,6 +1469,24 @@ useEffect(() => {
       }
 
       if (ops > 0) await batch.commit();
+
+      // Write question_groups docs for all groups found in CSV
+      for (const [, g] of groupMap) {
+        if (g.localIds.length === 0) continue;
+        const groupRef = doc(db, "question_groups", g.firestoreId);
+        await setDoc(groupRef, {
+          type: g.type,
+          title: g.title,
+          passageContent: g.passage,
+          passageContentFormat: g.passageFormat,
+          questionIds: g.localIds,
+          questionCount: g.localIds.length,
+          uploadedByRole: scope === "admin" ? "admin" : "educator",
+          source: "csv",
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        }, { merge: true });
+      }
 
       toast({
         title: "CSV import complete",
@@ -1520,7 +1730,6 @@ useEffect(() => {
           <Paginator page={qbPage} totalPages={qbTotalPages} onPageChange={setQbPage} />
         </CardContent>
       </Card>
-
       {/* Editor Dialog */}
       <Dialog open={editorOpen} onOpenChange={(v) => (v ? setEditorOpen(true) : (setEditorOpen(false), resetEditor()))}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -1547,7 +1756,15 @@ useEffect(() => {
             </div>
             <div className="space-y-2">
               <Label>Course</Label>
-              <Input value={course} onChange={(e) => setCourse(e.target.value)} placeholder="e.g. JEE, NEET" />
+              <Select value={qCourseId || "__none"} onValueChange={(v) => { setQCourseId(v === "__none" ? "" : v); setQSubjectId(""); }}>
+                <SelectTrigger><SelectValue placeholder="Select course" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— None —</SelectItem>
+                  {courseOptions.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Subject</Label>
@@ -1555,7 +1772,7 @@ useEffect(() => {
                 <SelectTrigger><SelectValue placeholder="Select subject" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">— None —</SelectItem>
-                  {subjects.map((s) => (
+                  {(qCourseId ? allSubjects.filter((s) => s.courseId === qCourseId) : allSubjects).map((s) => (
                     <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -1595,6 +1812,117 @@ useEffect(() => {
               </div>
             </div>
           </div>
+
+          <Separator />
+
+          {/* Passage / Group Toggle */}
+          <div className="flex items-center gap-3 rounded-xl border bg-muted/20 px-4 py-3">
+            <Switch
+              checked={isGrouped}
+              onCheckedChange={(v) => {
+                setIsGrouped(v);
+                if (!v) { setGroupMode("new"); setGroupId(""); }
+              }}
+            />
+            <div>
+              <p className="text-sm font-medium">Comprehension / Case Study</p>
+              <p className="text-xs text-muted-foreground">Link this question to a shared passage</p>
+            </div>
+          </div>
+
+          {isGrouped && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/50 dark:bg-amber-900/10 dark:border-amber-700/50 p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Group Type</Label>
+                  <Select value={groupType} onValueChange={(v) => setGroupType(v as "comprehension" | "case_study")}>
+                    <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="comprehension"><span className="flex items-center gap-1.5"><BookOpen className="h-3.5 w-3.5" />Comprehension</span></SelectItem>
+                      <SelectItem value="case_study"><span className="flex items-center gap-1.5"><FlaskConical className="h-3.5 w-3.5" />Case Study</span></SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Mode</Label>
+                  <Select value={groupMode} onValueChange={(v) => {
+                    setGroupMode(v as "new" | "existing");
+                    if (v === "existing" && existingGroupsList.length === 0) loadExistingGroups();
+                  }}>
+                    <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="new">New passage</SelectItem>
+                      <SelectItem value="existing">Add to existing group</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {groupMode === "new" && (
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Passage Title <span className="text-muted-foreground">(optional)</span></Label>
+                    <Input value={passageTitle} onChange={(e) => setPassageTitle(e.target.value)} placeholder="e.g. Read the following passage..." className="rounded-xl" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Passage Content</Label>
+                    <Textarea
+                      value={passageContent}
+                      onChange={(e) => setPassageContent(e.target.value)}
+                      placeholder="Enter passage text. Use $...$ for LaTeX."
+                      rows={4}
+                      className="rounded-xl font-mono text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Content Format</Label>
+                    <Select value={passageFormat} onValueChange={(v) => setPassageFormat(v as "html" | "latex")}>
+                      <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="html">HTML (rich text)</SelectItem>
+                        <SelectItem value="latex">LaTeX ($...$)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {groupId && (
+                    <p className="text-xs text-muted-foreground">
+                      Group ID: <code className="font-mono bg-muted px-1 rounded">{groupId}</code>
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {groupMode === "existing" && (
+                <div className="space-y-2">
+                  <Label className="text-xs">Select Group</Label>
+                  {loadingExistingGroups ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Loading groups...
+                    </div>
+                  ) : (
+                    <Select value={groupId || "__none"} onValueChange={(v) => setGroupId(v === "__none" ? "" : v)}>
+                      <SelectTrigger className="rounded-xl"><SelectValue placeholder="Select a group" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none">— Select —</SelectItem>
+                        {existingGroupsList.map((g) => (
+                          <SelectItem key={g.id} value={g.id}>
+                            {g.title || g.id} <span className="text-muted-foreground ml-1">({g.questionCount} Q)</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <button
+                    type="button"
+                    className="text-xs text-primary underline"
+                    onClick={loadExistingGroups}
+                  >
+                    Refresh list
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           <Separator />
 
