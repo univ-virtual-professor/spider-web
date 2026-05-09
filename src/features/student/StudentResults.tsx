@@ -292,7 +292,7 @@ export default function StudentResults() {
         accuracy,
       };
 
-      const analysis = await requestAIAnalysis("/api/ai/analyze-performance", analysisRequest);
+      const analysis = await requestAIAnalysis(`${import.meta.env.VITE_MONKEY_KING_API_URL}/api/ai/analyze-performance`, analysisRequest);
 
       // Update attempt with the analysis
       setAttempt((prev) =>
