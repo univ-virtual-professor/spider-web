@@ -78,7 +78,6 @@ import ScheduleTest from "./ScheduleTest";
 import { useAccessibleCourses } from "@shared/hooks/useAccessibleCourses";
 
 // Firebase
-import { onAuthStateChanged } from "firebase/auth";
 import {
   Timestamp,
   addDoc,
@@ -95,7 +94,8 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { auth, db } from "@shared/lib/firebase";
+import { db } from "@shared/lib/firebase";
+import { useAuth } from "@app/providers/AuthProvider";
 import MoveTest from "./MoveTest";
 
 type Difficulty = "easy" | "medium" | "hard";
@@ -181,8 +181,8 @@ async function appendImageToField(current: string, folder = "/test-questions") {
 
 export default function TestSeries() {
   const navigate = useNavigate();
+  const { firebaseUser: currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState<"library" | "bank">("library");
-  const [currentUser, setCurrentUser] = useState<any>(null);
 
   // Data
   const [myTests, setMyTests] = useState<any[]>([]);
@@ -251,161 +251,136 @@ export default function TestSeries() {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [testToSchedule, setTestToSchedule] = useState<any>(null);
 
-  // Auth + Data
+  // Data subscriptions — re-run whenever the authenticated user changes
   useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        setCurrentUser(null);
-        setLoading(false);
-        return;
-      }
-
-      setCurrentUser(user);
-
-      // Load all batches for batch-assignment dialog
-      getDocs(collection(db, "educators", user.uid, "branches")).then(async (branchSnap) => {
-        const batchList: { id: string; label: string }[] = [];
-        for (const branchDoc of branchSnap.docs) {
-          const courseSnap = await getDocs(
-            collection(db, "educators", user.uid, "branches", branchDoc.id, "courses")
-          );
-          for (const courseDoc of courseSnap.docs) {
-            const batchSnap = await getDocs(
-              collection(
-                db,
-                "educators",
-                user.uid,
-                "branches",
-                branchDoc.id,
-                "courses",
-                courseDoc.id,
-                "batches"
-              )
-            );
-            batchSnap.docs.forEach((b) =>
-              batchList.push({
-                id: b.id,
-                label: `${branchDoc.data().name} / ${courseDoc.data().name} / ${b.data().name}`,
-              })
-            );
-          }
-        }
-        setAllBatches(batchList);
-      });
-
-      // Load educator preferences
-      const unsubEdu = onSnapshot(doc(db, "educators", user.uid), (snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          setGlobalAttemptsAllowed(data?.testDefaults?.attemptsAllowed ?? 3);
-        }
-      });
-
-      // FOLDERS: educators/{uid}/folders
-      const foldersQ = query(collection(db, "educators", user.uid, "folders"));
-      const unsubFolders = onSnapshot(foldersQ, (snap) => {
-        const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setFolders(rows);
-      });
-
-      const templatesQ = query(collection(db, "educators", user.uid, "templates"));
-      const unsubTemplates = onSnapshot(
-        templatesQ,
-        (snap) => {
-          const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-          setEducatorTemplates(rows);
-        },
-        () => {
-          toast.error("Failed to load your templates.");
-        }
-      );
-
-      // MY tests: educators/{uid}/my_tests
-      const myTestsQ = query(collection(db, "educators", user.uid, "my_tests"));
-      const unsubMy = onSnapshot(
-        myTestsQ,
-        async (snap) => {
-          const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-          setMyTests(rows);
-
-          // Async drift check — non-blocking; errors silently ignored
-          const drifted = new Set<string>();
-          await Promise.all(
-            rows
-              .filter((t: any) => t.sourceTemplateId && t.sourceTemplateVersion != null)
-              .map(async (t: any) => {
-                try {
-                  const tmplSnap = await getDoc(doc(db, "templates", t.sourceTemplateId));
-                  if (!tmplSnap.exists()) return;
-                  const currentVersion = Number(tmplSnap.data()?.version ?? 0);
-                  const testVersion = Number(t.sourceTemplateVersion ?? 0);
-                  if (currentVersion > testVersion) drifted.add(t.id);
-                } catch {
-                  // Non-fatal; drift badge simply won't show
-                }
-              })
-          );
-          setDriftTests(drifted);
-        },
-        () => {
-          toast.error("Failed to load your tests.");
-        }
-      );
-
-      // BANK tests: root templates collection
-      const bankQ = query(collection(db, "templates"));
-      const unsubBank = onSnapshot(
-        bankQ,
-        (snap) => {
-          const rows = snap.docs
-            .map((d) => ({ id: d.id, ...d.data() }))
-            // Hide drafts if admin uses isPublished === false
-            .filter((t: any) => t?.isPublished !== false);
-
-          setBankTests(rows);
-          setLoading(false);
-        },
-        () => {
-          setLoading(false);
-          toast.error("Failed to load bank tests.");
-        }
-      );
-
-      return () => {
-        unsubFolders();
-        unsubTemplates();
-        unsubMy();
-        unsubBank();
-      };
-    });
-
-    return () => unsubAuth();
-  }, []);
-
-  const handleSaveTemplate = async (templatePayload: any) => {
     if (!currentUser) {
-      toast.error("Please login again and retry.");
+      setLoading(false);
+      setMyTests([]);
+      setFolders([]);
+      setEducatorTemplates([]);
+      setBankTests([]);
       return;
     }
 
-    setSavingTemplate(true);
-    try {
-      await addDoc(collection(db, "educators", currentUser.uid, "templates"), {
-        templateName: String(
-          templatePayload.templateName || templatePayload.title || "Custom template"
-        ),
-        ...templatePayload,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      toast.success("Template saved");
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to save template");
-    } finally {
-      setSavingTemplate(false);
-    }
-  };
+    const uid = currentUser.uid;
+
+    // Load all batches for batch-assignment dialog
+    getDocs(collection(db, "educators", uid, "branches")).then(async (branchSnap) => {
+      const batchList: { id: string; label: string }[] = [];
+      for (const branchDoc of branchSnap.docs) {
+        const courseSnap = await getDocs(
+          collection(db, "educators", uid, "branches", branchDoc.id, "courses")
+        );
+        for (const courseDoc of courseSnap.docs) {
+          const batchSnap = await getDocs(
+            collection(
+              db,
+              "educators",
+              uid,
+              "branches",
+              branchDoc.id,
+              "courses",
+              courseDoc.id,
+              "batches"
+            )
+          );
+          batchSnap.docs.forEach((b) =>
+            batchList.push({
+              id: b.id,
+              label: `${branchDoc.data().name} / ${courseDoc.data().name} / ${b.data().name}`,
+            })
+          );
+        }
+      }
+      setAllBatches(batchList);
+    });
+
+    // Load educator preferences
+    const unsubEdu = onSnapshot(doc(db, "educators", uid), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setGlobalAttemptsAllowed(data?.testDefaults?.attemptsAllowed ?? 3);
+      }
+    });
+
+    // FOLDERS: educators/{uid}/folders
+    const foldersQ = query(collection(db, "educators", uid, "folders"));
+    const unsubFolders = onSnapshot(foldersQ, (snap) => {
+      const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setFolders(rows);
+    });
+
+    const templatesQ = query(collection(db, "educators", uid, "templates"));
+    const unsubTemplates = onSnapshot(
+      templatesQ,
+      (snap) => {
+        const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setEducatorTemplates(rows);
+      },
+      () => {
+        toast.error("Failed to load your templates.");
+      }
+    );
+
+    // MY tests: educators/{uid}/my_tests
+    const myTestsQ = query(collection(db, "educators", uid, "my_tests"));
+    const unsubMy = onSnapshot(
+      myTestsQ,
+      async (snap) => {
+        const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setMyTests(rows);
+
+        // Async drift check — non-blocking; errors silently ignored
+        const drifted = new Set<string>();
+        await Promise.all(
+          rows
+            .filter((t: any) => t.sourceTemplateId && t.sourceTemplateVersion != null)
+            .map(async (t: any) => {
+              try {
+                const tmplSnap = await getDoc(doc(db, "templates", t.sourceTemplateId));
+                if (!tmplSnap.exists()) return;
+                const currentVersion = Number(tmplSnap.data()?.version ?? 0);
+                const testVersion = Number(t.sourceTemplateVersion ?? 0);
+                if (currentVersion > testVersion) drifted.add(t.id);
+              } catch {
+                // Non-fatal; drift badge simply won't show
+              }
+            })
+        );
+        setDriftTests(drifted);
+      },
+      () => {
+        toast.error("Failed to load your tests.");
+      }
+    );
+
+    // BANK tests: root templates collection
+    const bankQ = query(collection(db, "templates"));
+    const unsubBank = onSnapshot(
+      bankQ,
+      (snap) => {
+        const rows = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          // Hide drafts if admin uses isPublished === false
+          .filter((t: any) => t?.isPublished !== false);
+
+        setBankTests(rows);
+        setLoading(false);
+      },
+      () => {
+        setLoading(false);
+        toast.error("Failed to load bank tests.");
+      }
+    );
+
+    return () => {
+      unsubEdu();
+      unsubFolders();
+      unsubTemplates();
+      unsubMy();
+      unsubBank();
+    };
+  }, [currentUser?.uid]);
 
   const handleCreateFolder = async () => {
     if (!currentUser) {

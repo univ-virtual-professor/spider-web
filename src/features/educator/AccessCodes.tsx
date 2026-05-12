@@ -17,7 +17,6 @@ import {
 import DataTable from "@features/educator/components/DataTable";
 import EmptyState from "@features/educator/components/EmptyState";
 import { toast } from "@shared/hooks/use-toast";
-import { onAuthStateChanged } from "firebase/auth";
 import {
   Timestamp,
   collection,
@@ -31,7 +30,8 @@ import {
   setDoc,
   updateDoc,
 } from "firebase/firestore";
-import { auth, db } from "@shared/lib/firebase";
+import { db } from "@shared/lib/firebase";
+import { useAuth } from "@app/providers/AuthProvider";
 
 interface AccessCode {
   id: string;
@@ -99,7 +99,8 @@ function isExpiringSoon(expiresAt?: Timestamp | null, days = 7) {
 }
 
 export default function AccessCodes() {
-  const [uid, setUid] = useState<string | null>(null);
+  const { firebaseUser } = useAuth();
+  const uid = firebaseUser?.uid ?? null;
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -115,12 +116,6 @@ export default function AccessCodes() {
 
   const [accessCodes, setAccessCodes] = useState<AccessCode[]>([]);
   const [testSeriesOptions, setTestSeriesOptions] = useState<TestSeriesOption[]>([]);
-
-  // Auth
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUid(u?.uid ?? null));
-    return () => unsub();
-  }, []);
 
   // ✅ Load test series from educators/{uid}/my_tests (same source student uses)
   useEffect(() => {
