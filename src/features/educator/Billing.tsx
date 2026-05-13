@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, ShoppingCart, Tag, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
 import { collection, doc, getDocs, onSnapshot } from "firebase/firestore";
-import { db, auth } from "@shared/lib/firebase";
+import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { toast } from "sonner";
 
@@ -51,23 +51,23 @@ function fmtAmount(amount: number) {
   return `₹${amount.toLocaleString("en-IN")}`;
 }
 
-async function apiFetch(path: string, options: RequestInit = {}) {
-  const token = await auth.currentUser?.getIdToken();
-  const res = await fetch(`${API}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...(options.headers || {}),
-    },
-  });
-  if (!res.ok) throw new Error(await res.text());
-  if (res.status === 204) return null;
-  return res.json();
-}
-
 export default function Billing() {
   const { profile, firebaseUser, role, loading: authLoading } = useAuth();
+
+  async function apiFetch(path: string, options: RequestInit = {}) {
+    const token = await firebaseUser?.getIdToken();
+    const res = await fetch(`${API}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(options.headers || {}),
+      },
+    });
+    if (!res.ok) throw new Error(await res.text());
+    if (res.status === 204) return null;
+    return res.json();
+  }
   const educatorId = firebaseUser?.uid || "";
 
   const [plans, setPlans] = useState<Plan[]>([]);

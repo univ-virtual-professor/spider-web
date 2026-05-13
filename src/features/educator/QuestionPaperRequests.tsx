@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { FileUp, Loader2, Pencil, Trash2, UploadCloud, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "@shared/lib/firebase";
+import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { Button } from "@shared/ui/button";
 import { Badge } from "@shared/ui/badge";
@@ -54,36 +54,6 @@ const STATUS_CLASS: Record<RequestStatus, string> = {
   CANCELLED: "bg-red-100 text-red-800 border-red-200",
 };
 
-async function apiFetch(path: string, options: RequestInit = {}) {
-  const token = await auth.currentUser?.getIdToken();
-  const res = await fetch(`${API}${path}`, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(options.headers || {}),
-    },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Request failed");
-  }
-  return res.json();
-}
-
-async function apiUpload(path: string, formData: FormData, method = "POST") {
-  const token = await auth.currentUser?.getIdToken();
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers: { Authorization: `Bearer ${token}` },
-    body: formData,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Upload failed");
-  }
-  return res.json();
-}
-
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-IN", {
     day: "numeric",
@@ -121,7 +91,37 @@ function MonthlyUsage({ requests, limit }: { requests: QPRequest[]; limit: numbe
 }
 
 export default function QuestionPaperRequests() {
-  const { profile } = useAuth();
+  const { profile, firebaseUser } = useAuth();
+
+  async function apiFetch(path: string, options: RequestInit = {}) {
+    const token = await firebaseUser?.getIdToken();
+    const res = await fetch(`${API}${path}`, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(options.headers || {}),
+      },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Request failed");
+    }
+    return res.json();
+  }
+
+  async function apiUpload(path: string, formData: FormData, method = "POST") {
+    const token = await firebaseUser?.getIdToken();
+    const res = await fetch(`${API}${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Upload failed");
+    }
+    return res.json();
+  }
   const [requests, setRequests] = useState<QPRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [monthlyLimit, setMonthlyLimit] = useState<number>(5);

@@ -15,7 +15,8 @@ import { Textarea } from "@shared/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { Badge } from "@shared/ui/badge";
 import { toast } from "@shared/hooks/use-toast";
-import { auth, db } from "@shared/lib/firebase";
+import { db } from "@shared/lib/firebase";
+import { useAuth } from "@app/providers/AuthProvider";
 import { collection, getDocs } from "firebase/firestore";
 
 const MONKEY_KING = import.meta.env.VITE_MONKEY_KING_API_URL as string;
@@ -37,6 +38,7 @@ export default function EducatorBroadcastModal({
   onOpenChange,
   educatorId,
 }: EducatorBroadcastModalProps) {
+  const { firebaseUser } = useAuth();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -182,7 +184,7 @@ export default function EducatorBroadcastModal({
 
     setSending(true);
     try {
-      const token = await auth.currentUser?.getIdToken();
+      const token = await firebaseUser?.getIdToken();
       const res = await fetch(`${MONKEY_KING}/api/notifications/broadcast`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

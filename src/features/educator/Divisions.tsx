@@ -14,7 +14,7 @@ import {
   where,
   writeBatch as firestoreBatch,
 } from "firebase/firestore";
-import { db, auth } from "@shared/lib/firebase";
+import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { toast } from "sonner";
 import { Button } from "@shared/ui/button";
@@ -56,7 +56,7 @@ type Plan = { id: string; name: string; pricePerSeat: number };
 const API = import.meta.env.VITE_MONKEY_KING_API_URL;
 
 export default function Divisions() {
-  const { profile } = useAuth();
+  const { profile, firebaseUser } = useAuth();
   const navigate = useNavigate();
   const educatorId = profile?.uid || "";
 
@@ -298,7 +298,7 @@ export default function Divisions() {
   const canAssign = seatLimit > 0 && usedSeats < seatLimit;
 
   async function postWithToken(path: string, body: any) {
-    const token = await auth.currentUser?.getIdToken();
+    const token = await firebaseUser?.getIdToken();
     const res = await fetch(`${API}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

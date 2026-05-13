@@ -26,7 +26,7 @@ import {
   updateDoc,
   writeBatch,
 } from "firebase/firestore";
-import { db, auth } from "@shared/lib/firebase";
+import { db } from "@shared/lib/firebase";
 import { useAccessibleCourses } from "@shared/hooks/useAccessibleCourses";
 import { Button } from "@shared/ui/button";
 import { Input } from "@shared/ui/input";
@@ -74,27 +74,27 @@ type BulkRow = {
   error: string | null;
 };
 
-async function apiFetch(path: string, options: RequestInit = {}) {
-  const token = await auth.currentUser?.getIdToken();
-  const res = await fetch(`${API}${path}`, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(options.headers || {}),
-    },
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Request failed");
-  }
-  return res.json();
-}
-
 export default function Learners() {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
   const isInviteMode = searchParams.get("invite") === "1";
   const { firebaseUser, role, loading: authLoading } = useAuth();
+
+  async function apiFetch(path: string, options: RequestInit = {}) {
+    const token = await firebaseUser?.getIdToken();
+    const res = await fetch(`${API}${path}`, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(options.headers || {}),
+      },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || "Request failed");
+    }
+    return res.json();
+  }
   const educatorId = firebaseUser?.uid || "";
 
   const [learners, setLearners] = useState<Learner[]>([]);
@@ -437,7 +437,7 @@ export default function Learners() {
     setUploading(true);
     setBulkRows([]);
     try {
-      const token = await auth.currentUser?.getIdToken();
+      const token = await firebaseUser?.getIdToken();
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch(`${API}/api/invites/bulk`, {

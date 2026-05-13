@@ -37,23 +37,26 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@shared/ui/dia
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@shared/ui/table";
 import { uploadToImageKit, getContentUploadLimit } from "@shared/lib/imagekitUpload";
-import { auth } from "@shared/lib/firebase";
+import type { User } from "firebase/auth";
 import { useEducatorFeatures } from "@shared/hooks/useEducatorFeatures";
 
 const MONKEY_KING = import.meta.env.VITE_MONKEY_KING_API_URL as string;
 
-async function triggerIngest(payload: {
-  file_url: string;
-  content_id: string;
-  educator_id: string;
-  course_id: string;
-  branch_id: string;
-  title: string;
-  content_type: string;
-  mime_type: string;
-}) {
+async function triggerIngest(
+  payload: {
+    file_url: string;
+    content_id: string;
+    educator_id: string;
+    course_id: string;
+    branch_id: string;
+    title: string;
+    content_type: string;
+    mime_type: string;
+  },
+  user: User | null
+) {
   try {
-    const token = await auth.currentUser?.getIdToken();
+    const token = await user?.getIdToken();
     if (!token) return;
     await fetch(`${MONKEY_KING}/api/chat/ingest`, {
       method: "POST",
@@ -115,7 +118,7 @@ function formatBytes(bytes: number) {
 }
 
 export default function ContentManagement() {
-  const { profile } = useAuth();
+  const { profile, firebaseUser } = useAuth();
   const educatorId = profile?.uid ?? "";
   const { features, loading: featuresLoading } = useEducatorFeatures(educatorId);
   const { activeTypes } = useContentTypes();
@@ -348,16 +351,19 @@ export default function ContentManagement() {
       );
 
       // Best-effort: index the file for AI chatbot (non-blocking)
-      triggerIngest({
-        file_url: result.url,
-        content_id: ref.id,
-        educator_id: educatorId,
-        course_id: selectedCourseId,
-        branch_id: selectedBranchId,
-        title: title.trim(),
-        content_type: type,
-        mime_type: file.type,
-      });
+      triggerIngest(
+        {
+          file_url: result.url,
+          content_id: ref.id,
+          educator_id: educatorId,
+          course_id: selectedCourseId,
+          branch_id: selectedBranchId,
+          title: title.trim(),
+          content_type: type,
+          mime_type: file.type,
+        },
+        firebaseUser ?? null
+      );
 
       toast.success("Content added");
       setUploadOpen(false);

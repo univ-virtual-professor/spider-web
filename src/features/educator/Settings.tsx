@@ -259,7 +259,7 @@ export default function Settings() {
 
     setChangingSlug(true);
     try {
-      const token = await auth.currentUser.getIdToken();
+      const token = await firebaseUser?.getIdToken();
       const resp = await fetch("/api/tenant/change-slug", {
         method: "POST",
         headers: {

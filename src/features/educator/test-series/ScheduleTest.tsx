@@ -23,7 +23,8 @@ import { Input } from "@shared/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { toast } from "sonner";
 import { doc, updateDoc, serverTimestamp, Timestamp } from "firebase/firestore";
-import { db, auth } from "@shared/lib/firebase";
+import { db } from "@shared/lib/firebase";
+import { useAuth } from "@app/providers/AuthProvider";
 import { logError } from "@shared/lib/errorLogger";
 
 const MONKEY_KING = import.meta.env.VITE_MONKEY_KING_API_URL as string;
@@ -69,6 +70,7 @@ const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // ─── component ───────────────────────────────────────────────────────────────
 
 export default function ScheduleTest({ open, onOpenChange, test, userId }: ScheduleTestProps) {
+  const { firebaseUser } = useAuth();
   const [loading, setLoading] = useState(false);
 
   const [startTime, setStartTime] = useState("");
@@ -212,7 +214,7 @@ export default function ScheduleTest({ open, onOpenChange, test, userId }: Sched
     }
 
     try {
-      const token = await auth.currentUser?.getIdToken();
+      const token = await firebaseUser?.getIdToken();
       await fetch(`${MONKEY_KING}/api/notifications/broadcast`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
