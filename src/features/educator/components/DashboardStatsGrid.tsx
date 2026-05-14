@@ -18,8 +18,25 @@ import { Calendar } from "@shared/ui/calendar";
 import { Button } from "@shared/ui/button";
 
 // Using the same types from Dashboard.tsx
-type StudentDoc = any;
-type AttemptDoc = any;
+type StudentDoc = {
+  id: string;
+  name?: string;
+  displayName?: string;
+  fullName?: string;
+  [key: string]: any;
+};
+
+type AttemptDoc = {
+  id: string;
+  studentId?: string;
+  studentName?: string;
+  score?: number | string;
+  maxScore?: number | string;
+  testTitle?: string;
+  submittedAt?: any;
+  createdAt?: any;
+  [key: string]: any;
+};
 
 interface DashboardStatsGridProps {
   students: StudentDoc[];
@@ -48,13 +65,17 @@ export default function DashboardStatsGrid({
   // Derived Metrics
   const totalStudents = students.length;
 
-  const { topPerformer, weakStudentsCount } = useMemo(() => {
-    if (!attempts.length) return { topPerformer: null, weakStudentsCount: 0 };
+  const { weakStudentsCount } = useMemo(() => {
+    if (!attempts.length) return { weakStudentsCount: 0 };
 
-    const studentScores: Record<
-      string,
-      { totalScore: number; maxScore: number; name: string }
-    > = {};
+    interface StudentScore {
+      id: string;
+      totalScore: number;
+      maxScore: number;
+      name: string;
+    }
+
+    const studentScores: Record<string, StudentScore> = {};
 
     attempts.forEach((a) => {
       const stId = a.studentId;
@@ -62,6 +83,7 @@ export default function DashboardStatsGrid({
       if (!studentScores[stId]) {
         const student = students.find((s) => s.id === stId);
         studentScores[stId] = {
+          id: stId,
           totalScore: 0,
           maxScore: 0,
           name:
@@ -76,29 +98,18 @@ export default function DashboardStatsGrid({
       studentScores[stId].maxScore += Number(a.maxScore || 0);
     });
 
-    let bestScore = -1;
-    let bestName = "";
     let weakCount = 0;
 
     Object.values(studentScores).forEach((st) => {
       if (st.maxScore > 0) {
         const pct = (st.totalScore / st.maxScore) * 100;
-        if (pct > bestScore) {
-          bestScore = pct;
-          bestName = st.name;
-        }
         if (pct < 40) {
-          // arbitrary threshold for "weak"
           weakCount++;
         }
       }
     });
 
     return {
-      topPerformer:
-        bestScore > -1
-          ? { name: bestName, score: Math.round(bestScore) }
-          : null,
       weakStudentsCount: weakCount,
     };
   }, [attempts]);
@@ -144,7 +155,7 @@ export default function DashboardStatsGrid({
   };
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
       {isLoading ? (
         <Skeleton className="h-[120px] w-full rounded-xl" />
       ) : (
@@ -155,8 +166,6 @@ export default function DashboardStatsGrid({
           <MetricCard
             title="Total Students"
             value={totalStudents}
-            icon={Users}
-            iconColor="text-blue-500 text-blue-600"
             delay={0.1}
           />
         </div>
@@ -172,29 +181,12 @@ export default function DashboardStatsGrid({
           <MetricCard
             title="Active Batches"
             value={activeBatchesCount}
-            icon={Layers}
-            iconColor="text-purple-500 text-purple-600"
             delay={0.2}
           />
         </div>
       )}
 
-      {isLoading ? (
-        <Skeleton className="h-[120px] w-full rounded-xl" />
-      ) : (
-        <div
-          onClick={() => navigate("/educator/analytics")}
-          className="cursor-pointer h-full transition-transform hover:scale-[1.02]"
-        >
-          <MetricCard
-            title={`Top Performer: ${topPerformer ? topPerformer.name : "N/A"}`}
-            value={topPerformer ? `${topPerformer.score}%` : "—"}
-            icon={Trophy}
-            iconColor="text-amber-500 text-amber-600"
-            delay={0.3}
-          />
-        </div>
-      )}
+
 
       {isLoading ? (
         <Skeleton className="h-[120px] w-full rounded-xl" />
@@ -206,8 +198,6 @@ export default function DashboardStatsGrid({
           <MetricCard
             title="Needs Attention (< 40%)"
             value={weakStudentsCount}
-            icon={AlertTriangle}
-            iconColor="text-red-500 text-red-600"
             delay={0.4}
           />
         </div>
@@ -259,8 +249,6 @@ export default function DashboardStatsGrid({
                 </div>
               }
               value={dppAttemptsCount}
-              icon={FileText}
-              iconColor="text-green-500 text-green-600"
               delay={0.5}
             />
           </div>
@@ -313,8 +301,6 @@ export default function DashboardStatsGrid({
                 </div>
               }
               value={testAttemptsCount}
-              icon={CheckCircle2}
-              iconColor="text-indigo-500 text-indigo-600"
               delay={0.6}
             />
           </div>

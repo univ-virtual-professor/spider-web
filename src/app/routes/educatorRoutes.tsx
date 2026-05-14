@@ -12,6 +12,7 @@ import {
   DppGenerator,
   InstituteBuilder,
   LearnerDetails,
+  StudentDetails,
   Learners,
   Messages,
   BatchesListing,
@@ -37,7 +38,7 @@ export function getEducatorRoutes() {
       <Route index element={<EducatorDashboard />} />
       <Route path="dashboard" element={<EducatorDashboard />} />
       <Route path="students" element={<StudentsListing />} />
-      <Route path="students/:studentId" element={<LearnerDetails />} />
+      <Route path="students/:studentId" element={<StudentDetails />} />
       <Route path="batches" element={<BatchesListing />} />
       <Route path="learners" element={<Learners />} />
       <Route path="test-series" element={<TestSeries />} />

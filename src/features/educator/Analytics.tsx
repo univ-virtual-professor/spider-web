@@ -9,11 +9,14 @@ import {
   Target,
   TrendingUp,
   Users,
+  Layers,
+  CheckCircle2 as CheckCircle,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@shared/ui/card";
 import { Badge } from "@shared/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
 import { Input } from "@shared/ui/input";
+import { Button } from "@shared/ui/button";
 import {
   Select,
   SelectContent,
@@ -48,6 +51,7 @@ import {
   getDoc,
   getDocs,
   limit,
+  onSnapshot,
   orderBy,
   query,
   where,
@@ -55,6 +59,16 @@ import {
 
 import { useAuth } from "@app/providers/AuthProvider";
 import { useTenant } from "@app/providers/TenantProvider";
+
+import DashboardStatsGrid from "./components/DashboardStatsGrid";
+import AttemptsAnalyticsChart from "./components/AttemptsAnalyticsChart";
+import RecentActivityFeed from "./components/RecentActivityFeed";
+import StudentHealthOverview from "./components/StudentHealthOverview";
+import TopPerformersLeaderboard from "./components/TopPerformersLeaderboard";
+
+type BranchDoc = { id: string; name: string };
+type CourseDoc = { id: string; name: string; branchId: string };
+type BatchDoc = { id: string; name: string; courseId: string; branchId: string };
 
 type UserDoc = {
   displayName?: string;
@@ -71,6 +85,9 @@ type LearnerDoc = {
   email?: string;
   status?: string;
   tenantSlug?: string;
+  branchId?: string;
+  courseId?: string;
+  batchId?: string;
   joinedAt?: any;
   lastSeenAt?: any;
   updatedAt?: any;
@@ -321,6 +338,21 @@ export default function Analytics() {
   const [batchComparisonData, setBatchComparisonData] = useState<BatchAgg[]>(
     [],
   );
+
+  // Dashboard filter states
+  const [allBranches, setAllBranches] = useState<BranchDoc[]>([]);
+  const [allCourses, setAllCourses] = useState<CourseDoc[]>([]);
+  const [allBatches, setAllBatches] = useState<BatchDoc[]>([]);
+  
+  const [selectedBranchName, setSelectedBranchName] = useState<string>("All");
+  const [selectedCourseName, setSelectedCourseName] = useState<string>("All");
+  const [selectedBatchName, setSelectedBatchName] = useState<string>("All");
+
+  const [isDataFiltering, setIsDataFiltering] = useState(false);
+
+  const uniqueBranches = useMemo(() => Array.from(new Set(allBranches.map(b => b.name))).sort(), [allBranches]);
+  const uniqueCourses = useMemo(() => Array.from(new Set(allCourses.map(c => c.name))).sort(), [allCourses]);
+  const uniqueBatches = useMemo(() => Array.from(new Set(allBatches.map(b => b.name))).sort(), [allBatches]);
 
   const canLoad = useMemo(() => {
     return (
@@ -753,6 +785,108 @@ export default function Analytics() {
     loadAnalytics();
   }, [loadAnalytics, periodDays]);
 
+  // Fetch all branches, courses, and batches (Same as Dashboard.tsx)
+  useEffect(() => {
+    if (!educatorId) return;
+    const unsub = onSnapshot(collection(db, "educators", educatorId, "branches"), async (snap) => {
+      const branchesData = snap.docs.map((d) => ({ id: d.id, name: d.data().name || "Unknown Branch" }));
+      setAllBranches(branchesData);
+      
+      const coursesData: CourseDoc[] = [];
+      const batchesData: BatchDoc[] = [];
+      
+      for (const b of branchesData) {
+        const cSnap = await getDocs(collection(db, "educators", educatorId, "branches", b.id, "courses"));
+        for (const c of cSnap.docs) {
+          coursesData.push({ id: c.id, branchId: b.id, name: c.data().name || "Unknown Program" });
+          const bSnap = await getDocs(collection(db, "educators", educatorId, "branches", b.id, "courses", c.id, "batches"));
+          for (const batch of bSnap.docs) {
+            batchesData.push({ id: batch.id, branchId: b.id, courseId: c.id, name: batch.data().name || "Unknown Batch" });
+          }
+        }
+      }
+      setAllCourses(coursesData);
+      setAllBatches(batchesData);
+    });
+    return () => unsub();
+  }, [educatorId]);
+
+  // Automated filter defaults
+  useEffect(() => {
+    if (uniqueBranches.length === 1 && selectedBranchName === "All") {
+      setSelectedBranchName(uniqueBranches[0]);
+    }
+  }, [uniqueBranches, selectedBranchName]);
+
+  useEffect(() => {
+    if (uniqueCourses.length === 1 && selectedCourseName === "All") {
+      setSelectedCourseName(uniqueCourses[0]);
+    }
+  }, [uniqueCourses, selectedCourseName]);
+
+  useEffect(() => {
+    if (uniqueBatches.length === 1 && selectedBatchName === "All") {
+      setSelectedBatchName(uniqueBatches[0]);
+    }
+  }, [uniqueBatches, selectedBatchName]);
+
+  // Simulated filter delay
+  useEffect(() => {
+    setIsDataFiltering(true);
+    const timer = setTimeout(() => setIsDataFiltering(false), 500);
+    return () => clearTimeout(timer);
+  }, [selectedBranchName, selectedCourseName, selectedBatchName]);
+
+  const dashboardFilteredStudents = useMemo(() => {
+    const validBranchIds = selectedBranchName === "All" 
+      ? new Set(allBranches.map(b => b.id))
+      : new Set(allBranches.filter(b => b.name === selectedBranchName).map(b => b.id));
+
+    const validCourseIds = selectedCourseName === "All"
+      ? new Set(allCourses.map(c => c.id))
+      : new Set(allCourses.filter(c => c.name === selectedCourseName).map(c => c.id));
+
+    const validBatchIds = selectedBatchName === "All"
+      ? new Set(allBatches.map(b => b.id))
+      : new Set(allBatches.filter(b => b.name === selectedBatchName).map(b => b.id));
+
+    return learners.filter(s => {
+      if (selectedBranchName !== "All" && !validBranchIds.has(s.data.branchId as string)) return false;
+      if (selectedCourseName !== "All" && !validCourseIds.has(s.data.courseId as string)) return false;
+      if (selectedBatchName !== "All" && !validBatchIds.has(s.data.batchId as string)) return false;
+      return true;
+    });
+  }, [learners, selectedBranchName, selectedCourseName, selectedBatchName, allBranches, allCourses, allBatches]);
+
+  const dashboardFilteredAttempts = useMemo(() => {
+    const validStudentIds = new Set(dashboardFilteredStudents.map(s => s.id));
+    return periodAttempts.filter(a => validStudentIds.has(a.data.studentId as string));
+  }, [periodAttempts, dashboardFilteredStudents]);
+
+  const studentsForDashboard = useMemo(() => {
+    return dashboardFilteredStudents.map(s => ({
+      id: s.id,
+      name: getLearnerName(s),
+      ...s.data
+    }));
+  }, [dashboardFilteredStudents]);
+
+  const attemptsForDashboard = useMemo(() => {
+    return dashboardFilteredAttempts.map(a => ({
+      id: a.id,
+      ...a.data
+    }));
+  }, [dashboardFilteredAttempts]);
+
+  const activeBatchesCount = useMemo(() => {
+    return allBatches.filter(b => {
+      if (selectedBranchName !== "All" && !allBranches.find(br => br.name === selectedBranchName && br.id === b.branchId)) return false;
+      if (selectedCourseName !== "All" && !allCourses.find(c => c.name === selectedCourseName && c.id === b.courseId)) return false;
+      if (selectedBatchName !== "All" && b.name !== selectedBatchName) return false;
+      return true;
+    }).length || 0;
+  }, [allBatches, selectedBranchName, selectedCourseName, selectedBatchName, allBranches, allCourses]);
+
   useEffect(() => {
     if (selectedStudentId === "__all__") return;
     const exists = learners.some((row) => row.id === selectedStudentId);
@@ -957,9 +1091,9 @@ export default function Analytics() {
               currently selected time period.
             </p>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <Card className="border-dashed lg:col-span-1">
+          <CardContent className="space-y-8">
+            <div className="flex flex-col gap-8">
+              <Card className="border-dashed shadow-none bg-muted/20">
                 <CardHeader>
                   <CardTitle className="text-sm">Choose Student</CardTitle>
                 </CardHeader>
@@ -974,7 +1108,7 @@ export default function Analytics() {
                     />
                   </div>
 
-                  <div className="space-y-2 max-h-72 overflow-auto pr-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-96 overflow-auto pr-1">
                     <button
                       type="button"
                       onClick={() => setSelectedStudentId("__all__")}
@@ -1040,37 +1174,103 @@ export default function Analytics() {
                 </CardContent>
               </Card>
 
-              <Card className="lg:col-span-2">
+              <Card className="border-none shadow-none bg-transparent">
                 <CardHeader>
                   <CardTitle className="text-sm">
-                    Selected Student Summary
+                    {selectedStudentId === "__all__" ? "All Students Overview" : "Selected Student Summary"}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {selectedStudentId === "__all__" ? (
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
-                      <div className="rounded-lg bg-muted/40 p-3">
-                        <p className="text-muted-foreground">Total Students</p>
-                        <p className="font-semibold text-lg">
-                          {formatCompactInt(totalStudents)}
-                        </p>
+                    <div className="space-y-6">
+                      {/* Global Filters */}
+                      <div className="flex flex-col sm:flex-row gap-4 items-center">
+                        <div className="w-full sm:w-1/3">
+                          <label className="text-xs font-medium text-muted-foreground mb-1 block">Branch</label>
+                          <Select 
+                            value={selectedBranchName} 
+                            onValueChange={setSelectedBranchName}
+                          >
+                            <SelectTrigger className="w-full bg-white dark:bg-zinc-900 h-9">
+                              <SelectValue placeholder="All Branches" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {uniqueBranches.length !== 1 && <SelectItem value="All">All Branches</SelectItem>}
+                              {uniqueBranches.map((name) => (
+                                <SelectItem key={name} value={name}>{name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="w-full sm:w-1/3">
+                          <label className="text-xs font-medium text-muted-foreground mb-1 block">Program</label>
+                          <Select 
+                            value={selectedCourseName} 
+                            onValueChange={setSelectedCourseName}
+                          >
+                            <SelectTrigger className="w-full bg-white dark:bg-zinc-900 h-9">
+                              <SelectValue placeholder="All Programs" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {uniqueCourses.length !== 1 && <SelectItem value="All">All Programs</SelectItem>}
+                              {uniqueCourses.map((name) => (
+                                <SelectItem key={name} value={name}>{name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="w-full sm:w-1/3">
+                          <label className="text-xs font-medium text-muted-foreground mb-1 block">Batch</label>
+                          <Select 
+                            value={selectedBatchName} 
+                            onValueChange={setSelectedBatchName}
+                          >
+                            <SelectTrigger className="w-full bg-white dark:bg-zinc-900 h-9">
+                              <SelectValue placeholder="All Batches" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {uniqueBatches.length !== 1 && <SelectItem value="All">All Batches</SelectItem>}
+                              {uniqueBatches.map((name) => (
+                                <SelectItem key={name} value={name}>{name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
-                      <div className="rounded-lg bg-muted/40 p-3">
-                        <p className="text-muted-foreground">Total Attempts</p>
-                        <p className="font-semibold text-lg">
-                          {formatCompactInt(totalAttempts)}
-                        </p>
-                      </div>
-                      <div className="rounded-lg bg-muted/40 p-3">
-                        <p className="text-muted-foreground">Avg Score</p>
-                        <p className="font-semibold text-lg">{avgScore}</p>
-                      </div>
-                      <div className="rounded-lg bg-muted/40 p-3">
-                        <p className="text-muted-foreground">Completion Rate</p>
-                        <p className="font-semibold text-lg">
-                          {completionRate}%
-                        </p>
-                      </div>
+
+                      {/* Dashboard Components */}
+                      <DashboardStatsGrid 
+                        students={studentsForDashboard}
+                        attempts={attemptsForDashboard}
+                        activeBatchesCount={activeBatchesCount}
+                        isLoading={isDataFiltering || loading}
+                      />
+
+                      <TopPerformersLeaderboard 
+                        attempts={attemptsForDashboard}
+                        students={studentsForDashboard}
+                        isLoading={isDataFiltering || loading}
+                      />
+
+                      <AttemptsAnalyticsChart 
+                        attempts={attemptsForDashboard}
+                        isLoading={isDataFiltering || loading}
+                      />
+
+                      <RecentActivityFeed 
+                        attempts={attemptsForDashboard}
+                        students={studentsForDashboard}
+                        batches={allBatches}
+                        isLoading={isDataFiltering || loading}
+                      />
+
+                      <StudentHealthOverview 
+                        students={studentsForDashboard}
+                        attempts={attemptsForDashboard}
+                        isLoading={isDataFiltering || loading}
+                      />
                     </div>
                   ) : selectedLearner ? (
                     <div className="flex flex-col md:flex-row md:items-center gap-4 justify-between">
@@ -1164,68 +1364,7 @@ export default function Analytics() {
               </Card>
             </div>
 
-            {selectedStudentId === "__all__" && (
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <div>
-                    <CardTitle className="text-base">Attempts Over Time</CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {formatCompactInt(totalAttempts)} total attempts
-                    </p>
-                  </div>
-                  <div className="shrink-0">
-                    <Select value={periodDays} onValueChange={setPeriodDays}>
-                      <SelectTrigger className="w-[140px]">
-                        <SelectValue placeholder="Select time" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">Last 1 Day</SelectItem>
-                        <SelectItem value="7">Last 7 Days</SelectItem>
-                        <SelectItem value="30">Last 1 Month</SelectItem>
-                        <SelectItem value="90">Last 3 Months</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {totalAttempts > 0 ? (
-                    <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={attemptsTrendData}>
-                          <defs>
-                            <linearGradient id="colorAttemptsAll" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                              <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
-                          <XAxis dataKey="date" className="text-xs fill-muted-foreground" tickLine={false} axisLine={false} />
-                          <YAxis className="text-xs fill-muted-foreground" tickLine={false} axisLine={false} />
-                          <Tooltip
-                            contentStyle={{
-                              backgroundColor: "hsl(var(--card))",
-                              border: "1px solid hsl(var(--border))",
-                              borderRadius: "0.5rem",
-                            }}
-                          />
-                          <Area
-                            type="monotone"
-                            dataKey="attempts"
-                            stroke="hsl(var(--primary))"
-                            fillOpacity={1}
-                            fill="url(#colorAttemptsAll)"
-                          />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground py-6 text-center">
-                      Need submitted attempts to render trend.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            )}
+
 
             {selectedLearner && selectedStudentDive && (
               <>

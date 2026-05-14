@@ -163,6 +163,10 @@ export default function EducatorLayout() {
 
   const pageTitle = useMemo(() => {
     if (location.pathname.startsWith("/educator/learners/")) return "Learner Deep Dive";
+    if (location.pathname.startsWith("/educator/students/")) {
+      const parts = location.pathname.split("/");
+      if (parts.length > 3) return "Student Info";
+    }
     const tail = location.pathname.split("/").pop() || "dashboard";
     return tail.replace(/-/g, " ");
   }, [location.pathname]);

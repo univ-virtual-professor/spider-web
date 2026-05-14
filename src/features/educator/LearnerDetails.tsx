@@ -170,7 +170,7 @@ function getLearnerName(learner: LearnerDoc | null, profile: UserDoc | null) {
 
 export default function LearnerDetails() {
   const nav = useNavigate();
-  const { learnerId = "" } = useParams<{ learnerId: string }>();
+  const { studentId = "" } = useParams<{ studentId: string }>();
   const { firebaseUser, profile, role, loading: authLoading } = useAuth();
 
   const educatorId = profile?.educatorId || firebaseUser?.uid || null;
@@ -193,10 +193,10 @@ export default function LearnerDetails() {
   }, [authLoading, role, nav]);
 
   useEffect(() => {
-    if (!educatorId || !learnerId) return;
+    if (!educatorId || !studentId) return;
 
     const unsubLearner = onSnapshot(
-      doc(db, "educators", educatorId, "students", learnerId),
+      doc(db, "educators", educatorId, "students", studentId),
       (snap) => {
         setLearner(snap.exists() ? (snap.data() as LearnerDoc) : null);
         setLearnerLoaded(true);
@@ -208,7 +208,7 @@ export default function LearnerDetails() {
     );
 
     const unsubLearnerAttempts = onSnapshot(
-      query(collection(db, "attempts"), where("educatorId", "==", educatorId), where("studentId", "==", learnerId)),
+      query(collection(db, "attempts"), where("educatorId", "==", educatorId), where("studentId", "==", studentId)),
       (snap) => {
         setLearnerAttempts(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
         setAttemptsLoaded(true);
@@ -232,7 +232,7 @@ export default function LearnerDetails() {
     );
 
     const unsubSeat = onSnapshot(
-      doc(db, "educators", educatorId, "billingSeats", learnerId),
+      doc(db, "educators", educatorId, "billingSeats", studentId),
       (snap) => {
         if (!snap.exists()) {
           setSeatActive(false);
@@ -246,7 +246,7 @@ export default function LearnerDetails() {
 
     (async () => {
       try {
-        const profileSnap = await getDoc(doc(db, "users", learnerId));
+        const profileSnap = await getDoc(doc(db, "users", studentId));
         setLearnerProfile(profileSnap.exists() ? (profileSnap.data() as UserDoc) : null);
       } catch {
         setLearnerProfile(null);
@@ -259,7 +259,7 @@ export default function LearnerDetails() {
       unsubClassAttempts();
       unsubSeat();
     };
-  }, [educatorId, learnerId]);
+  }, [educatorId, studentId]);
 
   async function postWithToken(path: string, body: any) {
     if (!firebaseUser) throw new Error("Not logged in");
@@ -281,7 +281,7 @@ export default function LearnerDetails() {
     }
     setActionBusy("revoke-seat");
     try {
-      await postWithToken("/api/billing/revoke-seat", { studentId: learnerId });
+      await postWithToken("/api/billing/revoke-seat", { studentId: studentId });
       toast.success("Seat revoked");
     } catch (e: any) {
       toast.error(e?.message || "Failed to revoke seat");
@@ -298,7 +298,7 @@ export default function LearnerDetails() {
     }
     setActionBusy("set-inactive");
     try {
-      await updateDoc(doc(db, "educators", educatorId, "students", learnerId), { status: "INACTIVE" });
+      await updateDoc(doc(db, "educators", educatorId, "students", studentId), { status: "INACTIVE" });
       toast.success("Learner set to INACTIVE");
     } catch (e: any) {
       toast.error(e?.message || "Failed to set learner inactive");
@@ -315,7 +315,7 @@ export default function LearnerDetails() {
     }
     setActionBusy("set-active");
     try {
-      await updateDoc(doc(db, "educators", educatorId, "students", learnerId), { status: "ACTIVE" });
+      await updateDoc(doc(db, "educators", educatorId, "students", studentId), { status: "ACTIVE" });
       toast.success("Learner set to ACTIVE");
     } catch (e: any) {
       toast.error(e?.message || "Failed to activate learner");
@@ -336,7 +336,7 @@ export default function LearnerDetails() {
         : classAttempts.filter((a) => {
             const sid = String(a.studentId || "").trim();
             if (!sid) return false;
-            return sid === learnerId || (learnerUid && sid === learnerUid);
+            return sid === studentId || (learnerUid && sid === learnerUid);
           });
     const completed = attempts.filter((a) => isCompletedStatus(a.status));
     const classCompleted = classAttempts.filter((a) => isCompletedStatus(a.status));
