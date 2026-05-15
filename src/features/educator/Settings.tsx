@@ -35,8 +35,8 @@ import {
   updatePassword,
 } from "firebase/auth";
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { auth, db, storage } from "@shared/lib/firebase";
+import { auth, db } from "@shared/lib/firebase";
+import { uploadToImageKit } from "@shared/lib/imagekitUpload";
 import { useAuth } from "@app/providers/AuthProvider";
 import { buildTenantUrl } from "@shared/lib/tenant";
 
@@ -123,7 +123,7 @@ export default function Settings() {
         const data = snap.exists() ? (snap.data() as EducatorProfileDoc) : {};
 
         setPhone(data.phone || "");
-        setCoachingName(data?.websiteConfig?.coachingName || data?.coachingName || "");
+        setCoachingName(data?.coachingName || data?.websiteConfig?.coachingName || "");
         if (data.prefs?.notifications) {
           setNotifications({
             email: data.prefs.notifications.email ?? true,
@@ -164,12 +164,13 @@ export default function Settings() {
 
     setUploadingPhoto(true);
     try {
-      const path = `educators/${firebaseUser.uid}/profile/avatar_${Date.now()}`;
-      const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
+      const { url } = await uploadToImageKit(
+        file,
+        `avatar_${firebaseUser.uid}_${Date.now()}`,
+        "/educator-profiles",
+        "website"
+      );
 
-      // Update auth profile + firestore
       if (auth.currentUser) {
         await updateProfile(auth.currentUser, { photoURL: url });
       }
@@ -228,7 +229,7 @@ export default function Settings() {
       );
 
       await updateDoc(doc(db, "educators", firebaseUser.uid), {
-        "websiteConfig.coachingName": coachingName.trim(),
+        coachingName: coachingName.trim(),
       });
 
       await refreshProfile();
