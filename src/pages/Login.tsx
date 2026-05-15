@@ -152,7 +152,10 @@ export default function Login() {
           return;
         }
 
-        if (!enrolledTenants.includes(tenantSlug)) {
+        const isEnrolled =
+          enrolledTenants.includes(tenantSlug) ||
+          (typeof data?.tenantSlug === "string" && data.tenantSlug === tenantSlug);
+        if (!isEnrolled) {
           toast.error(
             "You are not enrolled in this coaching. Please signup on this coaching URL first."
           );
