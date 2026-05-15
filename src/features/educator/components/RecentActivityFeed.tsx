@@ -10,18 +10,10 @@ import {
   PlayCircle,
 } from "lucide-react";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardFooter,
-} from "@shared/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@shared/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@shared/ui/tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
 import { Badge } from "@shared/ui/badge";
-import { Button } from "@shared/ui/button";
 import { Skeleton } from "@shared/ui/skeleton";
 import { cn } from "@shared/lib/utils";
 
@@ -254,20 +246,6 @@ export default function RecentActivityFeed({
           )}
         </div>
       </CardContent>
-
-      <CardFooter className="flex justify-end border-t border-border/50 bg-muted/20 p-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="group text-xs font-semibold transition-all hover:bg-primary/5 hover:text-primary"
-          onClick={() =>
-            navigate(activityType === "dpp" ? "/educator/analytics" : "/educator/analytics")
-          }
-        >
-          View All Attempts
-          <ChevronRight className="ml-1 h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-        </Button>
-      </CardFooter>
     </Card>
   );
 }

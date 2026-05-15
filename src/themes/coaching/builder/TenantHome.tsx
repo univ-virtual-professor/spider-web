@@ -4,6 +4,7 @@
 // in the Website Builder (InstituteBuilder.tsx). Reads builderConfig from
 // the educators/{uid} Firestore document via TenantProvider.
 
+import React from "react";
 import { useTenant } from "@app/providers/TenantProvider";
 import { useFavicon } from "@shared/hooks/useFavicon";
 import { Link } from "react-router-dom";
@@ -26,7 +27,15 @@ import { Loader2 } from "lucide-react";
 import BuilderCanvas from "./BuilderCanvas";
 
 export default function BuilderThemeHome() {
+  const [isMobile, setIsMobile] = React.useState(false);
   const { tenant, loading } = useTenant();
+
+  React.useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const websiteConfig = tenant?.websiteConfig || {};
   const logoUrl: string | undefined = websiteConfig.logoUrl;
@@ -90,7 +99,7 @@ export default function BuilderThemeHome() {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "0 24px",
+          padding: isMobile ? "0 16px" : "0 24px",
           height: 52,
         }}
       >
@@ -119,7 +128,9 @@ export default function BuilderThemeHome() {
               {coachingName[0]?.toUpperCase() || "I"}
             </div>
           )}
-          <span style={{ fontWeight: 700, fontSize: 15, color: "#1a1a2e" }}>{coachingName}</span>
+          {!isMobile && (
+            <span style={{ fontWeight: 700, fontSize: 15, color: "#1a1a2e" }}>{coachingName}</span>
+          )}
         </div>
         <Link
           to="/login"
@@ -133,7 +144,7 @@ export default function BuilderThemeHome() {
             textDecoration: "none",
           }}
         >
-          Student Login
+          {isMobile ? "Login" : "Student Login"}
         </Link>
       </nav>
 
@@ -141,6 +152,7 @@ export default function BuilderThemeHome() {
       <BuilderCanvas
         sections={builderConfig.sections}
         themeKey={builderConfig.themeKey || "indigo"}
+        themeOverrides={builderConfig.themeOverrides || {}}
       />
     </div>
   );

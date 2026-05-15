@@ -1,22 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Clock, Search, Target, TrendingUp, Users } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
-import { Badge } from "@shared/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
-import { Input } from "@shared/ui/input";
+import { ArrowLeft, Clock, Target, TrendingUp, Users } from "lucide-react";
+import { Button } from "@shared/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+
 import { toast } from "sonner";
 
 import { db } from "@shared/lib/firebase";
@@ -273,6 +261,7 @@ function getAttemptTimeSeconds(a: AttemptDoc) {
 export default function Analytics() {
   const { firebaseUser, profile, loading: authLoading } = useAuth();
   const { tenant, loading: tenantLoading } = useTenant();
+  const navigate = useNavigate();
 
   const educatorId = tenant?.educatorId || profile?.educatorId || null;
 
@@ -1050,408 +1039,110 @@ export default function Analytics() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.34 }}
       >
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Student Deep Dive</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Pick any learner to inspect their detailed performance inside the currently selected
-              time period.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-8">
-            <div className="flex flex-col gap-8">
-              <Card className="border-dashed bg-muted/20 shadow-none">
-                <CardHeader>
-                  <CardTitle className="text-sm">Choose Student</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      value={studentSearch}
-                      onChange={(e) => setStudentSearch(e.target.value)}
-                      placeholder="Search by name or email"
-                      className="pl-9"
-                    />
-                  </div>
+        <div className="space-y-6">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={() => navigate("/educator")}>
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div className="space-y-1">
+              <h2 className="text-2xl font-semibold tracking-tight">Students Overview</h2>
+              <p className="text-sm text-muted-foreground">
+                Monitor performance trends, activity levels, and overall academic health across your
+                programs.
+              </p>
+            </div>
+          </div>
 
-                  <div className="grid max-h-96 grid-cols-1 gap-3 overflow-auto pr-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedStudentId("__all__")}
-                      className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
-                        selectedStudentId === "__all__"
-                          ? "border-primary bg-primary/5"
-                          : "hover:bg-muted/50"
-                      }`}
-                    >
-                      <p className="text-sm font-medium">All students overview</p>
-                      <p className="text-xs text-muted-foreground">
-                        Keep the current class-level analytics view
-                      </p>
-                    </button>
-
-                    {filteredStudents.map((student) => {
-                      const active = isActiveStatus(student.data.status);
-                      return (
-                        <button
-                          key={student.id}
-                          type="button"
-                          onClick={() => setSelectedStudentId(student.id)}
-                          className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
-                            selectedStudentId === student.id
-                              ? "border-primary bg-primary/5"
-                              : "hover:bg-muted/50"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-medium">
-                                {getLearnerName(student)}
-                              </p>
-                              <p className="truncate text-xs text-muted-foreground">
-                                {student.data.email || "No email"}
-                              </p>
-                            </div>
-                            <Badge
-                              variant="secondary"
-                              className={
-                                active
-                                  ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                                  : ""
-                              }
-                            >
-                              {active ? "Active" : String(student.data.status || "Unknown")}
-                            </Badge>
-                          </div>
-                        </button>
-                      );
-                    })}
-
-                    {filteredStudents.length === 0 && (
-                      <p className="py-3 text-sm text-muted-foreground">
-                        No students match your search.
-                      </p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-none bg-transparent shadow-none">
-                <CardHeader>
-                  <CardTitle className="text-sm">
-                    {selectedStudentId === "__all__"
-                      ? "All Students Overview"
-                      : "Selected Student Summary"}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {selectedStudentId === "__all__" ? (
-                    <div className="space-y-6">
-                      {/* Global Filters */}
-                      <div className="flex flex-col items-center gap-4 sm:flex-row">
-                        <div className="w-full sm:w-1/3">
-                          <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                            Branch
-                          </label>
-                          <Select value={selectedBranchName} onValueChange={setSelectedBranchName}>
-                            <SelectTrigger className="h-9 w-full bg-white dark:bg-zinc-900">
-                              <SelectValue placeholder="All Branches" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {uniqueBranches.length !== 1 && (
-                                <SelectItem value="All">All Branches</SelectItem>
-                              )}
-                              {uniqueBranches.map((name) => (
-                                <SelectItem key={name} value={name}>
-                                  {name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="w-full sm:w-1/3">
-                          <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                            Program
-                          </label>
-                          <Select value={selectedCourseName} onValueChange={setSelectedCourseName}>
-                            <SelectTrigger className="h-9 w-full bg-white dark:bg-zinc-900">
-                              <SelectValue placeholder="All Programs" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {uniqueCourses.length !== 1 && (
-                                <SelectItem value="All">All Programs</SelectItem>
-                              )}
-                              {uniqueCourses.map((name) => (
-                                <SelectItem key={name} value={name}>
-                                  {name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="w-full sm:w-1/3">
-                          <label className="mb-1 block text-xs font-medium text-muted-foreground">
-                            Batch
-                          </label>
-                          <Select value={selectedBatchName} onValueChange={setSelectedBatchName}>
-                            <SelectTrigger className="h-9 w-full bg-white dark:bg-zinc-900">
-                              <SelectValue placeholder="All Batches" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {uniqueBatches.length !== 1 && (
-                                <SelectItem value="All">All Batches</SelectItem>
-                              )}
-                              {uniqueBatches.map((name) => (
-                                <SelectItem key={name} value={name}>
-                                  {name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      {/* Dashboard Components */}
-                      <DashboardStatsGrid
-                        students={studentsForDashboard}
-                        attempts={attemptsForDashboard}
-                        activeBatchesCount={activeBatchesCount}
-                        isLoading={isDataFiltering || loading}
-                      />
-
-                      <TopPerformersLeaderboard
-                        attempts={attemptsForDashboard}
-                        students={studentsForDashboard}
-                        isLoading={isDataFiltering || loading}
-                        selectedBranchName={selectedBranchName}
-                        selectedCourseName={selectedCourseName}
-                      />
-
-                      <AttemptsAnalyticsChart
-                        attempts={attemptsForDashboard}
-                        isLoading={isDataFiltering || loading}
-                      />
-
-                      <RecentActivityFeed
-                        attempts={attemptsForDashboard}
-                        students={studentsForDashboard}
-                        batches={allBatches}
-                        isLoading={isDataFiltering || loading}
-                      />
-
-                      <StudentHealthOverview
-                        students={studentsForDashboard}
-                        attempts={attemptsForDashboard}
-                        isLoading={isDataFiltering || loading}
-                      />
-                    </div>
-                  ) : selectedLearner ? (
-                    <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <Avatar className="h-12 w-12">
-                          <AvatarImage
-                            src={
-                              selectedLearner.profile?.photoURL ||
-                              selectedLearner.profile?.avatar ||
-                              undefined
-                            }
-                          />
-                          <AvatarFallback>
-                            {initials(getLearnerName(selectedLearner))}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <p className="truncate font-semibold">
-                            {getLearnerName(selectedLearner)}
-                          </p>
-                          <p className="truncate text-sm text-muted-foreground">
-                            {selectedLearner.data.email || "No email"}
-                          </p>
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <Badge variant="secondary">
-                              Joined {formatRelativeTime(toMillis(selectedLearner.data.joinedAt))}
-                            </Badge>
-                            <Badge variant="outline">
-                              Last seen{" "}
-                              {formatRelativeTime(
-                                toMillis(
-                                  selectedLearner.data.lastSeenAt || selectedLearner.data.updatedAt
-                                )
-                              )}
-                            </Badge>
-                            <Badge variant="outline">
-                              {String(selectedLearner.data.status || "Unknown")}
-                            </Badge>
-                          </div>
-                        </div>
-                      </div>
-
-                      {selectedStudentDive ? (
-                        <div className="grid min-w-[240px] grid-cols-2 gap-3 text-sm">
-                          <div className="rounded-lg bg-muted/40 p-3">
-                            <p className="text-muted-foreground">Total Attempts</p>
-                            <p className="text-lg font-semibold">
-                              {selectedStudentDive.totalAttempts}
-                            </p>
-                          </div>
-                          <div className="rounded-lg bg-muted/40 p-3">
-                            <p className="text-muted-foreground">Completed</p>
-                            <p className="text-lg font-semibold">
-                              {selectedStudentDive.completedAttempts}
-                            </p>
-                          </div>
-                          <div className="rounded-lg bg-muted/40 p-3">
-                            <p className="text-muted-foreground">Strongest</p>
-                            <p className="text-sm font-semibold">
-                              {selectedStudentDive.strongestSubject}
-                            </p>
-                          </div>
-                          <div className="rounded-lg bg-muted/40 p-3">
-                            <p className="text-muted-foreground">Needs Work</p>
-                            <p className="text-sm font-semibold">
-                              {selectedStudentDive.weakestSubject}
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-sm text-muted-foreground">
-                          No activity found for this student in the selected period.
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-dashed p-6 text-center text-muted-foreground">
-                      Select a student to view individual score trend, subject-wise performance,
-                      recent attempts, and class comparison.
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+          {/* Global Filters */}
+          <div className="flex flex-col items-center gap-4 sm:flex-row">
+            <div className="w-full sm:w-1/3">
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Branch</label>
+              <Select value={selectedBranchName} onValueChange={setSelectedBranchName}>
+                <SelectTrigger className="h-9 w-full bg-white dark:bg-zinc-900">
+                  <SelectValue placeholder="All Branches" />
+                </SelectTrigger>
+                <SelectContent>
+                  {uniqueBranches.length !== 1 && <SelectItem value="All">All Branches</SelectItem>}
+                  {uniqueBranches.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            {selectedLearner && selectedStudentDive && (
-              <>
-                <div className="grid grid-cols-1 gap-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Recent Attempts</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {selectedStudentDive.recentAttempts.map((attempt) => (
-                        <div
-                          key={attempt.id}
-                          className="flex flex-col justify-between gap-3 rounded-lg border p-3 sm:flex-row sm:items-center"
-                        >
-                          <div className="min-w-0">
-                            <p className="truncate font-medium">{attempt.title}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {attempt.subject} • {attempt.dateLabel}
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                            <Badge variant="outline">{attempt.status}</Badge>
-                            <Badge variant="secondary">{attempt.scoreLabel}</Badge>
-                            <Badge variant="secondary">{attempt.timeLabel}</Badge>
-                          </div>
-                        </div>
-                      ))}
-                      {selectedStudentDive.recentAttempts.length === 0 && (
-                        <p className="text-sm text-muted-foreground">
-                          No attempts found for this student in the selected period.
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
+            <div className="w-full sm:w-1/3">
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                Program
+              </label>
+              <Select value={selectedCourseName} onValueChange={setSelectedCourseName}>
+                <SelectTrigger className="h-9 w-full bg-white dark:bg-zinc-900">
+                  <SelectValue placeholder="All Programs" />
+                </SelectTrigger>
+                <SelectContent>
+                  {uniqueCourses.length !== 1 && <SelectItem value="All">All Programs</SelectItem>}
+                  {uniqueCourses.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Student Score Trend</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {selectedStudentDive.scoreTrend.length > 0 ? (
-                        <div className="h-72">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={selectedStudentDive.scoreTrend}>
-                              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                              <XAxis dataKey="date" className="fill-muted-foreground text-xs" />
-                              <YAxis className="fill-muted-foreground text-xs" />
-                              <Tooltip
-                                contentStyle={{
-                                  backgroundColor: "hsl(var(--card))",
-                                  border: "1px solid hsl(var(--border))",
-                                  borderRadius: "0.5rem",
-                                }}
-                              />
-                              <Line
-                                type="monotone"
-                                dataKey="score"
-                                stroke="hsl(204, 91%, 56%)"
-                                strokeWidth={3}
-                                dot={{ r: 3 }}
-                              />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        </div>
-                      ) : (
-                        <p className="py-6 text-center text-sm text-muted-foreground">
-                          Need submitted attempts to render trend.
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
+            <div className="w-full sm:w-1/3">
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Batch</label>
+              <Select value={selectedBatchName} onValueChange={setSelectedBatchName}>
+                <SelectTrigger className="h-9 w-full bg-white dark:bg-zinc-900">
+                  <SelectValue placeholder="All Batches" />
+                </SelectTrigger>
+                <SelectContent>
+                  {uniqueBatches.length !== 1 && <SelectItem value="All">All Batches</SelectItem>}
+                  {uniqueBatches.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Subject-wise Performance</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {selectedStudentDive.subjectPerformance.length > 0 ? (
-                        <div className="h-72">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart
-                              data={selectedStudentDive.subjectPerformance}
-                              layout="vertical"
-                            >
-                              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                              <XAxis type="number" className="fill-muted-foreground text-xs" />
-                              <YAxis
-                                dataKey="subject"
-                                type="category"
-                                width={110}
-                                className="fill-muted-foreground text-xs"
-                              />
-                              <Tooltip
-                                contentStyle={{
-                                  backgroundColor: "hsl(var(--card))",
-                                  border: "1px solid hsl(var(--border))",
-                                  borderRadius: "0.5rem",
-                                }}
-                              />
-                              <Bar
-                                dataKey="score"
-                                fill="hsl(184, 87%, 65%)"
-                                radius={[0, 4, 4, 0]}
-                              />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
-                      ) : (
-                        <p className="py-6 text-center text-sm text-muted-foreground">
-                          No completed subject data available in this period.
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
+          {/* Dashboard Components */}
+          <DashboardStatsGrid
+            students={studentsForDashboard}
+            attempts={attemptsForDashboard}
+            activeBatchesCount={activeBatchesCount}
+            isLoading={isDataFiltering || loading}
+          />
+
+          <TopPerformersLeaderboard
+            attempts={attemptsForDashboard}
+            students={studentsForDashboard}
+            isLoading={isDataFiltering || loading}
+            selectedBranchName={selectedBranchName}
+            selectedCourseName={selectedCourseName}
+          />
+
+          <AttemptsAnalyticsChart
+            attempts={attemptsForDashboard}
+            isLoading={isDataFiltering || loading}
+          />
+
+          <RecentActivityFeed
+            attempts={attemptsForDashboard}
+            students={studentsForDashboard}
+            batches={allBatches}
+            isLoading={isDataFiltering || loading}
+          />
+
+          <StudentHealthOverview
+            students={studentsForDashboard}
+            attempts={attemptsForDashboard}
+            isLoading={isDataFiltering || loading}
+          />
+        </div>
       </motion.div>
     </div>
   );

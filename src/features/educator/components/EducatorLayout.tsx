@@ -38,7 +38,7 @@ import { buildTenantUrl } from "@shared/lib/tenant";
 import { useAuth } from "@app/providers/AuthProvider";
 import { signOut } from "firebase/auth";
 import { auth, db } from "@shared/lib/firebase";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
 import ImpersonationBanner from "@shared/components/ImpersonationBanner";
 import NotificationBell from "@shared/components/NotificationBell";
 import EducatorBroadcastModal from "./EducatorBroadcastModal";
@@ -75,6 +75,22 @@ export default function EducatorLayout() {
   const navigate = useNavigate();
 
   const { profile } = useAuth();
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const uid = profile?.uid;
+    if (!uid) return;
+
+    const docRef = doc(db, "educators", uid);
+    getDoc(docRef).then((snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.builderConfig?.logoUrl) {
+          setLogoUrl(data.builderConfig.logoUrl);
+        }
+      }
+    });
+  }, [profile?.uid]);
 
   const educatorName = profile?.displayName || profile?.fullName || "Educator";
   const educatorEmail = profile?.email || "No email";
@@ -226,7 +242,7 @@ export default function EducatorLayout() {
                 )}
               >
                 <img
-                  src={sidebarCollapsed ? "/logo-compact.png" : "/logo.png"}
+                  src={logoUrl || (sidebarCollapsed ? "/logo-compact.png" : "/logo.png")}
                   alt="UNIV.LIVE"
                   className={sidebarCollapsed ? "h-10 w-10 object-contain" : "h-10 w-auto"}
                 />

@@ -23,6 +23,7 @@ import {
   TestSeries,
   ScheduledTests,
   ScheduledDpps,
+  StudentHealthCategoryList,
 } from "@features/educator";
 import QuestionPaperRequests from "@features/educator/QuestionPaperRequests";
 
@@ -52,6 +53,7 @@ export function getEducatorRoutes() {
       <Route path="website-settings" element={<WebsiteSettings />} />
       <Route path="billing" element={<Billing />} />
       <Route path="analytics" element={<EducatorAnalytics />} />
+      <Route path="analytics/health/:category" element={<StudentHealthCategoryList />} />
       <Route path="settings" element={<Settings />} />
       <Route path="divisions" element={<Divisions />} />
       <Route path="content" element={<EducatorContent />} />

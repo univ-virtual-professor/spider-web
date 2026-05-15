@@ -17,6 +17,7 @@ export type TenantProfile = {
     sections: any[];
     themeKey: string;
     instituteName: string;
+    themeOverrides?: any;
     publishedAt?: number;
   };
   testDefaults?: {

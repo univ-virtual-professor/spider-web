@@ -4,16 +4,34 @@ import {
   THEME_PRESETS,
   type ThemeKey,
   type Section,
+  type Theme,
 } from "@features/educator/InstituteBuilder";
 
 type BuilderCanvasProps = {
   sections: Section[];
   themeKey?: ThemeKey | string;
+  themeOverrides?: Partial<Theme>;
 };
 
-export default function BuilderCanvas({ sections, themeKey = "indigo" }: BuilderCanvasProps) {
+export default function BuilderCanvas({
+  sections,
+  themeKey = "indigo",
+  themeOverrides = {},
+}: BuilderCanvasProps) {
+  const [isMobile, setIsMobile] = React.useState(false);
+
+  React.useEffect(() => {
+    const updateViewport = () => {
+      setIsMobile(window.innerWidth < 1024);
+    };
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
+  }, []);
+
   const safeThemeKey = (themeKey in THEME_PRESETS ? themeKey : "indigo") as ThemeKey;
-  const theme = THEME_PRESETS[safeThemeKey];
+  const baseTheme = THEME_PRESETS[safeThemeKey];
+  const theme: Theme = { ...baseTheme, ...themeOverrides };
 
   return (
     <div style={{ background: theme.bg }}>
@@ -29,6 +47,7 @@ export default function BuilderCanvas({ sections, themeKey = "indigo" }: Builder
             selected={false}
             onClick={() => {}}
             previewMode
+            isMobile={isMobile}
           />
         );
       })}

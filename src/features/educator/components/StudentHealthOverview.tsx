@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Zap, Activity, AlertCircle, TrendingUp } from "lucide-react";
 import { Card, CardContent } from "@shared/ui/card";
 import { Skeleton } from "@shared/ui/skeleton";
@@ -19,8 +20,17 @@ type Student = {
   name?: string;
 };
 
+export type HealthStudentData = {
+  id: string;
+  name?: string;
+  email?: string;
+  score: number;
+  maxScore: number;
+  date: number;
+};
+
 interface StudentHealthOverviewProps {
-  students: Student[];
+  students: (Student & { email?: string })[];
   attempts: Attempt[];
   isLoading: boolean;
 }
@@ -43,6 +53,8 @@ export default function StudentHealthOverview({
   attempts,
   isLoading,
 }: StudentHealthOverviewProps) {
+  const navigate = useNavigate();
+
   const healthStats = useMemo(() => {
     if (isLoading) return null;
 
@@ -64,10 +76,10 @@ export default function StudentHealthOverview({
     });
 
     const categories = {
-      excellent: 0,
-      good: 0,
-      average: 0,
-      weak: 0,
+      excellent: [] as HealthStudentData[],
+      good: [] as HealthStudentData[],
+      average: [] as HealthStudentData[],
+      weak: [] as HealthStudentData[],
     };
 
     latestAttempts.forEach((a) => {
@@ -75,34 +87,56 @@ export default function StudentHealthOverview({
       const maxScore = Number(a.maxScore || 100);
       const pct = maxScore > 0 ? (score / maxScore) * 100 : 0;
 
-      if (pct >= 91) categories.excellent++;
-      else if (pct >= 75) categories.good++;
-      else if (pct >= 50) categories.average++;
-      else categories.weak++;
+      const student = students.find((s) => s.id === a.studentId);
+      const data: HealthStudentData = {
+        id: a.studentId!,
+        name: student?.name,
+        email: student?.email,
+        score,
+        maxScore,
+        date: toMillis(a.submittedAt || a.createdAt),
+      };
+
+      if (pct >= 91) categories.excellent.push(data);
+      else if (pct >= 75) categories.good.push(data);
+      else if (pct >= 50) categories.average.push(data);
+      else categories.weak.push(data);
     });
 
     const totalWithData = latestAttempts.size;
 
     return {
       excellent: {
-        count: categories.excellent,
-        pct: totalWithData ? Math.round((categories.excellent / totalWithData) * 100) : 0,
+        count: categories.excellent.length,
+        pct: totalWithData ? Math.round((categories.excellent.length / totalWithData) * 100) : 0,
+        students: categories.excellent.sort(
+          (a, b) => b.score / Math.max(b.maxScore, 1) - a.score / Math.max(a.maxScore, 1)
+        ),
       },
       good: {
-        count: categories.good,
-        pct: totalWithData ? Math.round((categories.good / totalWithData) * 100) : 0,
+        count: categories.good.length,
+        pct: totalWithData ? Math.round((categories.good.length / totalWithData) * 100) : 0,
+        students: categories.good.sort(
+          (a, b) => b.score / Math.max(b.maxScore, 1) - a.score / Math.max(a.maxScore, 1)
+        ),
       },
       average: {
-        count: categories.average,
-        pct: totalWithData ? Math.round((categories.average / totalWithData) * 100) : 0,
+        count: categories.average.length,
+        pct: totalWithData ? Math.round((categories.average.length / totalWithData) * 100) : 0,
+        students: categories.average.sort(
+          (a, b) => b.score / Math.max(b.maxScore, 1) - a.score / Math.max(a.maxScore, 1)
+        ),
       },
       weak: {
-        count: categories.weak,
-        pct: totalWithData ? Math.round((categories.weak / totalWithData) * 100) : 0,
+        count: categories.weak.length,
+        pct: totalWithData ? Math.round((categories.weak.length / totalWithData) * 100) : 0,
+        students: categories.weak.sort(
+          (a, b) => a.score / Math.max(a.maxScore, 1) - b.score / Math.max(b.maxScore, 1)
+        ),
       },
       totalWithData,
     };
-  }, [attempts, isLoading]);
+  }, [attempts, isLoading, students]);
 
   if (isLoading) {
     return (
@@ -146,9 +180,11 @@ export default function StudentHealthOverview({
 
   const cards = [
     {
+      id: "excellent",
       title: "Excellent Students",
       count: healthStats.excellent.count,
       pct: healthStats.excellent.pct,
+      students: healthStats.excellent.students,
       desc: "Scoring 91% and above",
       icon: Zap,
       color: "text-emerald-500",
@@ -157,9 +193,11 @@ export default function StudentHealthOverview({
       accent: "border-emerald-500/20",
     },
     {
+      id: "good",
       title: "Good Students",
       count: healthStats.good.count,
       pct: healthStats.good.pct,
+      students: healthStats.good.students,
       desc: "Scoring 75% – 90%",
       icon: TrendingUp,
       color: "text-blue-500",
@@ -168,9 +206,11 @@ export default function StudentHealthOverview({
       accent: "border-blue-500/20",
     },
     {
+      id: "average",
       title: "Average Students",
       count: healthStats.average.count,
       pct: healthStats.average.pct,
+      students: healthStats.average.students,
       desc: "Scoring 50% – 74%",
       icon: Activity,
       color: "text-amber-500",
@@ -179,9 +219,11 @@ export default function StudentHealthOverview({
       accent: "border-amber-500/20",
     },
     {
+      id: "weak",
       title: "Weak Students",
       count: healthStats.weak.count,
       pct: healthStats.weak.pct,
+      students: healthStats.weak.students,
       desc: "Scoring below 50%",
       icon: AlertCircle,
       color: "text-rose-500",
@@ -206,8 +248,14 @@ export default function StudentHealthOverview({
             <Card
               className={cn(
                 "relative overflow-hidden border-border/50 transition-all duration-300",
+                "cursor-pointer hover:border-primary/50 hover:shadow-md",
                 card.accent
               )}
+              onClick={() => {
+                navigate(`/educator/analytics/health/${card.id}`, {
+                  state: { students: card.students, title: card.title },
+                });
+              }}
             >
               <CardContent className="relative z-10 p-5">
                 <div className="mb-4 flex items-center justify-between">

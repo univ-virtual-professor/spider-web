@@ -18,3 +18,4 @@ export { default as StudentDetails } from "./StudentDetails";
 export { TestSeries, ManageQuestionsPage } from "./test-series";
 export { default as ScheduledTests } from "./ScheduledTests";
 export { default as ScheduledDpps } from "./ScheduledDpps";
+export { default as StudentHealthCategoryList } from "./StudentHealthCategoryList";
