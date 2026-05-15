@@ -201,6 +201,18 @@ export default function SeatManagement() {
   const [trialNote, setTrialNote] = useState("");
   const [trialBusy, setTrialBusy] = useState(false);
 
+  // Add to Pool dialog
+  const [addPoolOpen, setAddPoolOpen] = useState(false);
+  const [addPoolPlanId, setAddPoolPlanId] = useState("");
+  const [addPoolSeats, setAddPoolSeats] = useState(10);
+  const [addPoolNote, setAddPoolNote] = useState("");
+  const [addPoolBusy, setAddPoolBusy] = useState(false);
+
+  // Pool status (real-time)
+  const [pools, setPools] = useState<
+    { planId: string; availableSeats: number; allocatedSeats: number; totalSeats: number }[]
+  >([]);
+
   // Payment link dialog
   const [payLinkOpen, setPayLinkOpen] = useState(false);
   const [plBranches, setPlBranches] = useState<{ id: string; name: string }[]>([]);
@@ -383,10 +395,22 @@ export default function SeatManagement() {
       (snap) => setTx(snap.docs.map((d) => ({ id: d.id, ...(d.data() as TxRow) })))
     );
 
+    const un4 = onSnapshot(collection(db, "educators", targetId, "seatPools"), (snap) =>
+      setPools(
+        snap.docs.map((d) => ({
+          planId: d.id,
+          availableSeats: d.data().availableSeats || 0,
+          allocatedSeats: d.data().allocatedSeats || 0,
+          totalSeats: d.data().totalSeats || 0,
+        }))
+      )
+    );
+
     return () => {
       un1();
       un2();
       un3();
+      un4();
     };
   }, [targetId]);
 
@@ -611,26 +635,15 @@ export default function SeatManagement() {
   };
 
   const submitPaymentLink = async () => {
-    if (
-      !targetId ||
-      !plBranchId ||
-      !plCourseId ||
-      !plPlanId ||
-      !plSeats ||
-      !plAmount ||
-      !firebaseUser
-    )
-      return;
+    if (!targetId || !plPlanId || !plSeats || !plAmount || !firebaseUser) return;
     setPlBusy(true);
     try {
       const institute = allInstitutes.find((i) => i.uid === targetId);
       const result = await postWithToken(firebaseUser, "/api/payment/admin/create-payment-link", {
         educator_id: targetId,
-        branch_id: plBranchId,
-        course_id: plCourseId,
         plan_id: plPlanId,
         seats: plSeats,
-        amount_paise: plAmount,
+        amount: plAmount,
         educator_phone: plPhone,
         educator_name: institute?.displayName || "",
         educator_email: institute?.email || "",
@@ -641,6 +654,28 @@ export default function SeatManagement() {
       toast.error(e.message || "Failed to create payment link");
     } finally {
       setPlBusy(false);
+    }
+  };
+
+  const submitAddPool = async () => {
+    if (!targetId || !addPoolPlanId || addPoolSeats < 1 || !firebaseUser) return;
+    setAddPoolBusy(true);
+    try {
+      await postWithToken(firebaseUser, "/api/payment/admin/add-to-pool", {
+        educator_id: targetId,
+        plan_id: addPoolPlanId,
+        seats: addPoolSeats,
+        note: addPoolNote.trim() || null,
+      });
+      toast.success(`${addPoolSeats} seats added to pool`);
+      setAddPoolOpen(false);
+      setAddPoolPlanId("");
+      setAddPoolSeats(10);
+      setAddPoolNote("");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to add seats to pool");
+    } finally {
+      setAddPoolBusy(false);
     }
   };
 
@@ -913,9 +948,19 @@ export default function SeatManagement() {
                   <Button
                     variant="outline"
                     onClick={() => {
+                      setAddPoolPlanId("");
+                      setAddPoolSeats(10);
+                      setAddPoolNote("");
+                      setAddPoolOpen(true);
+                    }}
+                    className="w-full"
+                  >
+                    Add to Pool
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
                       setPlResult(null);
-                      setPlBranchId("");
-                      setPlCourseId("");
                       setPlPlanId("");
                       setPlSeats(10);
                       setPlAmountManual(false);
@@ -929,6 +974,30 @@ export default function SeatManagement() {
                 <p className="text-xs text-muted-foreground">
                   Cannot reduce below {usedSeats} active seats.
                 </p>
+
+                {pools.length > 0 && (
+                  <div className="border-t pt-3">
+                    <p className="mb-1.5 text-xs font-medium text-muted-foreground">Seat Pools</p>
+                    <div className="space-y-1">
+                      {pools.map((pool) => (
+                        <div
+                          key={pool.planId}
+                          className="flex items-center justify-between text-xs"
+                        >
+                          <span className="text-muted-foreground">
+                            {allPlans.find((p) => p.id === pool.planId)?.name || pool.planId}
+                          </span>
+                          <span>
+                            <span className="font-semibold text-primary">
+                              {pool.availableSeats}
+                            </span>
+                            <span className="text-muted-foreground">/{pool.totalSeats} avail</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -1379,6 +1448,70 @@ export default function SeatManagement() {
         </>
       )}
 
+      {/* Add to Pool dialog */}
+      <Dialog open={addPoolOpen} onOpenChange={setAddPoolOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Seats to Pool</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Grants seats into the educator's plan pool without requiring payment. Educator can
+              then allocate these to any batch.
+            </p>
+            <div>
+              <Label>Plan</Label>
+              <Select value={addPoolPlanId} onValueChange={setAddPoolPlanId}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select plan" />
+                </SelectTrigger>
+                <SelectContent>
+                  {allPlans.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Seats</Label>
+              <Input
+                type="number"
+                min={1}
+                value={addPoolSeats}
+                onChange={(e) => setAddPoolSeats(Math.max(1, Number(e.target.value)))}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label>Note (optional)</Label>
+              <Input
+                value={addPoolNote}
+                onChange={(e) => setAddPoolNote(e.target.value)}
+                placeholder="e.g. Demo allocation, 30-day pilot"
+                className="mt-1"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setAddPoolOpen(false)}
+                disabled={addPoolBusy}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={submitAddPool}
+                disabled={addPoolBusy || !addPoolPlanId || addPoolSeats < 1}
+              >
+                {addPoolBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Add to Pool
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Update seats dialog */}
       <Dialog open={updateOpen} onOpenChange={setUpdateOpen}>
         <DialogContent className="sm:max-w-lg">
@@ -1660,38 +1793,9 @@ export default function SeatManagement() {
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Branch</Label>
-                  <Select value={plBranchId} onValueChange={(v) => setPlBranchId(v)}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select branch" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {plBranches.map((b) => (
-                        <SelectItem key={b.id} value={b.id}>
-                          {b.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Course</Label>
-                  <Select value={plCourseId} onValueChange={setPlCourseId} disabled={!plBranchId}>
-                    <SelectTrigger className="mt-1">
-                      <SelectValue placeholder="Select course" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {plCourses.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+              <p className="text-sm text-muted-foreground">
+                Payment will provision into the educator's seat pool for the selected plan.
+              </p>
               <div>
                 <Label>Plan</Label>
                 <Select
@@ -1707,7 +1811,7 @@ export default function SeatManagement() {
                   <SelectContent>
                     {allPlans.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
-                        {p.name} — ₹{(p.pricePerSeat / 100).toFixed(0)}/seat
+                        {p.name} — ₹{p.pricePerSeat}/seat
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1725,7 +1829,7 @@ export default function SeatManagement() {
                   />
                 </div>
                 <div>
-                  <Label>Amount (paise)</Label>
+                  <Label>Amount (₹)</Label>
                   <Input
                     type="number"
                     min={0}
@@ -1737,10 +1841,8 @@ export default function SeatManagement() {
                     className="mt-1"
                     placeholder="Auto-calculated"
                   />
-                  {plAmount > 0 && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      ₹{(plAmount / 100).toFixed(0)}
-                    </p>
+                  {plAmount > 0 && !plAmountManual && (
+                    <p className="mt-1 text-xs text-muted-foreground">Auto-calculated</p>
                   )}
                 </div>
               </div>
@@ -1759,9 +1861,7 @@ export default function SeatManagement() {
                 </Button>
                 <Button
                   onClick={submitPaymentLink}
-                  disabled={
-                    plBusy || !plBranchId || !plCourseId || !plPlanId || !plSeats || !plAmount
-                  }
+                  disabled={plBusy || !plPlanId || !plSeats || !plAmount}
                 >
                   {plBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Create Link
                 </Button>
@@ -1856,7 +1956,9 @@ function PaymentLinksTab({ targetId }: { targetId: string }) {
                   <TableCell className="text-sm">
                     {l.createdAt ? new Date(l.createdAt.seconds * 1000).toLocaleDateString() : "-"}
                   </TableCell>
-                  <TableCell className="text-sm">{l.courseName || l.courseId || "-"}</TableCell>
+                  <TableCell className="text-sm">
+                    {l.planName || l.planId || l.courseName || "-"}
+                  </TableCell>
                   <TableCell className="text-right">{l.seats}</TableCell>
                   <TableCell className="text-right">
                     ₹{((l.amount || 0) / 100).toFixed(0)}

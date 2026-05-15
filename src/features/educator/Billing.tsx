@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Loader2, ShoppingCart, Tag, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
-import { collection, doc, getDocs, onSnapshot } from "firebase/firestore";
+import { Loader2, ShoppingCart, Tag, CheckCircle2, XCircle, RefreshCw, Layers } from "lucide-react";
+import { collection, getDocs, onSnapshot } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { toast } from "sonner";
@@ -11,27 +11,22 @@ import { Badge } from "@shared/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@shared/ui/table";
 import { Input } from "@shared/ui/input";
 import { Label } from "@shared/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { Separator } from "@shared/ui/separator";
 
 const API = import.meta.env.VITE_MONKEY_KING_API_URL;
 
 type Plan = { id: string; name: string; pricePerSeat: number; features: string[] };
-type Branch = { id: string; name: string };
-type Course = { id: string; branchId: string; name: string };
-type Batch = {
-  id: string;
-  branchId: string;
-  courseId: string;
-  name: string;
+type SeatPool = {
   planId: string;
-  seatLimit: number;
-  usedSeats: number;
+  planName: string;
+  totalSeats: number;
+  availableSeats: number;
+  allocatedSeats: number;
 };
 type PaymentLog = {
   id: number;
   cashfree_order_id: string;
-  batch_id: string;
+  batch_id: string | null;
   plan_id: string;
   seats_purchased: number;
   amount: number;
@@ -52,7 +47,7 @@ function fmtAmount(amount: number) {
 }
 
 export default function Billing() {
-  const { profile, firebaseUser, role, loading: authLoading } = useAuth();
+  const { profile, firebaseUser, loading: authLoading } = useAuth();
 
   async function apiFetch(path: string, options: RequestInit = {}) {
     const token = await firebaseUser?.getIdToken();
@@ -68,19 +63,15 @@ export default function Billing() {
     if (res.status === 204) return null;
     return res.json();
   }
+
   const educatorId = firebaseUser?.uid || "";
 
   const [plans, setPlans] = useState<Plan[]>([]);
-  const [branches, setBranches] = useState<Branch[]>([]);
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [batches, setBatches] = useState<Batch[]>([]);
+  const [pools, setPools] = useState<SeatPool[]>([]);
   const [paymentLogs, setPaymentLogs] = useState<PaymentLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
 
   // Purchase form
-  const [selectedBranchId, setSelectedBranchId] = useState("");
-  const [selectedCourseId, setSelectedCourseId] = useState("");
-  const [selectedBatchId, setSelectedBatchId] = useState("");
   const [selectedPlanId, setSelectedPlanId] = useState("");
   const [seatCount, setSeatCount] = useState("1");
   const [couponCode, setCouponCode] = useState("");
@@ -95,73 +86,28 @@ export default function Billing() {
   useEffect(() => {
     if (!educatorId) return;
 
-    // Load plans
     getDocs(collection(db, "plans")).then((snap) =>
       setPlans(
         snap.docs
           .filter((d) => d.data().isActive)
-          .map((d) => ({
-            id: d.id,
-            ...(d.data() as Omit<Plan, "id">),
-          }))
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<Plan, "id">) }))
       )
     );
 
-    // Load branches
-    onSnapshot(collection(db, "educators", educatorId, "branches"), (snap) =>
-      setBranches(snap.docs.map((d) => ({ id: d.id, name: d.data().name })))
+    const unsub = onSnapshot(collection(db, "educators", educatorId, "seatPools"), (snap) =>
+      setPools(
+        snap.docs.map((d) => ({
+          planId: d.id,
+          planName: d.data().planName || d.id,
+          totalSeats: d.data().totalSeats || 0,
+          availableSeats: d.data().availableSeats || 0,
+          allocatedSeats: d.data().allocatedSeats || 0,
+        }))
+      )
     );
+    return () => unsub();
   }, [educatorId]);
 
-  // Load courses when branch changes
-  useEffect(() => {
-    if (!educatorId || !selectedBranchId) {
-      setCourses([]);
-      setSelectedCourseId("");
-      return;
-    }
-    const unsub = onSnapshot(
-      collection(db, "educators", educatorId, "branches", selectedBranchId, "courses"),
-      (snap) =>
-        setCourses(
-          snap.docs.map((d) => ({ id: d.id, branchId: selectedBranchId, name: d.data().name }))
-        )
-    );
-    return () => unsub();
-  }, [educatorId, selectedBranchId]);
-
-  // Load batches when course changes
-  useEffect(() => {
-    if (!educatorId || !selectedBranchId || !selectedCourseId) {
-      setBatches([]);
-      setSelectedBatchId("");
-      return;
-    }
-    const unsub = onSnapshot(
-      collection(
-        db,
-        "educators",
-        educatorId,
-        "branches",
-        selectedBranchId,
-        "courses",
-        selectedCourseId,
-        "batches"
-      ),
-      (snap) =>
-        setBatches(
-          snap.docs.map((d) => ({
-            id: d.id,
-            branchId: selectedBranchId,
-            courseId: selectedCourseId,
-            ...(d.data() as Omit<Batch, "id" | "branchId" | "courseId">),
-          }))
-        )
-    );
-    return () => unsub();
-  }, [educatorId, selectedBranchId, selectedCourseId]);
-
-  // Load payment logs
   useEffect(() => {
     if (!educatorId) return;
     apiFetch("/api/payment/logs")
@@ -170,12 +116,10 @@ export default function Billing() {
       .finally(() => setLoadingLogs(false));
   }, [educatorId]);
 
-  // On mount: detect Cashfree redirect and stash order_id for verification
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("payment") === "success") {
       window.history.replaceState({}, "", "/educator/billing");
-      // Cashfree v3 appends order_id; fall back to sessionStorage
       const orderId = params.get("order_id") || sessionStorage.getItem("pendingOrderId");
       sessionStorage.removeItem("pendingOrderId");
       if (orderId) setPendingVerifyOrderId(orderId);
@@ -183,7 +127,6 @@ export default function Billing() {
     }
   }, []);
 
-  // Once auth is ready and we have a pending order, verify with backend (auto-retry up to 5x)
   useEffect(() => {
     if (!pendingVerifyOrderId || !educatorId) return;
     let cancelled = false;
@@ -196,7 +139,7 @@ export default function Billing() {
             method: "POST",
           });
           if (r?.status === "SUCCESS") {
-            toast.success("Payment successful! Seats have been allocated.");
+            toast.success("Payment successful! Seats added to your pool.");
             const logs = await apiFetch("/api/payment/logs").catch(() => null);
             if (logs) setPaymentLogs(logs);
             return;
@@ -212,7 +155,7 @@ export default function Billing() {
         }
         if (i < retries - 1) await new Promise((res) => setTimeout(res, delayMs));
       }
-      toast.info("Payment received. Seats will be allocated shortly — refresh in a minute.");
+      toast.info("Payment received. Seats will be added to your pool shortly.");
       apiFetch("/api/payment/logs")
         .then((data) => data && setPaymentLogs(data))
         .catch(() => {});
@@ -225,15 +168,6 @@ export default function Billing() {
       cancelled = true;
     };
   }, [pendingVerifyOrderId, educatorId]);
-
-  // Auto-select plan from batch
-  useEffect(() => {
-    const batch = batches.find((b) => b.id === selectedBatchId);
-    if (batch?.planId) setSelectedPlanId(batch.planId);
-  }, [selectedBatchId, batches]);
-
-  const selectedBatch = batches.find((b) => b.id === selectedBatchId);
-  const batchLockedPlanId = selectedBatch?.planId || null;
 
   const selectedPlan = plans.find((p) => p.id === selectedPlanId);
   const seats = Math.max(1, parseInt(seatCount) || 1);
@@ -270,8 +204,8 @@ export default function Billing() {
   }
 
   async function handlePay() {
-    if (!selectedBranchId || !selectedCourseId || !selectedBatchId || !selectedPlanId) {
-      toast.error("Select branch, course, batch and plan");
+    if (!selectedPlanId) {
+      toast.error("Select a plan first");
       return;
     }
     if (seats < 1) {
@@ -282,9 +216,6 @@ export default function Billing() {
     setPaying(true);
     try {
       const body = {
-        branch_id: selectedBranchId,
-        course_id: selectedCourseId,
-        batch_id: selectedBatchId,
         plan_id: selectedPlanId,
         seats,
         coupon_code: couponValid ? couponCode.trim() : null,
@@ -299,7 +230,6 @@ export default function Billing() {
         body: JSON.stringify(body),
       });
 
-      // Load Cashfree JS SDK and open checkout
       const cashfreeEnv = import.meta.env.VITE_CASHFREE_ENV || "sandbox";
       const cashfree = (window as any).Cashfree?.({ mode: cashfreeEnv });
       if (!cashfree) {
@@ -307,13 +237,8 @@ export default function Billing() {
         return;
       }
 
-      // Stash order_id so we can verify status after redirect
       sessionStorage.setItem("pendingOrderId", result.order_id);
-
-      cashfree.checkout({
-        paymentSessionId: result.payment_session_id,
-        redirectTarget: "_self",
-      });
+      cashfree.checkout({ paymentSessionId: result.payment_session_id, redirectTarget: "_self" });
     } catch (e: any) {
       toast.error(e.message || "Payment initiation failed");
     } finally {
@@ -325,7 +250,7 @@ export default function Billing() {
     setReverifyingId(orderId);
     try {
       const r = await apiFetch(`/api/payment/verify/${orderId}`, { method: "POST" });
-      if (r?.status === "SUCCESS") toast.success("Seats allocated successfully!");
+      if (r?.status === "SUCCESS") toast.success("Seats added to pool successfully!");
       else if (r?.status === "FAILED") toast.error("Payment failed.");
       else toast.info("Payment still pending — try again in a moment.");
       const logs = await apiFetch("/api/payment/logs").catch(() => null);
@@ -348,264 +273,179 @@ export default function Billing() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Billing & Plan</h1>
-        <p className="text-sm text-muted-foreground">Purchase seats for your batches</p>
+        <p className="text-sm text-muted-foreground">
+          Purchase seats into your pool, then assign them to batches from Seat Allocation.
+        </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-5">
-        {/* Purchase Form */}
-        <Card className="lg:col-span-3">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ShoppingCart className="h-5 w-5" />
-              Purchase Seats
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Branch */}
-            <div className="space-y-1">
-              <Label>Branch</Label>
-              <Select
-                value={selectedBranchId}
-                onValueChange={(v) => {
-                  setSelectedBranchId(v);
-                  setSelectedCourseId("");
-                  setSelectedBatchId("");
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Course */}
-            <div className="space-y-1">
-              <Label>Course</Label>
-              <Select
-                value={selectedCourseId}
-                onValueChange={(v) => {
-                  setSelectedCourseId(v);
-                  setSelectedBatchId("");
-                }}
-                disabled={!selectedBranchId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select course" />
-                </SelectTrigger>
-                <SelectContent>
-                  {courses.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Batch */}
-            <div className="space-y-1">
-              <Label>Batch</Label>
-              <Select
-                value={selectedBatchId}
-                onValueChange={setSelectedBatchId}
-                disabled={!selectedCourseId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select batch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {batches.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.name} — {b.usedSeats}/{b.seatLimit} seats used
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Plan */}
-            <div className="space-y-2">
-              <Label>Plan</Label>
-              {batchLockedPlanId && (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  This batch is already on{" "}
-                  <b>{plans.find((p) => p.id === batchLockedPlanId)?.name || batchLockedPlanId}</b>.
-                  You can only extend with the same plan.
-                </p>
-              )}
-              <div className="grid gap-2">
-                {plans.map((p) => {
-                  const locked = !!batchLockedPlanId && p.id !== batchLockedPlanId;
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => !locked && setSelectedPlanId(p.id)}
-                      disabled={locked}
-                      className={`w-full rounded-lg border p-3 text-left transition-colors ${locked ? "cursor-not-allowed opacity-40" : "hover:border-primary"} ${selectedPlanId === p.id ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border"}`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">{p.name}</span>
-                        <span className="text-sm font-semibold">
-                          {fmtAmount(p.pricePerSeat)}
-                          <span className="text-xs font-normal text-muted-foreground">/seat</span>
-                        </span>
-                      </div>
-                      {p.features && p.features.length > 0 && (
-                        <ul className="mt-1.5 space-y-0.5">
-                          {p.features.map((f, i) => (
-                            <li
-                              key={i}
-                              className="flex items-center gap-1 text-xs text-muted-foreground"
-                            >
-                              <CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />
-                              {f}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </button>
-                  );
-                })}
-                {plans.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No plans available.</p>
-                )}
-              </div>
-            </div>
-
-            {/* Seat count */}
-            <div className="space-y-1">
-              <Label>Number of Seats</Label>
-              <Input
-                type="number"
-                min={1}
-                value={seatCount}
-                onChange={(e) => {
-                  setSeatCount(e.target.value);
-                  resetCoupon();
-                }}
-              />
-            </div>
-
-            {/* Coupon */}
-            <div className="space-y-1">
-              <Label>Coupon Code (optional)</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={couponCode}
-                  onChange={(e) => {
-                    setCouponCode(e.target.value.toUpperCase());
-                    if (couponValid !== null) resetCoupon();
-                  }}
-                  placeholder="ENTER CODE"
-                  className="font-mono"
-                />
-                <Button
-                  variant="outline"
-                  onClick={handleValidateCoupon}
-                  disabled={!couponCode.trim() || !baseAmount || validatingCoupon}
-                >
-                  {validatingCoupon ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Tag className="h-4 w-4" />
-                  )}
-                  Apply
-                </Button>
-              </div>
-              {couponMsg && (
-                <p
-                  className={`flex items-center gap-1 text-sm ${couponValid ? "text-green-600" : "text-destructive"}`}
-                >
-                  {couponValid ? (
-                    <CheckCircle2 className="h-4 w-4" />
-                  ) : (
-                    <XCircle className="h-4 w-4" />
-                  )}
-                  {couponMsg}
-                </p>
-              )}
-            </div>
-
-            <Separator />
-
-            {/* Price breakdown */}
-            {selectedPlan && (
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">
-                    {seats} × {selectedPlan.name} ({fmtAmount(selectedPlan.pricePerSeat)}/seat)
+      {/* Pool Status */}
+      {pools.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {pools.map((pool) => (
+            <Card key={pool.planId}>
+              <CardContent className="pt-4">
+                <div className="mb-2 flex items-center gap-2">
+                  <Layers className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">
+                    {plans.find((p) => p.id === pool.planId)?.name || pool.planName} Pool
                   </span>
-                  <span>{fmtAmount(baseAmount)}</span>
                 </div>
-                {couponDiscount > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span>Coupon Discount</span>
-                    <span>− {fmtAmount(couponDiscount)}</span>
+                <div className="grid grid-cols-3 gap-1 text-center">
+                  <div>
+                    <p className="text-xl font-bold text-primary">{pool.availableSeats}</p>
+                    <p className="text-xs text-muted-foreground">Available</p>
                   </div>
+                  <div>
+                    <p className="text-xl font-bold">{pool.allocatedSeats}</p>
+                    <p className="text-xs text-muted-foreground">Allocated</p>
+                  </div>
+                  <div>
+                    <p className="text-xl font-bold text-muted-foreground">{pool.totalSeats}</p>
+                    <p className="text-xs text-muted-foreground">Total</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Purchase Form */}
+      <Card className="max-w-xl">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ShoppingCart className="h-5 w-5" />
+            Purchase Seats
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Plan selector */}
+          <div className="space-y-2">
+            <Label>Plan</Label>
+            <div className="grid gap-2">
+              {plans.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setSelectedPlanId(p.id)}
+                  className={`w-full rounded-lg border p-3 text-left transition-colors hover:border-primary ${selectedPlanId === p.id ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border"}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">{p.name}</span>
+                    <span className="text-sm font-semibold">
+                      {fmtAmount(p.pricePerSeat)}
+                      <span className="text-xs font-normal text-muted-foreground">/seat</span>
+                    </span>
+                  </div>
+                  {p.features && p.features.length > 0 && (
+                    <ul className="mt-1.5 space-y-0.5">
+                      {p.features.map((f, i) => (
+                        <li
+                          key={i}
+                          className="flex items-center gap-1 text-xs text-muted-foreground"
+                        >
+                          <CheckCircle2 className="h-3 w-3 shrink-0 text-green-500" />
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </button>
+              ))}
+              {plans.length === 0 && (
+                <p className="text-sm text-muted-foreground">No plans available.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Seat count */}
+          <div className="space-y-1">
+            <Label>Number of Seats</Label>
+            <Input
+              type="number"
+              min={1}
+              value={seatCount}
+              onChange={(e) => {
+                setSeatCount(e.target.value);
+                resetCoupon();
+              }}
+            />
+          </div>
+
+          {/* Coupon */}
+          <div className="space-y-1">
+            <Label>Coupon Code (optional)</Label>
+            <div className="flex gap-2">
+              <Input
+                value={couponCode}
+                onChange={(e) => {
+                  setCouponCode(e.target.value.toUpperCase());
+                  if (couponValid !== null) resetCoupon();
+                }}
+                placeholder="ENTER CODE"
+                className="font-mono"
+              />
+              <Button
+                variant="outline"
+                onClick={handleValidateCoupon}
+                disabled={!couponCode.trim() || !baseAmount || validatingCoupon}
+              >
+                {validatingCoupon ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Tag className="h-4 w-4" />
                 )}
-                <div className="flex justify-between border-t pt-1 text-base font-bold">
-                  <span>Total Payable</span>
-                  <span>{fmtAmount(finalAmount)}</span>
-                </div>
-              </div>
-            )}
-
-            <Button
-              className="w-full"
-              onClick={handlePay}
-              disabled={paying || !selectedBatchId || !selectedPlanId || seats < 1}
-            >
-              {paying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Pay {finalAmount > 0 ? fmtAmount(finalAmount) : ""}
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Batch Seat Summary */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Batch Seat Overview</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {batches.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Select a branch and course to see batch seats.
+                Apply
+              </Button>
+            </div>
+            {couponMsg && (
+              <p
+                className={`flex items-center gap-1 text-sm ${couponValid ? "text-green-600" : "text-destructive"}`}
+              >
+                {couponValid ? (
+                  <CheckCircle2 className="h-4 w-4" />
+                ) : (
+                  <XCircle className="h-4 w-4" />
+                )}
+                {couponMsg}
               </p>
-            ) : (
-              <div className="space-y-3">
-                {batches.map((b) => (
-                  <div
-                    key={b.id}
-                    className="flex items-center justify-between border-b pb-2 last:border-0"
-                  >
-                    <div>
-                      <p className="text-sm font-medium">{b.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {plans.find((p) => p.id === b.planId)?.name}
-                      </p>
-                    </div>
-                    <Badge
-                      variant={
-                        b.usedSeats >= b.seatLimit && b.seatLimit > 0 ? "destructive" : "secondary"
-                      }
-                    >
-                      {b.usedSeats}/{b.seatLimit} seats
-                    </Badge>
-                  </div>
-                ))}
-              </div>
             )}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+
+          <Separator />
+
+          {/* Price breakdown */}
+          {selectedPlan && (
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">
+                  {seats} × {selectedPlan.name} ({fmtAmount(selectedPlan.pricePerSeat)}/seat)
+                </span>
+                <span>{fmtAmount(baseAmount)}</span>
+              </div>
+              {couponDiscount > 0 && (
+                <div className="flex justify-between text-green-600">
+                  <span>Coupon Discount</span>
+                  <span>− {fmtAmount(couponDiscount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between border-t pt-1 text-base font-bold">
+                <span>Total Payable</span>
+                <span>{fmtAmount(finalAmount)}</span>
+              </div>
+            </div>
+          )}
+
+          <Button
+            className="w-full"
+            onClick={handlePay}
+            disabled={paying || !selectedPlanId || seats < 1}
+          >
+            {paying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Pay {finalAmount > 0 ? fmtAmount(finalAmount) : ""}
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Payment History */}
       <Card>

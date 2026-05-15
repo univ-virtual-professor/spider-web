@@ -21,6 +21,7 @@ import {
   BarChart3,
   UserPlus,
   ClipboardList,
+  Layers,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
@@ -129,7 +130,12 @@ export default function EducatorLayout() {
         ],
       },
       { icon: BookOpen, label: "Content", href: "/educator/content" },
-      { icon: CreditCard, label: "Billing & Plan", href: "/educator/billing" },
+      {
+        icon: CreditCard,
+        label: "Billing & Plan",
+        href: "/educator/billing",
+        children: [{ icon: Layers, label: "Seat Allocation", href: "/educator/seat-allocation" }],
+      },
     ],
     []
   );

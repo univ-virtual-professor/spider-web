@@ -18,6 +18,7 @@ import Settings from "@features/educator/Settings";
 import { ManageQuestionsPage, TestSeries } from "@features/educator/test-series";
 import WebsiteSettings from "@features/educator/WebsiteSettings";
 import QuestionPaperRequests from "@features/educator/QuestionPaperRequests";
+import SeatAllocation from "@features/educator/SeatAllocation";
 
 export function getEducatorRoutes() {
   return (
@@ -40,6 +41,7 @@ export function getEducatorRoutes() {
       <Route path="messages" element={<Messages />} />
       <Route path="website-settings" element={<WebsiteSettings />} />
       <Route path="billing" element={<Billing />} />
+      <Route path="seat-allocation" element={<SeatAllocation />} />
       <Route path="settings" element={<Settings />} />
       <Route path="divisions" element={<Divisions />} />
       <Route path="content" element={<EducatorContent />} />
