@@ -1699,7 +1699,7 @@ export default function StudentCBTAttempt() {
             /[<>&"]/g,
             (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c] ?? c
           );
-          const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="rgba(0,0,0,0.12)" transform="rotate(-30,160,90)" letter-spacing="3">${name}</text></svg>`;
+          const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="#000000" fill-opacity="0.45" transform="rotate(-30,160,90)" letter-spacing="3">${name}</text></svg>`;
           return (
             <div
               aria-hidden="true"
