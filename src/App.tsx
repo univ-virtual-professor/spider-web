@@ -5,7 +5,6 @@ import { Toaster } from "@shared/ui/toaster";
 import { Toaster as Sonner } from "@shared/ui/sonner";
 import { TooltipProvider } from "@shared/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { BrowserRouter } from "react-router-dom";
 
 import { AuthProvider } from "@app/providers/AuthProvider";

@@ -28,7 +28,6 @@ import { toast } from "@shared/hooks/use-toast";
 import { stringToColor } from "@shared/lib/utils";
 
 import {
-  onAuthStateChanged,
   signOut,
   updateProfile,
   EmailAuthProvider,

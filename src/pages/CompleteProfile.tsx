@@ -4,7 +4,7 @@ import { Home, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { auth, db } from "@shared/lib/firebase";
-import { GoogleAuthProvider, onAuthStateChanged, updateProfile } from "firebase/auth";
+import { onAuthStateChanged, updateProfile } from "firebase/auth";
 import { arrayUnion, doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 
 import { Button } from "@shared/ui/button";

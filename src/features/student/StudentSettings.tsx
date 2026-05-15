@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { User, Mail, Phone, Shield, Bell, Moon, Sun, Loader2 } from "lucide-react";
+import { User, Mail, Shield, Bell, Moon, Sun, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Button } from "@shared/ui/button";
 import { Input } from "@shared/ui/input";
@@ -13,7 +13,7 @@ import { useAuth } from "@app/providers/AuthProvider";
 import { useTenant } from "@app/providers/TenantProvider";
 import { db } from "@shared/lib/firebase";
 
-import { doc, onSnapshot, setDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc, serverTimestamp } from "firebase/firestore";
 import { getAuth, sendPasswordResetEmail, updateProfile } from "firebase/auth";
 
 type UserDoc = {

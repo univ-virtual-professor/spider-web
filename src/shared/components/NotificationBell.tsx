@@ -12,9 +12,6 @@ import {
   writeBatch,
   doc,
   updateDoc,
-  getDocs,
-  where,
-  deleteDoc,
 } from "firebase/firestore";
 import { cn } from "@shared/lib/utils";
 import { formatDistanceToNowStrict } from "date-fns";

@@ -10,7 +10,7 @@ import {
 import { Label } from "@shared/ui/label";
 import { Input } from "@shared/ui/input";
 import { Button } from "@shared/ui/button";
-import { Loader2, Image as ImageIcon, FolderPlus } from "lucide-react";
+import { Loader2, FolderPlus } from "lucide-react";
 
 const NewFolderButton = ({
   createFolderOpen,

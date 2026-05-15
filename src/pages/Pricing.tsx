@@ -1,4 +1,3 @@
-import { useState } from "react";
 import Layout from "@widgets/layout/Layout";
 import SEO from "@shared/components/SEO";
 import { motion } from "framer-motion";

@@ -6,7 +6,7 @@ import { db } from "@shared/lib/firebase";
 import { Card, CardContent } from "@shared/ui/card";
 import { Badge } from "@shared/ui/badge";
 import { Button } from "@shared/ui/button";
-import { Loader2, FileText, ArrowRight, Search, BookOpen, Clock } from "lucide-react";
+import { Loader2, FileText, ArrowRight, Search, Clock } from "lucide-react";
 import { Input } from "@shared/ui/input";
 import Theme1CTA from "./Theme1CTA";
 import Theme1FAQ from "./Theme1FAQ";

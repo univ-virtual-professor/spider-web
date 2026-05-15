@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertTriangle, Save, LayoutGrid, Upload } from "lucide-react";
+import { AlertTriangle, LayoutGrid, Upload } from "lucide-react";
 import { toast } from "sonner";
 
-import { normalizeQuestionType, isSubjectiveType } from "@shared/lib/questionTypes";
+import { normalizeQuestionType } from "@shared/lib/questionTypes";
 import { uploadToImageKit } from "@shared/lib/imagekitUpload";
 import { TimerChip } from "@features/student/components/TimerChip";
 import { cn } from "@shared/lib/utils";
@@ -1243,18 +1243,38 @@ export default function StudentCBTAttempt() {
     };
   }, [isStarted, exitCount, submitDialogOpen, violationModalOpen, instructionsOpen]);
 
-  const handleViolation = useCallback(() => {
-    const nextCount = proctorStateRef.current.exitCount + 1;
-    setExitCount(nextCount);
-    queueAttemptUpdate({ exitCount: nextCount });
+  const handleViolation = useCallback(
+    async (violationType = "Proctoring Violation") => {
+      const nextCount = proctorStateRef.current.exitCount + 1;
+      setExitCount(nextCount);
+      queueAttemptUpdate({ exitCount: nextCount });
 
-    if (nextCount > 3) {
-      toast.error("Maximum warnings exceeded. Submitting test automatically.");
-      handleSubmit(true);
-    } else {
-      setViolationModalOpen(true);
-    }
-  }, [queueAttemptUpdate, handleSubmit]);
+      // Log violation to educator's cheat_alerts collection
+      if (educatorId && firebaseUser && testMeta) {
+        try {
+          await addDoc(collection(db, "educators", educatorId, "cheat_alerts"), {
+            studentId: firebaseUser.uid,
+            studentName: firebaseUser.displayName || profile?.fullName || "Unknown Student",
+            testId: testMeta.id,
+            testTitle: testMeta.title,
+            violationType,
+            tenantSlug: tenantSlug || "main",
+            timestamp: serverTimestamp(),
+          });
+        } catch (e) {
+          console.error("Failed to log cheat alert", e);
+        }
+      }
+
+      if (nextCount > 3) {
+        toast.error("Maximum warnings exceeded. Submitting test automatically.");
+        handleSubmit(true);
+      } else {
+        setViolationModalOpen(true);
+      }
+    },
+    [queueAttemptUpdate, handleSubmit, educatorId, firebaseUser, profile, testMeta, tenantSlug]
+  );
 
   // Proctoring: Tab switch & Full-screen exit logic
   useEffect(() => {
@@ -1263,7 +1283,7 @@ export default function StudentCBTAttempt() {
     const handleVisibilityChange = () => {
       if (ignoreProctoringRef.current) return;
       if (document.visibilityState === "hidden") {
-        handleViolation();
+        handleViolation("Switched Tab / Window Hidden");
       }
     };
 
@@ -1276,7 +1296,7 @@ export default function StudentCBTAttempt() {
         instructionsOpen: instOpen,
       } = proctorStateRef.current;
       if (!document.fullscreenElement && started && !subOpen && !violOpen && !instOpen) {
-        handleViolation();
+        handleViolation("Exited Fullscreen");
       }
     };
 

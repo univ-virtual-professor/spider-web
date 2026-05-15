@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -13,12 +13,9 @@ import {
   Loader2,
   X,
   Copy,
-  Image as ImageIcon,
   CheckCircle2,
   FileUp,
-  XCircle,
   Folder,
-  FolderPlus,
   ChevronRight,
   ChevronDown,
   MoreVertical,
@@ -31,20 +28,9 @@ import { Input } from "@shared/ui/input";
 import { Button } from "@shared/ui/button";
 import { Badge } from "@shared/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@shared/ui/dialog";
+import { Dialog } from "@shared/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@shared/ui/tabs";
-import { Label } from "@shared/ui/label";
-import { Textarea } from "@shared/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
-import { Switch } from "@shared/ui/switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,18 +41,7 @@ import { toast } from "sonner";
 import { cn } from "@shared/lib/utils";
 
 import EmptyState from "@features/educator/components/EmptyState";
-import AiQuestionImportOverlay from "@features/educator/components/AiQuestionImportOverlay";
-import InlineStatusTracker from "@features/educator/components/InlineStatusTracker";
-import ImageTextarea from "@features/educator/components/ImageTextarea";
-import {
-  buildImportedQuestionPayload,
-  formatNegativeMarksDisplay,
-  importQuestionsFromPdf,
-  type AiImportPreviewItem,
-  type AiImportSummary,
-  type PageProgressUpdate,
-} from "@shared/lib/aiQuestionImport";
-import { aiFeatureFlags, getAiFeatureDisabledMessage } from "@shared/lib/aiFeatureFlags";
+
 import { uploadToImageKit } from "@shared/lib/imagekitUpload";
 import { buildAutoFillSelection } from "@shared/lib/autoFillEngine";
 
@@ -82,7 +57,6 @@ import {
   Timestamp,
   addDoc,
   collection,
-  deleteDoc,
   doc,
   getDocs,
   getDoc,

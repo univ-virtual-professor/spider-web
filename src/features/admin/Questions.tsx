@@ -5,8 +5,6 @@ import { motion } from "framer-motion";
 import {
   ArrowLeft,
   BookOpen,
-  ChevronDown,
-  ChevronRight,
   Plus,
   Search,
   Trash2,

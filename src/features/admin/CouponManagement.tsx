@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { useAuth } from "@app/providers/AuthProvider";
-import { auth } from "@shared/lib/firebase";
 import { toast } from "sonner";
 import { Button } from "@shared/ui/button";
 import { Input } from "@shared/ui/input";

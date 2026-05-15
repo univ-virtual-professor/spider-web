@@ -1,7 +1,6 @@
 import { motion } from "framer-motion";
-import { ArrowRight, Play, Users, GraduationCap, BookOpen, Search } from "lucide-react";
+import { ArrowRight, Users, GraduationCap, Search } from "lucide-react";
 import { Button } from "@shared/ui/button";
-import { Link } from "react-router-dom";
 
 const stats = [
   { value: "25 Lakh+", label: "Students", bgColor: "bg-pastel-mint" },

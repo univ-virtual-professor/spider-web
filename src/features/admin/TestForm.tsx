@@ -58,8 +58,6 @@ import {
   query,
   orderBy,
   deleteDoc,
-  runTransaction,
-  increment,
 } from "firebase/firestore";
 
 import { TagInput } from "@shared/ui/tag-input";

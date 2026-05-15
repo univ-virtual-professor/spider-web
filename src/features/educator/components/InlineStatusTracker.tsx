@@ -1,4 +1,4 @@
-import { Check, Loader2 } from "lucide-react";
+import { Check } from "lucide-react";
 import type { PageProgressUpdate } from "@shared/lib/aiQuestionImport";
 import { useEffect, useState } from "react";
 
