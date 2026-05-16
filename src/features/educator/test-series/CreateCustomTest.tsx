@@ -278,13 +278,14 @@ const CreateCustomTest = ({
       level: getDifficultyLabel(averagedDifficultyLevel),
       difficultyLevel: averagedDifficultyLevel,
       durationMinutes: Number(formDuration) || 60,
-      sections: formSections.map((s) => {
+      sections: formSections.map((s, index) => {
         const totalQ = Number(s.questionsCount) || 0;
 
         const attemptLimit =
           s.attemptlimit == null ? totalQ : Math.min(Number(s.attemptlimit), totalQ);
 
         return {
+          id: s.id || `sec_${index + 1}`,
           name: s.name?.trim() || "Section",
           questionsCount: totalQ,
           attemptlimit: attemptLimit,

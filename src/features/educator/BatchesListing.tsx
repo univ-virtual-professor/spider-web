@@ -36,7 +36,9 @@ import {
   ArrowRight,
   ArrowLeftRight,
   PlusCircle,
+  CalendarDays,
 } from "lucide-react";
+import BatchSchedulePanel, { type PanelBatch } from "./components/BatchSchedulePanel";
 
 const API = import.meta.env.VITE_MONKEY_KING_API_URL;
 
@@ -105,6 +107,12 @@ export default function BatchesListing() {
   const [seatsCount, setSeatsCount] = useState("1");
   const [seatsBusy, setSeatsBusy] = useState(false);
 
+  // Schedule panel
+  const [scheduleBatch, setScheduleBatch] = useState<PanelBatch | null>(null);
+
+  // Per-batch test counts
+  const [batchLiveCounts, setBatchLiveCounts] = useState<Record<string, number>>({});
+
   // Invite
   const [inviteBatch, setInviteBatch] = useState<Batch | null>(null);
   const [inviteLink, setInviteLink] = useState("");
@@ -159,10 +167,28 @@ export default function BatchesListing() {
       }
     );
 
+    const unsubTests = onSnapshot(collection(db, "educators", educatorId, "my_tests"), (snap) => {
+      const live: Record<string, number> = {};
+      const now = Date.now();
+      snap.docs.forEach((d) => {
+        const data = d.data() as any;
+        const batches: string[] = Array.isArray(data.targetBatches) ? data.targetBatches : [];
+        const start = data.startTime?.toMillis?.() || 0;
+        const end = data.endTime?.toMillis?.() || 0;
+        if (start > 0 && start <= now && end >= now) {
+          batches.forEach((bid) => {
+            live[bid] = (live[bid] || 0) + 1;
+          });
+        }
+      });
+      setBatchLiveCounts(live);
+    });
+
     return () => {
       unsubBranches();
       unsubPools();
       unsubStudents();
+      unsubTests();
     };
   }, [educatorId]);
 
@@ -703,61 +729,79 @@ export default function BatchesListing() {
                           </p>
                         )}
 
-                        <div className="flex gap-2">
-                          <Button size="sm" className="flex-1" onClick={() => openInvite(batch)}>
-                            <UserPlus className="mr-1.5 h-3.5 w-3.5" />
-                            Invite
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            title="View students"
-                            onClick={() =>
-                              navigate(
-                                `/educator/students?branch=${branch.name}&batch=${batch.name}`
-                              )
-                            }
-                          >
-                            <Users className="mr-1 h-3.5 w-3.5" />
-                            {count}
-                          </Button>
-                          {limit > 0 && count < limit && (
+                        <div className="space-y-2">
+                          <div className="flex gap-2">
+                            <Button size="sm" className="flex-1" onClick={() => openInvite(batch)}>
+                              <UserPlus className="mr-1.5 h-3.5 w-3.5" />
+                              Invite
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="flex-1"
+                              onClick={() => setScheduleBatch(batch)}
+                            >
+                              <CalendarDays className="mr-1 h-3.5 w-3.5" />
+                              Schedule
+                              {batchLiveCounts[batch.id] > 0 && (
+                                <span className="ml-1.5 rounded-full bg-green-500/15 px-1.5 py-0.5 text-[10px] font-medium text-green-600">
+                                  {batchLiveCounts[batch.id]} live
+                                </span>
+                              )}
+                            </Button>
+                          </div>
+                          <div className="flex gap-1">
                             <Button
                               size="sm"
                               variant="ghost"
-                              title={`Return ${limit - count} unused seat${limit - count !== 1 ? "s" : ""} to pool`}
-                              onClick={() => openSeatsDialog(batch, "return")}
+                              title="View students"
+                              onClick={() =>
+                                navigate(
+                                  `/educator/students?branch=${branch.name}&batch=${batch.name}`
+                                )
+                              }
                             >
-                              <ArrowLeftRight className="h-3.5 w-3.5" />
+                              <Users className="mr-1 h-3.5 w-3.5" />
+                              {count}
                             </Button>
-                          )}
-                          {totalAvailableSeats > 0 && (
+                            {limit > 0 && count < limit && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                title={`Return ${limit - count} unused seat${limit - count !== 1 ? "s" : ""} to pool`}
+                                onClick={() => openSeatsDialog(batch, "return")}
+                              >
+                                <ArrowLeftRight className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            {totalAvailableSeats > 0 && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                title={`Add seats from pool (${totalAvailableSeats} available)`}
+                                onClick={() => openSeatsDialog(batch, "add")}
+                              >
+                                <PlusCircle className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
                             <Button
                               size="sm"
                               variant="ghost"
-                              title={`Add seats from pool (${totalAvailableSeats} available)`}
-                              onClick={() => openSeatsDialog(batch, "add")}
+                              title="Edit"
+                              onClick={() => openEdit(batch)}
                             >
-                              <PlusCircle className="h-3.5 w-3.5" />
+                              <Pencil className="h-3.5 w-3.5" />
                             </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            title="Edit"
-                            onClick={() => openEdit(batch)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            title="Delete"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => deleteBatch(batch)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              title="Delete"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => deleteBatch(batch)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -1085,6 +1129,14 @@ export default function BatchesListing() {
             })()}
         </DialogContent>
       </Dialog>
+
+      {/* Batch Schedule Panel */}
+      <BatchSchedulePanel
+        batch={scheduleBatch}
+        educatorId={educatorId}
+        courses={courses}
+        onClose={() => setScheduleBatch(null)}
+      />
 
       {/* Invite Dialog */}
       <Dialog open={!!inviteBatch} onOpenChange={(o) => !o && setInviteBatch(null)}>

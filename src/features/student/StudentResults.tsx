@@ -5,13 +5,9 @@ import { ArrowLeft, Trophy, Target, Clock, TrendingUp, Eye, BrainCircuit } from 
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Button } from "@shared/ui/button";
 import { Progress } from "@shared/ui/progress";
-import { AIReviewPanel } from "@features/student/components/AIReviewPanel";
-
 import { useAuth } from "@app/providers/AuthProvider";
 import { db } from "@shared/lib/firebase";
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
-import { useAIStream } from "@shared/hooks/useAIStream";
-import { aiFeatureFlags, getAiFeatureDisabledMessage } from "@shared/lib/aiFeatureFlags";
 
 type AttemptResponse = {
   answer: string | null;
@@ -47,9 +43,6 @@ type AttemptDoc = {
   accuracy?: number; // may be 0..1 or 0..100
 
   responses?: Record<string, AttemptResponse>;
-
-  aiReviewStatus?: "queued" | "in-progress" | "completed" | "failed";
-  aiReview?: any;
 
   rank?: number;
   totalParticipants?: number;
@@ -210,17 +203,12 @@ export default function StudentResults() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // AI Analysis with streaming
-  const { progress: aiProgress, error: aiError, cancel: cancelAI } = useAIStream();
-  const isAiPerformanceAnalysisEnabled = aiFeatureFlags.performanceAnalysis;
-
   const [attempt, setAttempt] = useState<AttemptDoc | null>(null);
   const [sectionScores, setSectionScores] = useState<SectionScore[]>([]);
   const [computedScore, setComputedScore] = useState<number | null>(null);
   const [computedMaxScore, setComputedMaxScore] = useState<number | null>(null);
   const [computedAccuracyPct, setComputedAccuracyPct] = useState<number | null>(null);
 
-  // Store questions for AI analysis and subjective display
   const [questionsData, setQuestionsData] = useState<{ id: string; data: QuestionDoc }[]>([]);
   const [sectionNameMap, setSectionNameMap] = useState<Record<string, string>>({});
 
@@ -232,92 +220,6 @@ export default function StudentResults() {
     const top = Math.round((rank / totalParticipants) * 100);
     return `Top ${top}%`;
   }, [rank, totalParticipants]);
-
-  const { request: requestAIAnalysis } = useAIStream();
-
-  async function triggerAIAnalysis(
-    questions: { id: string; data: QuestionDoc }[],
-    responses: Record<string, AttemptResponse>,
-    testTitle: string,
-    subject: string,
-    score: number,
-    maxScore: number,
-    accuracy: number
-  ) {
-    if (!isAiPerformanceAnalysisEnabled) return;
-    if (!attemptId) return;
-
-    // Set status to in-progress
-    setAttempt((prev) =>
-      prev
-        ? {
-            ...prev,
-            aiReviewStatus: "in-progress",
-          }
-        : null
-    );
-
-    try {
-      // Prepare the data for the API
-      const userResponses = questions.map((q) => {
-        const resp = responses[q.id];
-        const userAnswer = resp?.answer ?? null;
-        const isCorrect = userAnswer !== null && userAnswer !== undefined;
-        return {
-          questionId: q.id,
-          userAnswer: userAnswer ? String(userAnswer) : null,
-          isCorrect,
-          marks: safeNumber((q.data as any).marks ?? q.data.positiveMarks, 5),
-        };
-      });
-
-      const analysisRequest = {
-        questions: questions.map((q) => ({
-          id: q.id,
-          text: q.data.text || "",
-          type: q.data.type || "mcq",
-          options: q.data.options,
-          correctOptionIndex: q.data.correctOptionIndex,
-          correctAnswer: q.data.correctAnswer,
-          explanation: q.data.explanation,
-          section: q.data.sectionId || "General",
-          marks: safeNumber((q.data as any).marks ?? q.data.positiveMarks, 5),
-        })),
-        responses: userResponses,
-        testTitle,
-        subject,
-        totalScore: score,
-        maxScore,
-        accuracy,
-      };
-
-      const analysis = await requestAIAnalysis(
-        `${import.meta.env.VITE_MONKEY_KING_API_URL}/api/ai/analyze-performance`,
-        analysisRequest
-      );
-
-      // Update attempt with the analysis
-      setAttempt((prev) =>
-        prev
-          ? {
-              ...prev,
-              aiReviewStatus: "completed",
-              aiReview: analysis,
-            }
-          : null
-      );
-    } catch (err) {
-      console.error("Error getting AI analysis:", err);
-      setAttempt((prev) =>
-        prev
-          ? {
-              ...prev,
-              aiReviewStatus: "failed",
-            }
-          : null
-      );
-    }
-  }
 
   useEffect(() => {
     let mounted = true;
@@ -442,23 +344,6 @@ export default function StudentResults() {
         const storedAcc =
           typeof a.accuracy === "number" ? normalizeAccuracyPercent(a.accuracy) : null;
         setComputedAccuracyPct(storedAcc ?? derived.accuracyPct);
-
-        // Trigger AI analysis if not already completed
-        if (
-          isAiPerformanceAnalysisEnabled &&
-          (!a.aiReviewStatus || a.aiReviewStatus === "queued") &&
-          !a.aiReview
-        ) {
-          triggerAIAnalysis(
-            qs,
-            resp,
-            a.testTitle || testData.title || "Untitled Test",
-            a.subject || testData.subject || "General",
-            derived.score,
-            derived.maxScore,
-            derived.accuracyPct
-          );
-        }
       } catch (e: any) {
         console.error(e);
         if (!mounted) return;
@@ -472,7 +357,7 @@ export default function StudentResults() {
     return () => {
       mounted = false;
     };
-  }, [attemptId, firebaseUser, authLoading, isAiPerformanceAnalysisEnabled]);
+  }, [attemptId, firebaseUser, authLoading]);
 
   if (loading || authLoading) return <div className="py-12 text-center">Loading...</div>;
   if (error) return <div className="py-12 text-center">{error}</div>;
@@ -711,28 +596,6 @@ export default function StudentResults() {
             </Card>
           );
         })()}
-
-      {/* AI Review */}
-      {isAiPerformanceAnalysisEnabled ? (
-        <AIReviewPanel
-          status={attempt.aiReviewStatus ?? "queued"}
-          review={attempt.aiReview}
-          progress={aiProgress}
-          error={aiError}
-          onCancel={cancelAI}
-        />
-      ) : (
-        <Card className="card-soft border-0 bg-muted/40">
-          <CardHeader>
-            <CardTitle>AI Review Unavailable</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              {getAiFeatureDisabledMessage("performanceAnalysis")}
-            </p>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Actions */}
       <div className="flex gap-4">

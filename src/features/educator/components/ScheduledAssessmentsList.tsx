@@ -3,13 +3,14 @@ import { collection, onSnapshot, getDocs } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { Card } from "@shared/ui/card";
+import { Button } from "@shared/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@shared/ui/tabs";
 import { Badge } from "@shared/ui/badge";
 import { Skeleton } from "@shared/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@shared/ui/table";
-import { CalendarRange, Clock, BookOpen, AlertCircle } from "lucide-react";
-import { cn } from "@shared/lib/utils";
+import { CalendarRange, Clock, BookOpen, AlertCircle, ExternalLink } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 interface AssessmentDoc {
   id: string;
@@ -44,6 +45,7 @@ interface ScheduledAssessmentsListProps {
 }
 
 export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsListProps) {
+  const navigate = useNavigate();
   const { profile, firebaseUser } = useAuth();
   const educatorId = profile?.educatorId || firebaseUser?.uid || "";
 
@@ -279,73 +281,76 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
-        {/* Global Filters */}
-        <div className="flex w-full flex-wrap items-center gap-3 md:w-auto">
-          <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-            <SelectTrigger className="h-9 w-[140px] bg-background">
-              <SelectValue placeholder="Select Branch" />
-            </SelectTrigger>
-            <SelectContent>
-              {uniqueBranches.map((b) => (
-                <SelectItem key={b} value={b}>
-                  {b}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={selectedCourse}
-            onValueChange={setSelectedCourse}
-            disabled={!selectedBranch}
-          >
-            <SelectTrigger
-              className={cn("h-9 w-[140px] bg-background", !selectedBranch && "opacity-50")}
-            >
-              <SelectValue placeholder="Select Program" />
-            </SelectTrigger>
-            <SelectContent>
-              {uniqueCourses.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={selectedBatch} onValueChange={setSelectedBatch} disabled={!selectedCourse}>
-            <SelectTrigger
-              className={cn("h-9 w-[140px] bg-background", !selectedCourse && "opacity-50")}
-            >
-              <SelectValue placeholder="All Batches" />
-            </SelectTrigger>
-            <SelectContent>
-              {uniqueBatches.length !== 1 && <SelectItem value="All">All Batches</SelectItem>}
-              {uniqueBatches.map((b) => (
-                <SelectItem key={b} value={b}>
-                  {b}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            Filter by branch and program to see scheduled {type === "tests" ? "tests" : "DPPs"}.
+          </p>
+          <Button size="sm" variant="outline" onClick={() => navigate("/educator/batches")}>
+            <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+            Manage by Batch
+          </Button>
         </div>
+        <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
+          {/* Global Filters */}
+          <div className="flex w-full flex-wrap items-center gap-3 md:w-auto">
+            <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+              <SelectTrigger className="h-9 w-[140px] bg-background">
+                <SelectValue placeholder="Select Branch" />
+              </SelectTrigger>
+              <SelectContent>
+                {uniqueBranches.map((b) => (
+                  <SelectItem key={b} value={b}>
+                    {b}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-        {/* Time Filter */}
-        <Tabs
-          value={activeTab}
-          onValueChange={(v) => setActiveTab(v as any)}
-          className="w-full md:w-auto"
-        >
-          <TabsList className="grid h-10 w-full grid-cols-2 border bg-background p-1 md:w-auto">
-            <TabsTrigger value="upcoming" className="text-xs">
-              Upcoming
-            </TabsTrigger>
-            <TabsTrigger value="past" className="text-xs">
-              Past
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+            <Select value={selectedCourse} onValueChange={setSelectedCourse}>
+              <SelectTrigger className="h-9 w-[140px] bg-background">
+                <SelectValue placeholder="Select Program" />
+              </SelectTrigger>
+              <SelectContent>
+                {uniqueCourses.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={selectedBatch} onValueChange={setSelectedBatch}>
+              <SelectTrigger className="h-9 w-[140px] bg-background">
+                <SelectValue placeholder="All Batches" />
+              </SelectTrigger>
+              <SelectContent>
+                {uniqueBatches.length !== 1 && <SelectItem value="All">All Batches</SelectItem>}
+                {uniqueBatches.map((b) => (
+                  <SelectItem key={b} value={b}>
+                    {b}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Time Filter */}
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => setActiveTab(v as any)}
+            className="w-full md:w-auto"
+          >
+            <TabsList className="grid h-10 w-full grid-cols-2 border bg-background p-1 md:w-auto">
+              <TabsTrigger value="upcoming" className="text-xs">
+                Upcoming
+              </TabsTrigger>
+              <TabsTrigger value="past" className="text-xs">
+                Past
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
       </div>
 
       <Card className="overflow-hidden border-border/50 shadow-sm">
@@ -403,7 +408,10 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
                       <div className="font-medium text-foreground">{a.title || "Untitled"}</div>
                       <div className="mt-1 max-w-[200px] truncate text-xs text-muted-foreground">
                         {a.targetBatches && a.targetBatches.length > 0
-                          ? `${a.targetBatches.length} Batch(es) assigned`
+                          ? allBatches
+                              .filter((b) => a.targetBatches!.includes(b.id))
+                              .map((b) => b.name)
+                              .join(", ") || `${a.targetBatches.length} batch(es)`
                           : "All Students"}
                       </div>
                     </TableCell>

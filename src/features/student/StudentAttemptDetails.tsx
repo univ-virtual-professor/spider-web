@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, CheckCircle, XCircle } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, Circle } from "lucide-react";
 
 import { Card, CardContent, CardHeader } from "@shared/ui/card";
 import { Button } from "@shared/ui/button";
@@ -195,12 +195,13 @@ export default function StudentAttemptDetails() {
             .map((d) => mapQuestion(d.id, d.data()))
             .sort((a, b) => a.sortOrder - b.sortOrder);
 
-          if (isAdminLinked && linkedAdminTestId && testSections.length === 0) {
+          if (isAdminLinked && linkedAdminTestId) {
             const adminTestSnap = await getDoc(doc(db, "test_series", linkedAdminTestId));
             if (adminTestSnap.exists()) {
-              testSections = Array.isArray(adminTestSnap.data()?.sections)
-                ? adminTestSnap.data()?.sections
-                : [];
+              const adminSections = adminTestSnap.data()?.sections;
+              if (Array.isArray(adminSections) && adminSections.length) {
+                testSections = adminSections;
+              }
             }
           }
         }
@@ -222,11 +223,19 @@ export default function StudentAttemptDetails() {
 
         if (!mounted) return;
 
+        const normalizedSections = testSections.map((s: any, index: number) => ({
+          ...s,
+          id: String(s?.id || `sec_${index + 1}`).trim() || `sec_${index + 1}`,
+          name: String(s?.name || `Section ${index + 1}`).trim(),
+        }));
+
         setAttempt(a);
         setQuestions(qs);
         setResponses(a.responses || {});
         setSections(
-          testSections.length > 0 ? testSections : [{ id: "main", name: a.subject || "General" }]
+          normalizedSections.length > 0
+            ? normalizedSections
+            : [{ id: "main", name: a.subject || "General" }]
         );
       } catch (e: any) {
         console.error(e);
@@ -247,17 +256,36 @@ export default function StudentAttemptDetails() {
   const questionsBySection = useMemo(() => {
     const map: Record<string, AttemptQuestion[]> = {};
     sections.forEach((s) => (map[s.id] = []));
+
+    // Same resolution logic as QuestionsManager: if a question's sectionId is
+    // missing or doesn't match any defined section, place it in the first section.
+    const firstSectionId = sections[0]?.id || "main";
     questions.forEach((q) => {
-      const sid = q.sectionId || "main";
+      const raw = String(q.sectionId || "").trim();
+      const sid = raw && sections.some((s) => s.id === raw) ? raw : firstSectionId;
       if (!map[sid]) map[sid] = [];
       map[sid].push(q);
     });
     return map;
   }, [questions, sections]);
 
+  const [filter, setFilter] = useState<"all" | "correct" | "incorrect" | "unanswered">("all");
+
   if (loading || authLoading) return <div className="py-12 text-center">Loading...</div>;
   if (error) return <div className="py-12 text-center">{error}</div>;
   if (!attempt) return <div className="py-12 text-center">Attempt not found.</div>;
+
+  const filterCounts = questions.reduce(
+    (acc, q) => {
+      const userAnswer = responses[q.id]?.answer ?? null;
+      const answered = isAnswered(userAnswer);
+      if (!answered) acc.unanswered++;
+      else if (isCorrectAnswer(q, userAnswer)) acc.correct++;
+      else acc.incorrect++;
+      return acc;
+    },
+    { correct: 0, incorrect: 0, unanswered: 0 }
+  );
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 pb-12">
@@ -275,9 +303,52 @@ export default function StudentAttemptDetails() {
         </CardContent>
       </Card>
 
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            { key: "all", label: "All", count: questions.length },
+            { key: "correct", label: "Correct", count: filterCounts.correct },
+            { key: "incorrect", label: "Incorrect", count: filterCounts.incorrect },
+            { key: "unanswered", label: "Unanswered", count: filterCounts.unanswered },
+          ] as const
+        ).map(({ key, label, count }) => (
+          <button
+            key={key}
+            onClick={() => setFilter(key)}
+            className={cn(
+              "flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-medium transition-all",
+              filter === key
+                ? key === "correct"
+                  ? "border-green-500 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                  : key === "incorrect"
+                    ? "border-red-500 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                    : key === "unanswered"
+                      ? "border-slate-400 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                      : "border-primary bg-primary/10 text-primary"
+                : "border-border bg-background text-muted-foreground hover:bg-muted"
+            )}
+          >
+            {key === "correct" && <CheckCircle className="h-3.5 w-3.5" />}
+            {key === "incorrect" && <XCircle className="h-3.5 w-3.5" />}
+            {key === "unanswered" && <Circle className="h-3.5 w-3.5" />}
+            {label}
+            <span className="ml-0.5 rounded-full bg-background/60 px-1.5 text-xs">{count}</span>
+          </button>
+        ))}
+      </div>
+
       <div className="space-y-8">
         {sections.map((section) => {
-          const sectionQs = questionsBySection[section.id] || [];
+          const allSectionQs = questionsBySection[section.id] || [];
+          const sectionQs = allSectionQs.filter((q) => {
+            if (filter === "all") return true;
+            const userAnswer = responses[q.id]?.answer ?? null;
+            const answered = isAnswered(userAnswer);
+            if (filter === "unanswered") return !answered;
+            if (filter === "correct") return answered && isCorrectAnswer(q, userAnswer);
+            if (filter === "incorrect") return answered && !isCorrectAnswer(q, userAnswer);
+            return true;
+          });
           if (sectionQs.length === 0) return null;
 
           return (
@@ -286,12 +357,14 @@ export default function StudentAttemptDetails() {
                 <div className="h-6 w-1 rounded-full bg-primary" />
                 <h2 className="text-lg font-bold">{section.name}</h2>
                 <Badge variant="outline" className="rounded-full">
-                  {sectionQs.length} Questions
+                  {sectionQs.length}
+                  {filter !== "all" ? ` / ${allSectionQs.length}` : ""} Questions
                 </Badge>
               </div>
 
               <div className="space-y-4">
-                {sectionQs.map((q, idx) => {
+                {sectionQs.map((q) => {
+                  const idx = allSectionQs.indexOf(q);
                   const userAnswer = responses[q.id]?.answer ?? null;
                   const answered = isAnswered(userAnswer);
                   const correct = isCorrectAnswer(q, userAnswer);

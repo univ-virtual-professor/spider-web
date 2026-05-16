@@ -1693,33 +1693,82 @@ export default function TestSeries() {
                                         </Popover>
                                       </div>
 
-                                      <div className="mt-4 grid grid-cols-1 gap-2 border-t pt-4">
-                                        <Button
-                                          className="gradient-bg rounded-xl text-white shadow-sm"
-                                          size="sm"
-                                          onClick={() => {
-                                            navigate(`/educator/test-series/${test.id}/questions`);
-                                          }}
-                                        >
-                                          <Edit className="mr-2 h-3 w-3" />{" "}
-                                          {isAdminLinked ? "View Questions" : "Manage Questions"}
-                                        </Button>
-                                        {!isAdminLinked && (test.sections || []).length > 0 && (
+                                      <div className="mt-4 space-y-2 border-t pt-4">
+                                        {/* Quick actions */}
+                                        <div className="flex items-center gap-1">
                                           <Button
-                                            variant="outline"
                                             size="sm"
-                                            className="rounded-xl"
-                                            disabled={autoFillTestId === test.id}
-                                            onClick={() => handleAutoFill(test)}
+                                            variant="outline"
+                                            className="flex-1 rounded-xl text-xs"
+                                            onClick={() => {
+                                              setTestToSchedule(test);
+                                              setScheduleOpen(true);
+                                            }}
                                           >
-                                            {autoFillTestId === test.id ? (
-                                              <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                                            ) : (
-                                              <FileUp className="mr-2 h-3 w-3" />
-                                            )}
-                                            Auto-fill from Bank
+                                            <Clock className="mr-1 h-3 w-3" />
+                                            Schedule
                                           </Button>
-                                        )}
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="flex-1 rounded-xl text-xs"
+                                            onClick={() => {
+                                              setBatchAssignTest(test);
+                                              setSelectedBatchIds(test.targetBatches || []);
+                                              setBatchAssignOpen(true);
+                                            }}
+                                          >
+                                            <Award className="mr-1 h-3 w-3" />
+                                            Batches
+                                            {(test.targetBatches || []).length > 0 && (
+                                              <span className="ml-1 rounded-full bg-primary/10 px-1 text-[10px] font-medium text-primary">
+                                                {test.targetBatches.length}
+                                              </span>
+                                            )}
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="flex-1 rounded-xl text-xs"
+                                            onClick={() => openAccessCode(test)}
+                                          >
+                                            <Key className="mr-1 h-3 w-3" />
+                                            Code
+                                          </Button>
+                                        </div>
+                                        {/* Primary actions */}
+                                        <div className="flex min-w-0 gap-2">
+                                          <Button
+                                            className="gradient-bg min-w-0 flex-1 rounded-xl text-white shadow-sm"
+                                            size="sm"
+                                            onClick={() => {
+                                              navigate(
+                                                `/educator/test-series/${test.id}/questions`
+                                              );
+                                            }}
+                                          >
+                                            <Edit className="mr-1.5 h-3 w-3 shrink-0" />
+                                            <span className="truncate">
+                                              {isAdminLinked ? "View Qs" : "Manage Qs"}
+                                            </span>
+                                          </Button>
+                                          {!isAdminLinked && (test.sections || []).length > 0 && (
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              className="min-w-0 flex-1 rounded-xl"
+                                              disabled={autoFillTestId === test.id}
+                                              onClick={() => handleAutoFill(test)}
+                                            >
+                                              {autoFillTestId === test.id ? (
+                                                <Loader2 className="mr-1.5 h-3 w-3 shrink-0 animate-spin" />
+                                              ) : (
+                                                <FileUp className="mr-1.5 h-3 w-3 shrink-0" />
+                                              )}
+                                              <span className="truncate">Auto-fill</span>
+                                            </Button>
+                                          )}
+                                        </div>
                                       </div>
                                     </CardContent>
                                   </Card>

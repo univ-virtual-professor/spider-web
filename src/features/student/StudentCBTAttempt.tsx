@@ -1604,31 +1604,12 @@ export default function StudentCBTAttempt() {
         <div className="question-grid">
           {sectionQuestions.map((sq, idx) => {
             const isGrouped = !!sq.groupId;
-            // Determine if this question starts a new group vs continuing one
-            const prevQ = sectionQuestions[idx - 1];
-            const isGroupStart = isGrouped && (!prevQ || prevQ.groupId !== sq.groupId);
-            const nextQ = sectionQuestions[idx + 1];
-            const isGroupEnd = isGrouped && (!nextQ || nextQ.groupId !== sq.groupId);
 
             return (
               <div
                 key={sq.id}
                 style={{
                   position: "relative",
-                  ...(isGrouped && {
-                    borderLeft: "3px solid #f59e0b",
-                    ...(isGroupStart && {
-                      borderTop: "3px solid #f59e0b",
-                      borderTopLeftRadius: 4,
-                      marginTop: 4,
-                    }),
-                    ...(isGroupEnd && {
-                      borderBottom: "3px solid #f59e0b",
-                      borderBottomLeftRadius: 4,
-                      marginBottom: 4,
-                    }),
-                    paddingLeft: 2,
-                  }),
                 }}
               >
                 <button
@@ -1701,7 +1682,7 @@ export default function StudentCBTAttempt() {
           /[<>&"]/g,
           (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c] ?? c
         );
-        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120"><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" font-weight="600" fill="#616060" fill-opacity="0.03" transform="rotate(-30,100,60)" letter-spacing="3">${name}</text></svg>`;
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120"><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" font-weight="600" fill="#616060" fill-opacity="0.08" transform="rotate(-30,100,60)" letter-spacing="3">${name}</text></svg>`;
         return (
           <div
             aria-hidden="true"

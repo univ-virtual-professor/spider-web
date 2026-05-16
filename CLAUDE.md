@@ -189,6 +189,26 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
 - **SectionCard (template editor)**: topics/tags per-section driven by question bank data passed from `CreateTemplateModal`
 - **Educator bankTests**: pre-filtered in TestSeries to only show templates whose `courseId` is in educator's accessible courses
 
+## Batch Schedule Panel
+
+- **Trigger**: "Schedule" button on each batch card in `/educator/batches`
+- **Component**: `src/features/educator/components/BatchSchedulePanel.tsx`
+  - Sheet (right slide-in) per batch — no route change
+  - Tabs: Upcoming | Past | Access Codes
+  - Upcoming/Past: tests from `my_tests` where `targetBatches array-contains batchId`
+  - Access Codes: codes from `accessCodes` where `testSeriesId` in batch's test IDs
+  - "Assign Test" button → inline dialog: select test + start/end datetime → writes `arrayUnion(batchId)` + schedule fields to `my_tests/{testId}`
+  - "Remove from Batch" → `arrayRemove(batchId)` from `my_tests/{testId}.targetBatches`
+  - "Create Access Code" (per test or from codes tab) → inline dialog same as AccessCodes page
+  - Edit/delete access codes inline — no need to navigate to `/educator/access-codes`
+- **BatchesListing enhancements**:
+  - Batch card now subscribes to `my_tests` to compute per-batch live test counts
+  - "N live" green badge on Schedule button when tests are active now
+  - Buttons restructured: [Invite] [Schedule] row + [Students] [icon buttons] row
+- **ScheduledAssessmentsList enhancement**:
+  - Shows actual batch names (resolved from IDs) instead of "N Batch(es) assigned"
+  - "Manage by Batch" shortcut button → `/educator/batches`
+
 ## Dev Commands
 
 ```bash
