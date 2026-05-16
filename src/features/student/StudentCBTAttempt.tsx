@@ -1701,7 +1701,7 @@ export default function StudentCBTAttempt() {
           /[<>&"]/g,
           (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c] ?? c
         );
-        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120"><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="700" fill="#000000" fill-opacity="0.09" transform="rotate(-30,100,60)" letter-spacing="3">${name}</text></svg>`;
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120"><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" font-weight="600" fill="#616060" fill-opacity="0.03" transform="rotate(-30,100,60)" letter-spacing="3">${name}</text></svg>`;
         return (
           <div
             aria-hidden="true"

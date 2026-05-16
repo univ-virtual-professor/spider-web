@@ -11,9 +11,6 @@ import {
   FileUp,
   ChevronDown,
   ChevronRight,
-  Edit,
-  Copy,
-  XCircle,
 } from "lucide-react";
 
 import {
@@ -45,7 +42,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@shared/ui/dialog";
 import { Label } from "@shared/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";

@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Link2, Link2Off, BookOpen, FlaskConical } from "lucide-react";
+import { Loader2, Link2, BookOpen, FlaskConical } from "lucide-react";
 import { toast } from "sonner";
 import {
   addDoc,
@@ -22,7 +22,6 @@ import {
   updateDoc,
   writeBatch,
   query,
-  where,
   orderBy,
 } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Loader2, Megaphone, X } from "lucide-react";
+import { Loader2, Megaphone } from "lucide-react";
 import {
   Dialog,
   DialogContent,

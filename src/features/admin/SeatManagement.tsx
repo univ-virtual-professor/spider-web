@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   collection,
@@ -11,8 +11,6 @@ import {
   updateDoc,
   where,
   writeBatch,
-  increment,
-  addDoc,
   Timestamp,
 } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";

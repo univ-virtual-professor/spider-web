@@ -25,7 +25,6 @@ import {
   ExternalLink,
   BookOpen,
   FileText,
-  Brain,
   Network,
   ScrollText,
   RefreshCw,

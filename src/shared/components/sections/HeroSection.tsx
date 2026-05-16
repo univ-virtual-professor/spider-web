@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { ButtonWithIcon } from "@shared/ui/button";
-import { Star, ArrowRight, Play } from "lucide-react";
+import { ArrowRight, Play } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export function HeroSection() {

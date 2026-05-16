@@ -29,7 +29,6 @@ import {
   where,
 } from "firebase/firestore";
 import { TestCard } from "@features/student/components/TestCard";
-import { cn } from "@shared/lib/utils";
 import { Badge } from "@shared/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 

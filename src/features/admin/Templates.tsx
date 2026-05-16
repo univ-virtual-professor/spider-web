@@ -13,7 +13,6 @@ import {
   XCircle,
 } from "lucide-react";
 import {
-  addDoc,
   collection,
   deleteDoc,
   doc,

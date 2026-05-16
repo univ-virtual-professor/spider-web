@@ -5,7 +5,7 @@ import {
   updateProfile,
   signOut,
 } from "firebase/auth";
-import { doc, getDoc, serverTimestamp, setDoc, updateDoc, arrayUnion } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, setDoc, arrayUnion } from "firebase/firestore";
 import { clearLocalSessionId } from "@shared/lib/session";
 
 function normSlug(raw: string) {

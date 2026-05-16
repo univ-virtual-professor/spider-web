@@ -26,7 +26,7 @@ import {
   updateDoc,
   writeBatch,
 } from "firebase/firestore";
-import { db } from "@shared/lib/firebase";
+import { db, auth } from "@shared/lib/firebase";
 import { useAccessibleCourses } from "@shared/hooks/useAccessibleCourses";
 import { Button } from "@shared/ui/button";
 import { Input } from "@shared/ui/input";
@@ -74,27 +74,27 @@ type BulkRow = {
   error: string | null;
 };
 
+async function apiFetch(path: string, options: RequestInit = {}) {
+  const token = await auth.currentUser?.getIdToken();
+  const res = await fetch(`${API}${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(options.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Request failed");
+  }
+  return res.json();
+}
+
 export default function Learners() {
   const nav = useNavigate();
   const [searchParams] = useSearchParams();
   const isInviteMode = searchParams.get("invite") === "1";
   const { firebaseUser, role, loading: authLoading } = useAuth();
-
-  async function apiFetch(path: string, options: RequestInit = {}) {
-    const token = await firebaseUser?.getIdToken();
-    const res = await fetch(`${API}${path}`, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(options.headers || {}),
-      },
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || "Request failed");
-    }
-    return res.json();
-  }
   const educatorId = firebaseUser?.uid || "";
 
   const [learners, setLearners] = useState<Learner[]>([]);
@@ -224,7 +224,10 @@ export default function Learners() {
       return;
     }
     getDocs(collection(db, "educators", educatorId, "branches", selBranch, "courses")).then(
-      (snap) => setCourses(snap.docs.map((d) => ({ id: d.id, name: d.data().name || d.id })))
+      (snap) =>
+        setCourses(
+          snap.docs.map((d) => ({ id: d.id, name: d.data().name || d.id, branchId: selBranch }))
+        )
     );
   }, [educatorId, selBranch]);
 
@@ -253,6 +256,8 @@ export default function Learners() {
           name: d.data().name || d.id,
           seatLimit: d.data().seatLimit || 0,
           usedSeats: d.data().usedSeats || 0,
+          courseId: selCourse,
+          branchId: selBranch,
         }))
       )
     );
@@ -260,11 +265,7 @@ export default function Learners() {
 
   const selectedBatch = batches.find((b) => b.id === selBatch);
 
-  const seatLimit = Math.max(
-    0,
-    Number(educator?.seatLimit || 0),
-    Number(educator?.purchasedSeatLimit || 0)
-  );
+  const seatLimit = Math.max(0, Number(educator?.seatLimit || 0));
   const usedSeats = useMemo(() => Object.values(seatMap).filter(Boolean).length, [seatMap]);
   const canAssign = seatLimit > 0 && usedSeats < seatLimit;
 
@@ -354,24 +355,16 @@ export default function Learners() {
         },
         { merge: true }
       );
-      batch.set(
-        doc(db, "users", assignTarget.id),
-        {
-          branchId: assignBranch,
-          courseId: assignCourse,
-          batchId: assignBatch,
-        },
-        { merge: true }
-      );
-      batch.set(
-        doc(db, "educators", educatorId, "billingSeats", assignTarget.id),
-        {
-          branchId: assignBranch,
-          courseId: assignCourse,
-          batchId: assignBatch,
-        },
-        { merge: true }
-      );
+      batch.update(doc(db, "users", assignTarget.id), {
+        branchId: assignBranch,
+        courseId: assignCourse,
+        batchId: assignBatch,
+      });
+      batch.update(doc(db, "educators", educatorId, "billingSeats", assignTarget.id), {
+        branchId: assignBranch,
+        courseId: assignCourse,
+        batchId: assignBatch,
+      });
       await batch.commit();
       toast.success(`Assigned to ${batchInfo?.name || assignBatch}`);
       setAssignTarget(null);
@@ -437,7 +430,7 @@ export default function Learners() {
     setUploading(true);
     setBulkRows([]);
     try {
-      const token = await firebaseUser?.getIdToken();
+      const token = await auth.currentUser?.getIdToken();
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch(`${API}/api/invites/bulk`, {

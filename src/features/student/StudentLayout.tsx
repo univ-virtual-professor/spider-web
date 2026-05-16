@@ -7,8 +7,6 @@ import {
   FileText,
   History,
   Trophy,
-  BarChart3,
-  MessageSquare,
   LifeBuoy,
   Settings,
   LogOut,
@@ -18,14 +16,12 @@ import {
   Sun,
   ChevronLeft,
   ChevronRight,
-  Search,
   BookOpen,
   Bot,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
 import { Badge } from "@shared/ui/badge";
-import { Input } from "@shared/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,

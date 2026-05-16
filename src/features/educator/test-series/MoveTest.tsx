@@ -2,12 +2,11 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@shared/ui/dialog";
 import { cn } from "@shared/lib/utils";
-import { BookOpen, Image as ImageIcon, Folder } from "lucide-react";
+import { BookOpen, Folder } from "lucide-react";
 
 const MoveTest = ({ moveTestOpen, setMoveTestOpen, testToMove, handleMoveTest, folders }) => {
   return (

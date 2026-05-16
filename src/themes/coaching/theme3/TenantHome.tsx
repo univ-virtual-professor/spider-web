@@ -19,7 +19,6 @@ import {
   Send,
   Mail,
   Quote,
-  CheckCircle2,
   MonitorPlay,
   BrainCircuit,
   Clock,

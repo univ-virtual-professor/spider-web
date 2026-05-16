@@ -10,6 +10,6 @@ export const stringToColor = (str: string) => {
   for (let i = 0; i < str.length; i++) {
     hash = str.charCodeAt(i) + ((hash << 5) - hash);
   }
-  let color = `hsl(${hash % 360}, 70%, 50%)`;
+  const color = `hsl(${hash % 360}, 70%, 50%)`;
   return color;
 };

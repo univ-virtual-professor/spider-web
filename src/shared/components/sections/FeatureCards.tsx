@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { BarChart3, Trophy, Sparkles, TrendingUp, Users, Search } from "lucide-react";
+import { BarChart3, Trophy, Sparkles, TrendingUp, Search } from "lucide-react";
 
 const features = [
   {

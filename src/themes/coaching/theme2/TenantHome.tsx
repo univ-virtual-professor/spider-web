@@ -7,7 +7,6 @@ import {
   Loader2,
   Menu,
   X,
-  Play,
   FileText,
   Star,
   Instagram,
@@ -21,7 +20,6 @@ import {
   Phone,
   MapPin,
   Mail,
-  CheckCircle2,
   Sparkles,
   Clock,
   Brain,
@@ -35,18 +33,10 @@ import { useTenant } from "@app/providers/TenantProvider";
 import { useFavicon } from "@shared/hooks/useFavicon";
 
 import { Button } from "@shared/ui/button";
-import { Card, CardContent } from "@shared/ui/card";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@shared/ui/accordion";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
 
 import { initials, isTruthyUrl } from "@/themes/coaching/shared/themeUtils";
-import type {
-  StatItem,
-  AchievementItem,
-  FacultyItem,
-  TestimonialItem,
-  FAQItem,
-} from "@/themes/coaching/shared/themeTypes";
+import type { StatItem, TestimonialItem, FAQItem } from "@/themes/coaching/shared/themeTypes";
 
 export default function TenantHomeTheme2() {
   const { tenant, loading } = useTenant();

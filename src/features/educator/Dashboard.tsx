@@ -1,203 +1,112 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useEffect, useState } from "react";
 import {
-  Users,
-  FileText,
-  KeyRound,
-  Target,
   Copy,
   Check,
-  Plus,
   BarChart3,
-  Radio,
+  Users,
+  Plus,
   CreditCard,
+  CalendarRange,
+  BookOpenCheck,
 } from "lucide-react";
-import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from "firebase/firestore";
+import { Link } from "react-router-dom";
 
-import MetricCard from "@features/educator/components/MetricCard";
-import EmptyState from "@features/educator/components/EmptyState";
+import CheatActivityFeed from "./components/CheatActivityFeed";
+import ActiveTestsFeed from "./components/ActiveTestsFeed";
+import { collection, doc, onSnapshot, getDocs } from "firebase/firestore";
+
 import { Button } from "@shared/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { buildTenantUrl } from "@shared/lib/tenant";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 
-type StudentDoc = { id: string; status?: string; isActive?: boolean };
-type AccessCodeDoc = {
-  id: string;
-  maxUses?: number;
-  usesUsed?: number;
-  expiresAt?: any;
-  windowMinutes?: number;
-  createdAt?: any;
-};
-type AttemptDoc = { id: string; status?: string; score?: number; maxScore?: number };
 type EducatorProfileDoc = {
   displayName?: string;
   fullName?: string;
   name?: string;
   coachingName?: string;
-  seatLimit?: number;
-  purchasedSeatLimit?: number;
   tenantSlug?: string;
-  lastPlanId?: string;
+  planName?: string;
+  seatLimit?: number;
+  usedSeats?: number;
   allowedCourseIds?: string[];
 };
 
-const LIVE_STATUSES = ["in-progress", "inprogress", "running", "started"];
-
-function accessCodeActive(code: AccessCodeDoc): boolean {
-  const maxUses = Number(code.maxUses ?? 0);
-  const used = Number(code.usesUsed ?? 0);
-  if (maxUses > 0 && used >= maxUses) return false;
-  const exp = code.expiresAt;
-  if (exp) {
-    const ms =
-      typeof exp?.toMillis === "function"
-        ? exp.toMillis()
-        : typeof exp?.seconds === "number"
-          ? exp.seconds * 1000
-          : 0;
-    if (ms && ms < Date.now()) return false;
-  }
-  return true;
-}
-
-function isCompleted(status?: string) {
-  const s = String(status || "").toLowerCase();
-  return s === "submitted" || s === "completed" || s === "finished";
-}
-
 export default function EducatorDashboard() {
-  const navigate = useNavigate();
   const { firebaseUser, profile, loading: authLoading } = useAuth();
   const uid = firebaseUser?.uid || null;
   const educatorId = profile?.educatorId || uid;
 
   const [educatorDoc, setEducatorDoc] = useState<EducatorProfileDoc | null>(null);
-  const [students, setStudents] = useState<StudentDoc[]>([]);
-  const [tests, setTests] = useState<any[]>([]);
-  const [attempts, setAttempts] = useState<AttemptDoc[]>([]);
-  const [accessCodes, setAccessCodes] = useState<AccessCodeDoc[]>([]);
-  const [usedSeats, setUsedSeats] = useState(0);
-  const [planName, setPlanName] = useState<string | null>(null);
-  const [allowedCourseNames, setAllowedCourseNames] = useState<string[]>([]);
+  const [usedSeatsCount, setUsedSeatsCount] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
+  const [allowedCourseNames, setAllowedCourseNames] = useState<string[]>([]);
+
+  const [scheduledTestsCount, setScheduledTestsCount] = useState(0);
+  const [scheduledDppsCount, setScheduledDppsCount] = useState(0);
 
   useEffect(() => {
     if (!educatorId) return;
 
-    let doneCount = 0;
-    const markDone = () => {
-      doneCount++;
-      if (doneCount >= 6) setLoaded(true);
-    };
-
-    const u1 = onSnapshot(
+    const unsubEdu = onSnapshot(
       doc(db, "educators", educatorId),
       (snap) => {
         setEducatorDoc(snap.exists() ? (snap.data() as EducatorProfileDoc) : null);
-        markDone();
+      },
+      () => setEducatorDoc(null)
+    );
+
+    const unsubSeats = onSnapshot(
+      collection(db, "educators", educatorId, "billingSeats"),
+      (snap) => {
+        const activeCount = snap.docs.filter(
+          (d) => String(d.data()?.status || "").toLowerCase() === "active"
+        ).length;
+        setUsedSeatsCount(activeCount);
+        setLoaded(true);
       },
       () => {
-        setEducatorDoc(null);
-        markDone();
+        setUsedSeatsCount(0);
+        setLoaded(true);
       }
     );
 
-    const u2 = onSnapshot(
-      collection(db, "educators", educatorId, "students"),
-      (snap) => {
-        setStudents(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
-        markDone();
-      },
-      () => {
-        setStudents([]);
-        markDone();
-      }
-    );
+    const qTests = collection(db, "educators", educatorId, "my_tests");
+    const unsubTests = onSnapshot(qTests, (snap) => {
+      let tests = 0;
+      let dpps = 0;
+      snap.docs.forEach((d) => {
+        const data = d.data();
+        if (!data.startTime) return; // Only count if it has a schedule
 
-    const u3 = onSnapshot(
-      collection(db, "educators", educatorId, "my_tests"),
-      (snap) => {
-        setTests(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
-        markDone();
-      },
-      () => {
-        setTests([]);
-        markDone();
-      }
-    );
-
-    const u4 = onSnapshot(
-      query(collection(db, "attempts"), where("educatorId", "==", educatorId)),
-      (snap) => {
-        setAttempts(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
-        markDone();
-      },
-      () => {
-        setAttempts([]);
-        markDone();
-      }
-    );
-
-    const u5 = onSnapshot(
-      collection(db, "educators", educatorId, "accessCodes"),
-      (snap) => {
-        setAccessCodes(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
-        markDone();
-      },
-      () => {
-        setAccessCodes([]);
-        markDone();
-      }
-    );
-
-    const u6 = onSnapshot(
-      query(
-        collection(db, "educators", educatorId, "billingSeats"),
-        where("status", "==", "active")
-      ),
-      (snap) => {
-        setUsedSeats(snap.size);
-        markDone();
-      },
-      () => {
-        setUsedSeats(0);
-        markDone();
-      }
-    );
+        const title = (data.title || "").toLowerCase();
+        if (title.includes("dpp") || title.includes("practice")) {
+          dpps++;
+        } else {
+          tests++;
+        }
+      });
+      setScheduledTestsCount(tests);
+      setScheduledDppsCount(dpps);
+    });
 
     return () => {
-      u1();
-      u2();
-      u3();
-      u4();
-      u5();
-      u6();
+      unsubEdu();
+      unsubSeats();
+      unsubTests();
     };
   }, [educatorId]);
 
-  useEffect(() => {
-    const lastPlanId = educatorDoc?.lastPlanId;
-    if (!lastPlanId) {
-      setPlanName(null);
-      return;
-    }
-    getDoc(doc(db, "plans", lastPlanId))
-      .then((snap) => {
-        setPlanName(snap.exists() ? (snap.data() as any)?.name || lastPlanId : lastPlanId);
-      })
-      .catch(() => setPlanName(lastPlanId));
-  }, [educatorDoc?.lastPlanId]);
-
+  // Resolve course names from IDs when educatorDoc changes
   useEffect(() => {
     const ids = educatorDoc?.allowedCourseIds;
     if (!ids || ids.length === 0) {
       setAllowedCourseNames([]);
       return;
     }
+
     getDocs(collection(db, "courses"))
       .then((snap) => {
         const names = snap.docs
@@ -207,32 +116,6 @@ export default function EducatorDashboard() {
       })
       .catch(() => setAllowedCourseNames([]));
   }, [educatorDoc?.allowedCourseIds]);
-
-  const liveTests = useMemo(
-    () =>
-      attempts.filter((a) => LIVE_STATUSES.includes(String(a.status || "").toLowerCase())).length,
-    [attempts]
-  );
-
-  const avgScore = useMemo(() => {
-    const completed = attempts.filter((a) => isCompleted(a.status));
-    const scored = completed.filter((a) => Number(a.maxScore) > 0);
-    if (!scored.length) return "—";
-    const pct =
-      scored.reduce((sum, a) => sum + (Number(a.score ?? 0) / Number(a.maxScore)) * 100, 0) /
-      scored.length;
-    return `${Math.round(pct)}%`;
-  }, [attempts]);
-
-  const activeAccessCodes = useMemo(
-    () => accessCodes.filter(accessCodeActive).length,
-    [accessCodes]
-  );
-
-  const trialSeats = Math.max(0, Number(educatorDoc?.seatLimit || 0));
-  const purchasedSeats = Math.max(0, Number(educatorDoc?.purchasedSeatLimit || 0));
-  const seatLimit = trialSeats + purchasedSeats;
-  const vacantSeats = Math.max(0, seatLimit - usedSeats);
 
   const coachingName =
     String(
@@ -246,6 +129,14 @@ export default function EducatorDashboard() {
   const coachingSlug = String(educatorDoc?.tenantSlug || profile?.tenantSlug || "").trim();
   const coachingUrl = coachingSlug ? buildTenantUrl(coachingSlug, "/") : "";
 
+  // Derived Plan & Seat Info
+  const planName = educatorDoc?.planName || "Free Tier";
+  const seatLimit = educatorDoc?.seatLimit || 0;
+  const usedSeats = usedSeatsCount;
+  const vacantSeats = Math.max(0, seatLimit - usedSeats);
+
+  // Note: allowedCourseNames is now managed by the state at the top
+
   async function handleCopyUrl() {
     if (!coachingUrl) return;
     try {
@@ -258,19 +149,11 @@ export default function EducatorDashboard() {
   }
 
   if (authLoading || (!loaded && !!educatorId)) {
-    return <div className="py-12 text-center text-muted-foreground">Loading dashboard…</div>;
+    return <div className="py-12 text-center text-muted-foreground">Loading...</div>;
   }
 
   if (!educatorId) {
-    return (
-      <EmptyState
-        icon={FileText}
-        title="Please login as Educator"
-        description="You must be logged in to view your dashboard."
-        actionLabel="Go to Login"
-        onAction={() => navigate("/login?role=educator")}
-      />
-    );
+    return <div className="py-12 text-center text-muted-foreground">Please login as Educator</div>;
   }
 
   return (
@@ -304,39 +187,65 @@ export default function EducatorDashboard() {
         </div>
       </div>
 
-      {/* Metric Cards */}
-      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-        <MetricCard
-          title="My Students"
-          value={students.length.toLocaleString()}
-          icon={Users}
-          iconColor="text-blue-400"
-          delay={0}
-        />
-        <MetricCard
-          title="Live Tests"
-          value={liveTests.toLocaleString()}
-          icon={Radio}
-          iconColor="text-green-400"
-          delay={0.05}
-        />
-        <MetricCard
-          title="Avg Score"
-          value={avgScore}
-          icon={Target}
-          iconColor="text-purple-400"
-          delay={0.1}
-        />
-        <MetricCard
-          title="Active Codes"
-          value={activeAccessCodes.toLocaleString()}
-          icon={KeyRound}
-          iconColor="text-orange-400"
-          delay={0.15}
-        />
+      {/* Scheduled Assessments Cards */}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <Link to="/educator/scheduled-tests" className="group block h-full">
+          <Card className="flex h-full flex-col border-border/50 transition-all duration-200 hover:border-primary/40 hover:shadow-sm">
+            <CardHeader className="flex flex-row items-start justify-between pb-2">
+              <div>
+                <CardTitle className="text-base font-semibold transition-colors group-hover:text-primary">
+                  Scheduled Tests
+                </CardTitle>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Upcoming and completed test schedules
+                </p>
+              </div>
+              <div className="rounded-full bg-primary/10 p-2.5 text-primary">
+                <CalendarRange className="h-5 w-5" />
+              </div>
+            </CardHeader>
+            <CardContent className="mt-auto">
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-3xl font-bold tracking-tight">{scheduledTestsCount}</h3>
+                <span className="text-sm font-medium text-muted-foreground">Tests</span>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+
+        <Link to="/educator/scheduled-dpps" className="group block h-full">
+          <Card className="flex h-full flex-col border-border/50 transition-all duration-200 hover:border-primary/40 hover:shadow-sm">
+            <CardHeader className="flex flex-row items-start justify-between pb-2">
+              <div>
+                <CardTitle className="text-base font-semibold transition-colors group-hover:text-primary">
+                  Scheduled DPPs
+                </CardTitle>
+                <p className="mt-1 text-xs text-muted-foreground">Track daily practice schedules</p>
+              </div>
+              <div className="rounded-full bg-primary/10 p-2.5 text-primary">
+                <BookOpenCheck className="h-5 w-5" />
+              </div>
+            </CardHeader>
+            <CardContent className="mt-auto">
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-3xl font-bold tracking-tight">{scheduledDppsCount}</h3>
+                <span className="text-sm font-medium text-muted-foreground">DPPs</span>
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
-      {/* Seats & Plan */}
+      {/* Security Activity Feed & Active Tests */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="min-h-[300px]">
+          <CheatActivityFeed />
+        </div>
+        <div className="min-h-[300px]">
+          <ActiveTestsFeed />
+        </div>
+      </div>
+
       <Card className="border-border/50">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -399,7 +308,7 @@ export default function EducatorDashboard() {
               </Link>
             </Button>
             <Button variant="outline" asChild className="gap-2">
-              <Link to="/educator/divisions">
+              <Link to="/educator/students">
                 <Users className="h-4 w-4" />
                 View Learners
               </Link>

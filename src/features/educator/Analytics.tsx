@@ -1,31 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import {
-  Award,
-  AlertTriangle,
-  CheckCircle2,
-  Clock,
-  Search,
-  Target,
-  TrendingUp,
-  Users,
-} from "lucide-react";
+import { Clock, Search, Target, TrendingUp, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Badge } from "@shared/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
 import { Input } from "@shared/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -42,6 +28,7 @@ import {
   getDoc,
   getDocs,
   limit,
+  onSnapshot,
   orderBy,
   query,
   where,
@@ -49,6 +36,16 @@ import {
 
 import { useAuth } from "@app/providers/AuthProvider";
 import { useTenant } from "@app/providers/TenantProvider";
+
+import DashboardStatsGrid from "./components/DashboardStatsGrid";
+import AttemptsAnalyticsChart from "./components/AttemptsAnalyticsChart";
+import RecentActivityFeed from "./components/RecentActivityFeed";
+import StudentHealthOverview from "./components/StudentHealthOverview";
+import TopPerformersLeaderboard from "./components/TopPerformersLeaderboard";
+
+type BranchDoc = { id: string; name: string };
+type CourseDoc = { id: string; name: string; branchId: string };
+type BatchDoc = { id: string; name: string; courseId: string; branchId: string };
 
 type UserDoc = {
   displayName?: string;
@@ -65,6 +62,9 @@ type LearnerDoc = {
   email?: string;
   status?: string;
   tenantSlug?: string;
+  branchId?: string;
+  courseId?: string;
+  batchId?: string;
   joinedAt?: any;
   lastSeenAt?: any;
   updatedAt?: any;
@@ -109,7 +109,12 @@ type Struggling = {
   weakness: string;
 };
 type TestAgg = { name: string; attempts: number; avgScore: number };
-type BatchAgg = { batch: string; avgScore: number; students: number; growth: number };
+type BatchAgg = {
+  batch: string;
+  avgScore: number;
+  students: number;
+  growth: number;
+};
 type LearnerRow = { id: string; data: LearnerDoc; profile: UserDoc | null };
 type AttemptRow = { id: string; data: AttemptDoc };
 type StudentStatCard = { label: string; value: string; hint: string };
@@ -140,7 +145,6 @@ type StudentDive = {
   scoreTrend: StudentTrendPoint[];
   subjectPerformance: StudentSubjectPoint[];
   recentAttempts: StudentRecentAttempt[];
-  statCards: StudentStatCard[];
 };
 
 const PIE_COLORS = [
@@ -219,7 +223,10 @@ function weekLabel(i: number) {
 }
 
 function formatShortDate(ms: number) {
-  return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return new Date(ms).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function formatShortDateTime(ms: number) {
@@ -291,11 +298,38 @@ export default function Analytics() {
   const [avgTimeChange, setAvgTimeChange] = useState(0);
 
   const [studentGrowthData, setStudentGrowthData] = useState<GrowthPoint[]>([]);
+  const [attemptsTrendData, setAttemptsTrendData] = useState<{ date: string; attempts: number }[]>(
+    []
+  );
   const [attemptDistribution, setAttemptDistribution] = useState<PieSlice[]>([]);
   const [topPerformers, setTopPerformers] = useState<TopPerformer[]>([]);
   const [strugglingStudents, setStrugglingStudents] = useState<Struggling[]>([]);
   const [mostAttemptedTests, setMostAttemptedTests] = useState<TestAgg[]>([]);
   const [batchComparisonData, setBatchComparisonData] = useState<BatchAgg[]>([]);
+
+  // Dashboard filter states
+  const [allBranches, setAllBranches] = useState<BranchDoc[]>([]);
+  const [allCourses, setAllCourses] = useState<CourseDoc[]>([]);
+  const [allBatches, setAllBatches] = useState<BatchDoc[]>([]);
+
+  const [selectedBranchName, setSelectedBranchName] = useState<string>("All");
+  const [selectedCourseName, setSelectedCourseName] = useState<string>("All");
+  const [selectedBatchName, setSelectedBatchName] = useState<string>("All");
+
+  const [isDataFiltering, setIsDataFiltering] = useState(false);
+
+  const uniqueBranches = useMemo(
+    () => Array.from(new Set(allBranches.map((b) => b.name))).sort(),
+    [allBranches]
+  );
+  const uniqueCourses = useMemo(
+    () => Array.from(new Set(allCourses.map((c) => c.name))).sort(),
+    [allCourses]
+  );
+  const uniqueBatches = useMemo(
+    () => Array.from(new Set(allBatches.map((b) => b.name))).sort(),
+    [allBatches]
+  );
 
   const canLoad = useMemo(() => {
     return !authLoading && !tenantLoading && !!firebaseUser?.uid && !!educatorId;
@@ -525,6 +559,24 @@ export default function Analytics() {
       }
       setStudentGrowthData(growth);
 
+      const attemptsTrend: { date: string; attempts: number }[] = [];
+      const trendMap = new Map<string, number>();
+      for (const a of attempts) {
+        const ms = toMillis(a.data.createdAt || a.data.submittedAt);
+        const dateStr = formatShortDate(ms);
+        trendMap.set(dateStr, (trendMap.get(dateStr) || 0) + 1);
+      }
+      for (let i = 0; i < days; i++) {
+        const d = new Date(start.getTime());
+        d.setDate(d.getDate() + i);
+        const dStr = formatShortDate(d.getTime());
+        attemptsTrend.push({
+          date: dStr,
+          attempts: trendMap.get(dStr) || 0,
+        });
+      }
+      setAttemptsTrendData(attemptsTrend);
+
       const subjectMap = new Map<string, number>();
       for (const a of attempts) {
         const subject = String(a.data.subject || "General").trim() || "General";
@@ -543,14 +595,22 @@ export default function Analytics() {
 
       const perStudent = new Map<
         string,
-        { attempts: number; sumAcc: number; subject: Map<string, { sum: number; cnt: number }> }
+        {
+          attempts: number;
+          sumAcc: number;
+          subject: Map<string, { sum: number; cnt: number }>;
+        }
       >();
       for (const a of completed) {
         const sid = String(a.data.studentId || "");
         if (!sid) continue;
         const sc = safeNum(a.data.score, 0);
         const subject = String(a.data.subject || "General").trim() || "General";
-        const existing = perStudent.get(sid) || { attempts: 0, sumAcc: 0, subject: new Map() };
+        const existing = perStudent.get(sid) || {
+          attempts: 0,
+          sumAcc: 0,
+          subject: new Map(),
+        };
         existing.attempts += 1;
         existing.sumAcc += sc;
         const subjAgg = existing.subject.get(subject) || { sum: 0, cnt: 0 };
@@ -637,7 +697,11 @@ export default function Analytics() {
           learner?.data.tenantSlug ||
           "Main";
         const sc = safeNum(a.data.score, 0);
-        const existing = batchMap.get(batch) || { students: new Set<string>(), sumAcc: 0, cnt: 0 };
+        const existing = batchMap.get(batch) || {
+          students: new Set<string>(),
+          sumAcc: 0,
+          cnt: 0,
+        };
         existing.students.add(sid);
         existing.sumAcc += sc;
         existing.cnt += 1;
@@ -665,6 +729,150 @@ export default function Analytics() {
   useEffect(() => {
     loadAnalytics();
   }, [loadAnalytics, periodDays]);
+
+  // Fetch all branches, courses, and batches (Same as Dashboard.tsx)
+  useEffect(() => {
+    if (!educatorId) return;
+    const unsub = onSnapshot(collection(db, "educators", educatorId, "branches"), async (snap) => {
+      const branchesData = snap.docs.map((d) => ({
+        id: d.id,
+        name: d.data().name || "Unknown Branch",
+      }));
+      setAllBranches(branchesData);
+
+      const coursesData: CourseDoc[] = [];
+      const batchesData: BatchDoc[] = [];
+
+      for (const b of branchesData) {
+        const cSnap = await getDocs(
+          collection(db, "educators", educatorId, "branches", b.id, "courses")
+        );
+        for (const c of cSnap.docs) {
+          coursesData.push({ id: c.id, branchId: b.id, name: c.data().name || "Unknown Program" });
+          const bSnap = await getDocs(
+            collection(db, "educators", educatorId, "branches", b.id, "courses", c.id, "batches")
+          );
+          for (const batch of bSnap.docs) {
+            batchesData.push({
+              id: batch.id,
+              branchId: b.id,
+              courseId: c.id,
+              name: batch.data().name || "Unknown Batch",
+            });
+          }
+        }
+      }
+      setAllCourses(coursesData);
+      setAllBatches(batchesData);
+    });
+    return () => unsub();
+  }, [educatorId]);
+
+  // Automated filter defaults
+  useEffect(() => {
+    if (uniqueBranches.length === 1 && selectedBranchName === "All") {
+      setSelectedBranchName(uniqueBranches[0]);
+    }
+  }, [uniqueBranches, selectedBranchName]);
+
+  useEffect(() => {
+    if (uniqueCourses.length === 1 && selectedCourseName === "All") {
+      setSelectedCourseName(uniqueCourses[0]);
+    }
+  }, [uniqueCourses, selectedCourseName]);
+
+  useEffect(() => {
+    if (uniqueBatches.length === 1 && selectedBatchName === "All") {
+      setSelectedBatchName(uniqueBatches[0]);
+    }
+  }, [uniqueBatches, selectedBatchName]);
+
+  // Simulated filter delay
+  useEffect(() => {
+    setIsDataFiltering(true);
+    const timer = setTimeout(() => setIsDataFiltering(false), 500);
+    return () => clearTimeout(timer);
+  }, [selectedBranchName, selectedCourseName, selectedBatchName]);
+
+  const dashboardFilteredStudents = useMemo(() => {
+    const validBranchIds =
+      selectedBranchName === "All"
+        ? new Set(allBranches.map((b) => b.id))
+        : new Set(allBranches.filter((b) => b.name === selectedBranchName).map((b) => b.id));
+
+    const validCourseIds =
+      selectedCourseName === "All"
+        ? new Set(allCourses.map((c) => c.id))
+        : new Set(allCourses.filter((c) => c.name === selectedCourseName).map((c) => c.id));
+
+    const validBatchIds =
+      selectedBatchName === "All"
+        ? new Set(allBatches.map((b) => b.id))
+        : new Set(allBatches.filter((b) => b.name === selectedBatchName).map((b) => b.id));
+
+    return learners.filter((s) => {
+      if (selectedBranchName !== "All" && !validBranchIds.has(s.data.branchId as string))
+        return false;
+      if (selectedCourseName !== "All" && !validCourseIds.has(s.data.courseId as string))
+        return false;
+      if (selectedBatchName !== "All" && !validBatchIds.has(s.data.batchId as string)) return false;
+      return true;
+    });
+  }, [
+    learners,
+    selectedBranchName,
+    selectedCourseName,
+    selectedBatchName,
+    allBranches,
+    allCourses,
+    allBatches,
+  ]);
+
+  const dashboardFilteredAttempts = useMemo(() => {
+    const validStudentIds = new Set(dashboardFilteredStudents.map((s) => s.id));
+    return periodAttempts.filter((a) => validStudentIds.has(a.data.studentId as string));
+  }, [periodAttempts, dashboardFilteredStudents]);
+
+  const studentsForDashboard = useMemo(() => {
+    return dashboardFilteredStudents.map((s) => ({
+      id: s.id,
+      name: getLearnerName(s),
+      ...s.data,
+    }));
+  }, [dashboardFilteredStudents]);
+
+  const attemptsForDashboard = useMemo(() => {
+    return dashboardFilteredAttempts.map((a) => ({
+      id: a.id,
+      ...a.data,
+    }));
+  }, [dashboardFilteredAttempts]);
+
+  const activeBatchesCount = useMemo(() => {
+    return (
+      allBatches.filter((b) => {
+        if (
+          selectedBranchName !== "All" &&
+          !allBranches.find((br) => br.name === selectedBranchName && br.id === b.branchId)
+        )
+          return false;
+        if (
+          selectedCourseName !== "All" &&
+          !allCourses.find((c) => c.name === selectedCourseName && c.id === b.courseId)
+        )
+          return false;
+        if (selectedBatchName !== "All" && b.name !== selectedBatchName) return false;
+        return true;
+      }).length || 0
+    );
+  }, [
+    allBatches,
+    selectedBranchName,
+    selectedCourseName,
+    selectedBatchName,
+    allBranches,
+    allCourses,
+  ]);
 
   useEffect(() => {
     if (selectedStudentId === "__all__") return;
@@ -771,44 +979,6 @@ export default function Analytics() {
       )
     ).size;
 
-    const statCards: StudentStatCard[] = [
-      {
-        label: "Attempts",
-        value: formatCompactInt(attempts.length),
-        hint: `${completed.length} completed in this period`,
-      },
-      {
-        //Error Here: The "Avg Score" card is showing the change vs class average instead of the actual average score. The hint should indicate how the student's average compares to the class average, while the value should show the student's average score.
-        label: "Avg Score",
-        value: `${avgStudentScore}`,
-        hint: `${avgStudentScore - classAvgScore >= 0 ? "+" : ""}${avgStudentScore - classAvgScore} vs class avg`,
-      },
-      {
-        label: "Best Score",
-        value: `${bestScore}`,
-        hint:
-          strongestSubject !== "—" ? `Best subject: ${strongestSubject}` : "Awaiting subject data",
-      },
-      {
-        label: "Avg Time",
-        value: formatMinutes(avgStudentTime),
-        hint: `${activeDays} active day${activeDays === 1 ? "" : "s"}`,
-      },
-      {
-        label: "Completion Rate",
-        value: `${attempts.length ? Math.round((completed.length / attempts.length) * 100) : 0}%`,
-        hint: `${attempts.length - completed.length} unfinished attempts`,
-      },
-      {
-        label: "Progress",
-        value: `${lastScore - firstScore >= 0 ? "+" : ""}${lastScore - firstScore}`,
-        hint:
-          weakestSubject !== "—"
-            ? `Needs work: ${weakestSubject}`
-            : "Need more attempts to compare",
-      },
-    ];
-
     return {
       totalAttempts: attempts.length,
       completedAttempts: completed.length,
@@ -824,7 +994,6 @@ export default function Analytics() {
       scoreTrend,
       subjectPerformance,
       recentAttempts,
-      statCards,
     };
   }, [periodAttempts, selectedLearner]);
 
@@ -889,9 +1058,9 @@ export default function Analytics() {
               time period.
             </p>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-              <Card className="border-dashed lg:col-span-1">
+          <CardContent className="space-y-8">
+            <div className="flex flex-col gap-8">
+              <Card className="border-dashed bg-muted/20 shadow-none">
                 <CardHeader>
                   <CardTitle className="text-sm">Choose Student</CardTitle>
                 </CardHeader>
@@ -906,7 +1075,7 @@ export default function Analytics() {
                     />
                   </div>
 
-                  <div className="max-h-72 space-y-2 overflow-auto pr-1">
+                  <div className="grid max-h-96 grid-cols-1 gap-3 overflow-auto pr-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                     <button
                       type="button"
                       onClick={() => setSelectedStudentId("__all__")}
@@ -968,29 +1137,116 @@ export default function Analytics() {
                 </CardContent>
               </Card>
 
-              <Card className="lg:col-span-2">
+              <Card className="border-none bg-transparent shadow-none">
                 <CardHeader>
-                  <CardTitle className="text-sm">Selected Student Summary</CardTitle>
+                  <CardTitle className="text-sm">
+                    {selectedStudentId === "__all__"
+                      ? "All Students Overview"
+                      : "Selected Student Summary"}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {selectedStudentId === "__all__" ? (
-                    <div className="grid grid-cols-2 gap-3 text-sm lg:grid-cols-4">
-                      <div className="rounded-lg bg-muted/40 p-3">
-                        <p className="text-muted-foreground">Total Students</p>
-                        <p className="text-lg font-semibold">{formatCompactInt(totalStudents)}</p>
+                    <div className="space-y-6">
+                      {/* Global Filters */}
+                      <div className="flex flex-col items-center gap-4 sm:flex-row">
+                        <div className="w-full sm:w-1/3">
+                          <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                            Branch
+                          </label>
+                          <Select value={selectedBranchName} onValueChange={setSelectedBranchName}>
+                            <SelectTrigger className="h-9 w-full bg-white dark:bg-zinc-900">
+                              <SelectValue placeholder="All Branches" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {uniqueBranches.length !== 1 && (
+                                <SelectItem value="All">All Branches</SelectItem>
+                              )}
+                              {uniqueBranches.map((name) => (
+                                <SelectItem key={name} value={name}>
+                                  {name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="w-full sm:w-1/3">
+                          <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                            Program
+                          </label>
+                          <Select value={selectedCourseName} onValueChange={setSelectedCourseName}>
+                            <SelectTrigger className="h-9 w-full bg-white dark:bg-zinc-900">
+                              <SelectValue placeholder="All Programs" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {uniqueCourses.length !== 1 && (
+                                <SelectItem value="All">All Programs</SelectItem>
+                              )}
+                              {uniqueCourses.map((name) => (
+                                <SelectItem key={name} value={name}>
+                                  {name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="w-full sm:w-1/3">
+                          <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                            Batch
+                          </label>
+                          <Select value={selectedBatchName} onValueChange={setSelectedBatchName}>
+                            <SelectTrigger className="h-9 w-full bg-white dark:bg-zinc-900">
+                              <SelectValue placeholder="All Batches" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {uniqueBatches.length !== 1 && (
+                                <SelectItem value="All">All Batches</SelectItem>
+                              )}
+                              {uniqueBatches.map((name) => (
+                                <SelectItem key={name} value={name}>
+                                  {name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
-                      <div className="rounded-lg bg-muted/40 p-3">
-                        <p className="text-muted-foreground">Total Attempts</p>
-                        <p className="text-lg font-semibold">{formatCompactInt(totalAttempts)}</p>
-                      </div>
-                      <div className="rounded-lg bg-muted/40 p-3">
-                        <p className="text-muted-foreground">Avg Score</p>
-                        <p className="text-lg font-semibold">{avgScore}</p>
-                      </div>
-                      <div className="rounded-lg bg-muted/40 p-3">
-                        <p className="text-muted-foreground">Completion Rate</p>
-                        <p className="text-lg font-semibold">{completionRate}%</p>
-                      </div>
+
+                      {/* Dashboard Components */}
+                      <DashboardStatsGrid
+                        students={studentsForDashboard}
+                        attempts={attemptsForDashboard}
+                        activeBatchesCount={activeBatchesCount}
+                        isLoading={isDataFiltering || loading}
+                      />
+
+                      <TopPerformersLeaderboard
+                        attempts={attemptsForDashboard}
+                        students={studentsForDashboard}
+                        isLoading={isDataFiltering || loading}
+                        selectedBranchName={selectedBranchName}
+                        selectedCourseName={selectedCourseName}
+                      />
+
+                      <AttemptsAnalyticsChart
+                        attempts={attemptsForDashboard}
+                        isLoading={isDataFiltering || loading}
+                      />
+
+                      <RecentActivityFeed
+                        attempts={attemptsForDashboard}
+                        students={studentsForDashboard}
+                        batches={allBatches}
+                        isLoading={isDataFiltering || loading}
+                      />
+
+                      <StudentHealthOverview
+                        students={studentsForDashboard}
+                        attempts={attemptsForDashboard}
+                        isLoading={isDataFiltering || loading}
+                      />
                     </div>
                   ) : selectedLearner ? (
                     <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
@@ -1036,8 +1292,10 @@ export default function Analytics() {
                       {selectedStudentDive ? (
                         <div className="grid min-w-[240px] grid-cols-2 gap-3 text-sm">
                           <div className="rounded-lg bg-muted/40 p-3">
-                            <p className="text-muted-foreground">Avg Score</p>
-                            <p className="text-lg font-semibold">{selectedStudentDive.avgScore}</p>
+                            <p className="text-muted-foreground">Total Attempts</p>
+                            <p className="text-lg font-semibold">
+                              {selectedStudentDive.totalAttempts}
+                            </p>
                           </div>
                           <div className="rounded-lg bg-muted/40 p-3">
                             <p className="text-muted-foreground">Completed</p>
@@ -1076,93 +1334,8 @@ export default function Analytics() {
 
             {selectedLearner && selectedStudentDive && (
               <>
-                <div className="grid grid-cols-2 gap-4 xl:grid-cols-6">
-                  {selectedStudentDive.statCards.map((item) => (
-                    <Card key={item.label}>
-                      <CardContent className="p-4">
-                        <p className="text-xs text-muted-foreground">{item.label}</p>
-                        <p className="mt-1 text-2xl font-bold">{item.value}</p>
-                        <p className="mt-2 text-xs text-muted-foreground">{item.hint}</p>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <div className="grid grid-cols-1 gap-6">
                   <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Student Score Trend</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="h-72">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={selectedStudentDive.scoreTrend}>
-                            <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                            <XAxis dataKey="date" className="fill-muted-foreground text-xs" />
-                            <YAxis className="fill-muted-foreground text-xs" />
-                            <Tooltip
-                              contentStyle={{
-                                backgroundColor: "hsl(var(--card))",
-                                border: "1px solid hsl(var(--border))",
-                                borderRadius: "0.5rem",
-                              }}
-                            />
-                            <Line
-                              type="monotone"
-                              dataKey="score"
-                              stroke="hsl(204, 91%, 56%)"
-                              strokeWidth={3}
-                              dot={{ r: 3 }}
-                            />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                      {selectedStudentDive.scoreTrend.length === 0 && (
-                        <p className="mt-3 text-sm text-muted-foreground">
-                          Need submitted attempts to render trend.
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-base">Subject-wise Performance</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="h-72">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={selectedStudentDive.subjectPerformance} layout="vertical">
-                            <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                            <XAxis type="number" className="fill-muted-foreground text-xs" />
-                            <YAxis
-                              dataKey="subject"
-                              type="category"
-                              width={110}
-                              className="fill-muted-foreground text-xs"
-                            />
-                            <Tooltip
-                              contentStyle={{
-                                backgroundColor: "hsl(var(--card))",
-                                border: "1px solid hsl(var(--border))",
-                                borderRadius: "0.5rem",
-                              }}
-                            />
-                            <Bar dataKey="score" fill="hsl(184, 87%, 65%)" radius={[0, 4, 4, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                      {selectedStudentDive.subjectPerformance.length === 0 && (
-                        <p className="mt-3 text-sm text-muted-foreground">
-                          No completed subject data available in this period.
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                  <Card className="lg:col-span-2">
                     <CardHeader>
                       <CardTitle className="text-base">Recent Attempts</CardTitle>
                     </CardHeader>
@@ -1192,47 +1365,86 @@ export default function Analytics() {
                       )}
                     </CardContent>
                   </Card>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Student Score Trend</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {selectedStudentDive.scoreTrend.length > 0 ? (
+                        <div className="h-72">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={selectedStudentDive.scoreTrend}>
+                              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                              <XAxis dataKey="date" className="fill-muted-foreground text-xs" />
+                              <YAxis className="fill-muted-foreground text-xs" />
+                              <Tooltip
+                                contentStyle={{
+                                  backgroundColor: "hsl(var(--card))",
+                                  border: "1px solid hsl(var(--border))",
+                                  borderRadius: "0.5rem",
+                                }}
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="score"
+                                stroke="hsl(204, 91%, 56%)"
+                                strokeWidth={3}
+                                dot={{ r: 3 }}
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : (
+                        <p className="py-6 text-center text-sm text-muted-foreground">
+                          Need submitted attempts to render trend.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
 
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-base">Coaching Signals</CardTitle>
+                      <CardTitle className="text-base">Subject-wise Performance</CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="rounded-lg bg-muted/40 p-4">
-                        <p className="text-xs text-muted-foreground">Score vs class average</p>
-                        <p
-                          className={`mt-1 text-2xl font-bold ${selectedStudentDive.classAvgDelta >= 0 ? "text-green-600" : "text-amber-600"}`}
-                        >
-                          {selectedStudentDive.classAvgDelta >= 0 ? "+" : ""}
-                          {selectedStudentDive.classAvgDelta}
+                    <CardContent>
+                      {selectedStudentDive.subjectPerformance.length > 0 ? (
+                        <div className="h-72">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart
+                              data={selectedStudentDive.subjectPerformance}
+                              layout="vertical"
+                            >
+                              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                              <XAxis type="number" className="fill-muted-foreground text-xs" />
+                              <YAxis
+                                dataKey="subject"
+                                type="category"
+                                width={110}
+                                className="fill-muted-foreground text-xs"
+                              />
+                              <Tooltip
+                                contentStyle={{
+                                  backgroundColor: "hsl(var(--card))",
+                                  border: "1px solid hsl(var(--border))",
+                                  borderRadius: "0.5rem",
+                                }}
+                              />
+                              <Bar
+                                dataKey="score"
+                                fill="hsl(184, 87%, 65%)"
+                                radius={[0, 4, 4, 0]}
+                              />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : (
+                        <p className="py-6 text-center text-sm text-muted-foreground">
+                          No completed subject data available in this period.
                         </p>
-                      </div>
-                      <div className="rounded-lg bg-muted/40 p-4">
-                        <p className="text-xs text-muted-foreground">
-                          Improvement from first to latest
-                        </p>
-                        <p
-                          className={`mt-1 text-2xl font-bold ${selectedStudentDive.firstLastDelta >= 0 ? "text-green-600" : "text-red-600"}`}
-                        >
-                          {selectedStudentDive.firstLastDelta >= 0 ? "+" : ""}
-                          {selectedStudentDive.firstLastDelta}
-                        </p>
-                      </div>
-                      <div className="rounded-lg bg-muted/40 p-4">
-                        <p className="text-xs text-muted-foreground">Activity footprint</p>
-                        <p className="mt-1 text-2xl font-bold">{selectedStudentDive.activeDays}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          days with attempt activity
-                        </p>
-                      </div>
-                      <div className="rounded-lg border border-dashed p-4">
-                        <p className="text-sm font-medium">Recommended focus</p>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          {selectedStudentDive.weakestSubject !== "—"
-                            ? `Prioritize ${selectedStudentDive.weakestSubject}, then reinforce ${selectedStudentDive.strongestSubject}.`
-                            : "Need more completed attempts to identify a clear focus topic."}
-                        </p>
-                      </div>
+                      )}
                     </CardContent>
                   </Card>
                 </div>
