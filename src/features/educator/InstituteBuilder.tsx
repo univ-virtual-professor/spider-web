@@ -26,7 +26,6 @@ import { useTenant } from "@app/providers/TenantProvider";
 import {
   Monitor,
   Smartphone,
-  ArrowLeft,
   Trash2,
   GripVertical,
   ChevronUp,
@@ -53,6 +52,7 @@ import {
   Globe,
   Github,
   Phone,
+  MessageCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -251,6 +251,7 @@ const SOCIAL_ICONS: Record<string, any> = {
   linkedin: Linkedin,
   website: Globe,
   github: Github,
+  whatsapp: MessageCircle,
 };
 
 // ── Theme Presets ────────────────────────────────────────────
@@ -564,6 +565,8 @@ const EDITOR_FIELDS: Record<string, EditorField[]> = {
     { key: "name", label: "Institute Name", type: "text" },
     { key: "tagline", label: "Tagline", type: "textarea" },
     { key: "whatsapp", label: "WhatsApp", type: "text" },
+    { key: "phone", label: "Phone Number", type: "text" },
+    { key: "email", label: "Email Address", type: "text" },
   ],
 };
 
@@ -3181,11 +3184,10 @@ function FooterComponent({
       id: s.id,
     }));
 
-  // 4. Contact Sync from Contact Form Component
-  const contactSection = sections.find((s) => s.type === "contact");
+  // 4. Contact Sync from Footer Component Data
   const contact = {
-    phone: contactSection?.data?.phone || "",
-    email: contactSection?.data?.email || "",
+    phone: data.phone || "",
+    email: data.email || "",
     whatsapp: data.whatsapp || "",
   };
   const hasContact = contact.phone || contact.email || contact.whatsapp;
@@ -3425,7 +3427,7 @@ function FooterComponent({
                   onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
                   onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.5)")}
                 >
-                  <ArrowRight size={16} /> WhatsApp Us
+                  <MessageCircle size={16} /> WhatsApp Us
                 </a>
               )}
             </div>
@@ -5927,24 +5929,6 @@ export default function InstituteBuilder() {
             flexShrink: 0,
           }}
         >
-          <button
-            onClick={() => navigate("/educator/website-settings")}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "5px 10px",
-              borderRadius: 8,
-              border: "1px solid rgba(0,0,0,0.1)",
-              background: "none",
-              cursor: "pointer",
-              fontSize: 12,
-              color: "rgba(0,0,0,0.5)",
-            }}
-          >
-            <ArrowLeft size={14} /> Back
-          </button>
-          <div style={{ width: 1, height: 24, background: "rgba(0,0,0,0.08)" }} />
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontSize: 10 }}>🏫</span>
             <span style={{ fontSize: 13, fontWeight: 600, color: "#1a1a2e" }}>{instituteName}</span>

@@ -84,6 +84,9 @@ export default function BuilderThemeHome() {
   }
 
   const builderConfig = tenant.builderConfig;
+  const contactSection = builderConfig?.sections?.find((s: any) => s.type === "contact");
+  const navbarPhone = contactSection?.data?.phone || tenant.contact?.phone;
+
   const themeKey = (builderConfig?.themeKey || "indigo") as ThemeKey;
   const useGradient = builderConfig?.useGradient || false;
   const themeMode = builderConfig?.themeMode || "preset";
@@ -172,9 +175,9 @@ export default function BuilderThemeHome() {
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          {tenant.contact?.phone && (
+          {navbarPhone && (
             <a
-              href={`tel:${tenant.contact.phone}`}
+              href={`tel:${navbarPhone}`}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -199,7 +202,7 @@ export default function BuilderThemeHome() {
               >
                 <Phone size={14} color={theme.primary} />
               </div>
-              {!isMobile && <span>{tenant.contact.phone}</span>}
+              {!isMobile && <span>{navbarPhone}</span>}
             </a>
           )}
           <Link
