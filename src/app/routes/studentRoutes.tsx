@@ -10,6 +10,7 @@ import StudentDashboard from "@features/student/StudentDashboard";
 import StudentLayout from "@features/student/StudentLayout";
 import StudentMessages from "@features/student/StudentMessages";
 import StudentRankings from "@features/student/StudentRankings";
+import StudentReports from "@features/student/StudentReports";
 import StudentResults from "@features/student/StudentResults";
 import StudentSettings from "@features/student/StudentSettings";
 import StudentTestDetails from "@features/student/StudentTestDetails";
@@ -32,6 +33,7 @@ export function getStudentRoutes() {
         <Route path="settings" element={<StudentSettings />} />
         <Route path="content" element={<StudentContent />} />
         <Route path="chatbot" element={<StudentChatbot />} />
+        <Route path="reports" element={<StudentReports />} />
       </Route>
     </Route>
   );

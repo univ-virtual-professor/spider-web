@@ -18,6 +18,7 @@ import {
   ChevronRight,
   BookOpen,
   Bot,
+  BarChart2,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
@@ -170,6 +171,7 @@ export default function StudentLayout() {
       { icon: History, label: "My Attempts", href: "/student/attempts" },
       { icon: BookOpen, label: "Content", href: "/student/content" },
       { icon: Bot, label: "AI Tutor", href: "/student/chatbot" },
+      { icon: BarChart2, label: "Reports", href: "/student/reports" },
       { icon: Trophy, label: "Rankings", href: "/student/rankings" },
     ],
     []

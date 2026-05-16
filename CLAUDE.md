@@ -79,6 +79,7 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
 - `/educator/organization` — Branches, Programs, and **Employees** tabs; employees tab: invite staff, assign role + branch scope, filter list
 - `/student/*` — student portal (dashboard, tests, results, rankings, content)
 - `/student/dashboard` — live tests grid, resume in-progress, rank + avg score, leaderboard preview (top 5), score trend
+- `/student/reports` — performance analytics: readiness score, weak areas, strong holds, strategy list, subject accuracy bar chart, weekly trend line chart; calls `monkey-king GET /api/reports/my` (STUDENT auth via Firebase ID token); Refresh button calls `POST /api/reports/recompute` (202, rate-limited 10 min)
 - `/student/content` — view books/notes for enrolled course
 
 ## Employee RBAC System
