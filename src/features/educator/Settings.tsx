@@ -34,9 +34,9 @@ import {
   reauthenticateWithCredential,
   updatePassword,
 } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { auth, db, storage } from "@shared/lib/firebase";
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "@shared/lib/firebase";
+import { uploadToImageKit } from "@shared/lib/imagekitUpload";
 import { useAuth } from "@app/providers/AuthProvider";
 import { buildTenantUrl } from "@shared/lib/tenant";
 
@@ -67,6 +67,7 @@ export default function Settings() {
   const [displayName, setDisplayName] = useState(profile?.displayName || "");
   const [email, setEmail] = useState(profile?.email || firebaseUser?.email || "");
   const [phone, setPhone] = useState("");
+  const [coachingName, setCoachingName] = useState("");
   const [photoURL, setPhotoURL] = useState<string>(profile?.photoURL || "");
 
   const [savingProfile, setSavingProfile] = useState(false);
@@ -122,6 +123,7 @@ export default function Settings() {
         const data = snap.exists() ? (snap.data() as EducatorProfileDoc) : {};
 
         setPhone(data.phone || "");
+        setCoachingName(data?.coachingName || data?.websiteConfig?.coachingName || "");
         if (data.prefs?.notifications) {
           setNotifications({
             email: data.prefs.notifications.email ?? true,
@@ -162,12 +164,13 @@ export default function Settings() {
 
     setUploadingPhoto(true);
     try {
-      const path = `educators/${firebaseUser.uid}/profile/avatar_${Date.now()}`;
-      const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(storageRef);
+      const { url } = await uploadToImageKit(
+        file,
+        `avatar_${firebaseUser.uid}_${Date.now()}`,
+        "/educator-profiles",
+        "website"
+      );
 
-      // Update auth profile + firestore
       if (auth.currentUser) {
         await updateProfile(auth.currentUser, { photoURL: url });
       }
@@ -224,6 +227,10 @@ export default function Settings() {
         },
         { merge: true }
       );
+
+      await updateDoc(doc(db, "educators", firebaseUser.uid), {
+        coachingName: coachingName.trim(),
+      });
 
       await refreshProfile();
 
@@ -543,6 +550,18 @@ export default function Settings() {
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="+91 ..."
                   />
+                </div>
+
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Coaching / Institute Name</Label>
+                  <Input
+                    value={coachingName}
+                    onChange={(e) => setCoachingName(e.target.value)}
+                    placeholder="e.g. Rishi Academy"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Shown as watermark on student test screens.
+                  </p>
                 </div>
               </div>
 

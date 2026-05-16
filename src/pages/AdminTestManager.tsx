@@ -33,7 +33,7 @@ export default function AdminTestManager() {
 
   // --- 1. Fetch Admin Tests ---
   useEffect(() => {
-    const q = query(collection(db, "test_series"), where("authorId", "==", "admin"));
+    const q = query(collection(db, "test_series"), where("source", "==", "admin"));
     const unsub = onSnapshot(q, (snap) => {
       setTests(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       setLoading(false);
@@ -51,7 +51,7 @@ export default function AdminTestManager() {
       subject: formData.get("subject"),
       level: formData.get("level"),
       durationMinutes: Number(formData.get("duration")),
-      authorId: "admin",
+      source: "admin",
       createdAt: serverTimestamp(),
     };
 

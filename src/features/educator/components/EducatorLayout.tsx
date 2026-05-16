@@ -21,6 +21,7 @@ import {
   BarChart3,
   UserPlus,
   ClipboardList,
+  Layers,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
@@ -140,12 +141,17 @@ export default function EducatorLayout() {
         href: "/educator/test-series",
         children: [
           { icon: Database, label: "Question Bank", href: "/educator/question-bank" },
-          { icon: ClipboardList, label: "Admin Test Upload", href: "/educator/question-papers" },
+          { icon: ClipboardList, label: "Test Upload Request", href: "/educator/question-papers" },
           { icon: Zap, label: "DPP Generator", href: "/educator/dpp" },
         ],
       },
       { icon: BookOpen, label: "Content", href: "/educator/content" },
-      { icon: CreditCard, label: "Billing & Plan", href: "/educator/billing" },
+      {
+        icon: CreditCard,
+        label: "Billing & Plan",
+        href: "/educator/billing",
+        children: [{ icon: Layers, label: "Seat Allocation", href: "/educator/seat-allocation" }],
+      },
     ],
     []
   );

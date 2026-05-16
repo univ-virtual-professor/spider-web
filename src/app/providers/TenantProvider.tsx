@@ -78,28 +78,31 @@ async function fetchTenantProfile(tenantSlug: string | null): Promise<TenantProf
 }
 
 export function TenantProvider({ children }: { children: React.ReactNode }) {
-  const { profile } = useAuth();
+  const { profile, loading: authLoading } = useAuth();
   const [tenantSlug, setTenantSlug] = useState<string | null>(null);
   const [isTenantDomain, setIsTenantDomain] = useState(false);
 
   useEffect(() => {
-    const slugFromHostname = getTenantSlugFromHostname(window.location.hostname);
+    const imp = !!sessionStorage.getItem("imp_session");
+    const fromHostname = getTenantSlugFromHostname(window.location.hostname);
 
-    if (slugFromHostname) {
-      setTenantSlug(slugFromHostname);
+    if (fromHostname) {
+      setTenantSlug(fromHostname);
       setIsTenantDomain(true);
       return;
     }
 
     if (profile?.tenantSlug) {
       setTenantSlug(profile.tenantSlug);
-      setIsTenantDomain(false);
+      // During impersonation we stay on main domain; treat as tenant domain so all
+      // student components get the right context without individual isImpersonating checks.
+      setIsTenantDomain(imp);
       return;
     }
 
     setTenantSlug(null);
     setIsTenantDomain(false);
-  }, [profile?.tenantSlug]);
+  }, [profile?.tenantSlug, authLoading]);
 
   const { data: tenant = null, isLoading } = useQuery({
     queryKey: ["tenantProfile", tenantSlug],
@@ -115,7 +118,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         tenant,
         tenantSlug,
         isTenantDomain,
-        loading: isLoading && tenantSlug !== null,
+        loading: authLoading || (isLoading && tenantSlug !== null),
       }}
     >
       {children}

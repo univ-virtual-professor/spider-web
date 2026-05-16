@@ -1693,28 +1693,30 @@ export default function StudentCBTAttempt() {
       }}
     >
       {/* ─── INSTITUTE WATERMARK ─── */}
-      {tenant?.coachingName &&
-        (() => {
-          const name = tenant.coachingName!.replace(
-            /[<>&"]/g,
-            (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c] ?? c
-          );
-          const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="rgba(0,0,0,0.055)" transform="rotate(-30,160,90)" letter-spacing="3">${name}</text></svg>`;
-          return (
-            <div
-              aria-hidden="true"
-              style={{
-                position: "absolute",
-                inset: 0,
-                pointerEvents: "none",
-                zIndex: 102,
-                backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(svg)}")`,
-                backgroundRepeat: "repeat",
-                backgroundSize: "320px 180px",
-              }}
-            />
-          );
-        })()}
+      {(() => {
+        const rawName =
+          tenant?.coachingName || tenant?.builderConfig?.instituteName || tenantSlug || null;
+        if (!rawName) return null;
+        const name = rawName.replace(
+          /[<>&"]/g,
+          (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c] ?? c
+        );
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120"><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" font-weight="600" fill="#616060" fill-opacity="0.03" transform="rotate(-30,100,60)" letter-spacing="3">${name}</text></svg>`;
+        return (
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              inset: 0,
+              pointerEvents: "none",
+              zIndex: 102,
+              backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(svg)}")`,
+              backgroundRepeat: "repeat",
+              backgroundSize: "200px 120px",
+            }}
+          />
+        );
+      })()}
 
       {/* ─── INSTRUCTIONS GATE ─── */}
       {!isStarted && instructionsOpen && (

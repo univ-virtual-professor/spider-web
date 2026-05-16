@@ -26,6 +26,7 @@ import {
   StudentHealthCategoryList,
 } from "@features/educator";
 import QuestionPaperRequests from "@features/educator/QuestionPaperRequests";
+import SeatAllocation from "@features/educator/SeatAllocation";
 
 export function getEducatorRoutes() {
   return (
@@ -54,6 +55,7 @@ export function getEducatorRoutes() {
       <Route path="billing" element={<Billing />} />
       <Route path="analytics" element={<EducatorAnalytics />} />
       <Route path="analytics/health/:category" element={<StudentHealthCategoryList />} />
+      <Route path="seat-allocation" element={<SeatAllocation />} />
       <Route path="settings" element={<Settings />} />
       <Route path="divisions" element={<Divisions />} />
       <Route path="content" element={<EducatorContent />} />

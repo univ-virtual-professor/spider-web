@@ -87,7 +87,8 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
 ## Educator Defaults (on creation)
 
 - `maxBatches: null` — unlimited until admin sets it
-- `allowedSubjects: []` — no subjects until admin assigns
+- `allowedSubjectIds: []` — no subjects until admin assigns via Division Controls
+- `allowedCourseIds: []` — no courses until admin assigns; checking a course auto-adds all its subjects
 - `seatLimit: 0` — no seats until purchased
 
 ## Payments

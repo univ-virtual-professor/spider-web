@@ -7,6 +7,7 @@ import {
   updateProfile,
 } from "firebase/auth";
 import { auth } from "@shared/lib/firebase";
+import { buildTenantUrl } from "@shared/lib/tenant";
 import { toast } from "sonner";
 import { Loader2, GraduationCap } from "lucide-react";
 import { Button } from "@shared/ui/button";
@@ -84,8 +85,9 @@ export default function Join() {
           }
           throw new Error(err.detail || "Enrollment failed");
         }
+        const result = await res.json().catch(() => ({}));
         toast.success("You've been enrolled successfully.");
-        nav("/student/dashboard");
+        window.location.href = buildTenantUrl(result.tenant_slug || "", "/student/dashboard");
       } catch (e: any) {
         toast.error(e?.message || "Enrollment failed");
         setSubmitting(false);
@@ -124,8 +126,9 @@ export default function Join() {
         throw new Error(err.detail || "Registration failed");
       }
 
+      const result = await res.json().catch(() => ({}));
       toast.success("Welcome! You've been enrolled successfully.");
-      nav("/student/dashboard");
+      window.location.href = buildTenantUrl(result.tenant_slug || "", "/student/dashboard");
     } catch (e: any) {
       const msg = e?.message || "Something went wrong";
       if (msg.includes("email-already-in-use") || msg.includes("EMAIL_EXISTS")) {

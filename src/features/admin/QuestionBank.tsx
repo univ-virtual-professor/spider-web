@@ -519,9 +519,11 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
   const [allSubjects, setAllSubjects] = useState<{ id: string; name: string; courseId: string }[]>(
     []
   );
-  const { courses: accessibleCourses, subjects: accessibleSubjects } = useAccessibleCourses(
-    scope === "educator" && educatorUid ? educatorUid : ""
-  );
+  const {
+    courses: accessibleCourses,
+    subjects: accessibleSubjects,
+    loading: accessibleCoursesLoading,
+  } = useAccessibleCourses(scope === "educator" && educatorUid ? educatorUid : "");
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -564,8 +566,6 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
   const [subjects, setSubjects] = useState<{ id: string; name: string }[]>([]);
   // Admin questions visible in educator scope
   const [adminItems, setAdminItems] = useState<QBQuestion[]>([]);
-  // Educator's allowed subject IDs (for filtering admin questions)
-  const [allowedSubjectIds, setAllowedSubjectIds] = useState<string[] | null>(null);
 
   // CSV import
   const [csvOpen, setCsvOpen] = useState(false);
@@ -712,7 +712,7 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
     return () => unsub();
   }, [questionBankCollection]);
 
-  // Load courses, subjects (for filter cascading + CSV validation) + educator allowedSubjectIds
+  // Load courses, subjects (for filter cascading + CSV validation)
   useEffect(() => {
     Promise.all([
       getDocs(collection(db, "courses")),
@@ -731,11 +731,6 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
       setAllSubjects(subjectList);
       setSubjects(subjectList);
     });
-    if (isEducatorScope && educatorUid) {
-      getDoc(doc(db, "educators", educatorUid)).then((snap) => {
-        setAllowedSubjectIds(snap.exists() ? (snap.data()?.allowedSubjectIds ?? []) : []);
-      });
-    }
   }, [isEducatorScope, educatorUid]);
 
   // Educator scope: also subscribe to admin /question_bank so educators can browse admin questions
@@ -759,15 +754,27 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
   }, [isEducatorScope]);
 
   // Merge own questions with admin questions (educator scope only)
-  // Admin questions are filtered to educator's allowed subjects only
+  // Admin questions filtered to courses the educator is enrolled in
   const allItems = useMemo(() => {
     if (!isEducatorScope) return items;
-    const visibleAdminItems =
-      allowedSubjectIds === null
-        ? []
-        : adminItems.filter((q) => q.subjectId && allowedSubjectIds.includes(q.subjectId));
+    if (accessibleCoursesLoading) return items;
+    const accessibleCourseIds = new Set(accessibleCourses.map((c) => c.id));
+    if (accessibleCourseIds.size === 0) return items;
+    const subjectCourseMap = new Map(allSubjects.map((s) => [s.id, s.courseId]));
+    const visibleAdminItems = adminItems.filter((q) => {
+      if (!q.subjectId) return false;
+      const courseId = subjectCourseMap.get(q.subjectId);
+      return courseId ? accessibleCourseIds.has(courseId) : false;
+    });
     return [...items, ...visibleAdminItems];
-  }, [items, adminItems, isEducatorScope, allowedSubjectIds]);
+  }, [
+    items,
+    adminItems,
+    isEducatorScope,
+    accessibleCourses,
+    accessibleCoursesLoading,
+    allSubjects,
+  ]);
 
   // Course options: admin shows all, educator shows only accessible
   const courseOptions = isEducatorScope ? accessibleCourses : allCourses;
