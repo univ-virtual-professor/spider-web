@@ -560,13 +560,7 @@ const EDITOR_FIELDS: Record<string, EditorField[]> = {
     { key: "cta", label: "Button Text", type: "text" },
     { key: "ctaUrl", label: "Button Link", type: "cta-link" },
   ],
-  footer: [
-    { key: "name", label: "Institute Name", type: "text" },
-    { key: "tagline", label: "Tagline", type: "textarea" },
-    { key: "whatsapp", label: "WhatsApp", type: "text" },
-    { key: "phone", label: "Phone Number", type: "text" },
-    { key: "email", label: "Email Address", type: "text" },
-  ],
+  footer: [],
 };
 
 // ── 20 Website Components ────────────────────────────────────
