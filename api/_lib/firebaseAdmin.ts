@@ -100,6 +100,13 @@ function loadServiceAccountFromEnv(): ServiceAccountLike {
 
   const parseErrors: string[] = [];
 
+  function normalizeResult(sa: ServiceAccountLike): ServiceAccountLike {
+    if (typeof sa.private_key === "string" && !sa.private_key.includes("\n")) {
+      sa.private_key = sa.private_key.replace(/\\n/g, "\n");
+    }
+    return sa;
+  }
+
   // Prefer base64 when present because hosting dashboards often corrupt raw JSON formatting.
   if (rawBase64) {
     try {
@@ -107,7 +114,7 @@ function loadServiceAccountFromEnv(): ServiceAccountLike {
       const padLength = (4 - (normalized.length % 4)) % 4;
       const padded = `${normalized}${"=".repeat(padLength)}`;
       const decoded = Buffer.from(padded, "base64").toString("utf8");
-      return parseServiceAccountJson(decoded);
+      return normalizeResult(parseServiceAccountJson(decoded));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       parseErrors.push(`FIREBASE_SERVICE_ACCOUNT_JSON_BASE64: ${msg}`);
@@ -116,7 +123,7 @@ function loadServiceAccountFromEnv(): ServiceAccountLike {
 
   if (rawJson) {
     try {
-      return parseServiceAccountJson(rawJson);
+      return normalizeResult(parseServiceAccountJson(rawJson));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       parseErrors.push(`FIREBASE_SERVICE_ACCOUNT_JSON: ${msg}`);
