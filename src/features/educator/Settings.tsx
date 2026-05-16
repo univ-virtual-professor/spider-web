@@ -39,6 +39,7 @@ import { auth, db } from "@shared/lib/firebase";
 import { uploadToImageKit } from "@shared/lib/imagekitUpload";
 import { useAuth } from "@app/providers/AuthProvider";
 import { buildTenantUrl } from "@shared/lib/tenant";
+import { logError } from "@shared/lib/errorLogger";
 
 type EducatorPrefs = {
   notifications?: {
@@ -132,7 +133,7 @@ export default function Settings() {
           });
         }
       } catch (e) {
-        console.error("Failed to load extra settings", e);
+        logError(e, "Settings/loadExtraData");
       }
     };
 
@@ -186,7 +187,8 @@ export default function Settings() {
         title: "Photo updated",
         description: "Your profile photo has been changed.",
       });
-    } catch {
+    } catch (err) {
+      logError(err, "Settings/handleUploadPhoto");
       toast({
         title: "Upload failed",
         description: "Could not upload photo. Please try again.",
@@ -238,7 +240,8 @@ export default function Settings() {
         title: "Saved",
         description: "Profile information updated successfully.",
       });
-    } catch {
+    } catch (err) {
+      logError(err, "Settings/saveProfile");
       toast({
         title: "Save failed",
         description: "Could not save changes. Please try again.",
@@ -291,6 +294,7 @@ export default function Settings() {
       // keep AuthProvider profile in sync
       await refreshProfile().catch(() => {});
     } catch (e: any) {
+      logError(e, "Settings/updateSubdomainSlug");
       toast({
         title: "Update failed",
         description: e?.message || "Could not update subdomain.",
@@ -325,7 +329,8 @@ export default function Settings() {
         title: "Preferences saved",
         description: "Notification settings updated.",
       });
-    } catch {
+    } catch (err) {
+      logError(err, "Settings/saveNotificationPrefs");
       toast({
         title: "Failed",
         description: "Could not save notification preferences.",
@@ -391,6 +396,7 @@ export default function Settings() {
         description: "Your password has been changed successfully.",
       });
     } catch (e: any) {
+      logError(e, "Settings/handleUpdatePassword");
       const msg =
         typeof e?.message === "string" && e.message.includes("auth/wrong-password")
           ? "Current password is incorrect."
@@ -409,7 +415,8 @@ export default function Settings() {
     try {
       await signOut(auth);
       window.location.href = "/login?role=educator";
-    } catch {
+    } catch (err) {
+      logError(err, "Settings/handleLogout");
       toast({
         title: "Logout failed",
         description: "Please try again.",
