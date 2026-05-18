@@ -15,6 +15,7 @@ import {
   Network,
   ScrollText,
   Search,
+  Library,
 } from "lucide-react";
 
 const TYPE_ICONS: Record<string, React.ElementType> = {
@@ -22,6 +23,7 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
   note: FileText,
   mindmap: Network,
   formulasheet: ScrollText,
+  others: Library,
 };
 
 function ContentTypeIcon({ slug }: { slug: string }) {
@@ -39,6 +41,9 @@ type ContentItem = {
   fileSize: number;
   source: "educator" | "admin_library";
   createdAt: Timestamp;
+  sharingScope?: "branch" | "program" | "batch";
+  targetBatchId?: string;
+  isPublished?: boolean;
 };
 
 function formatBytes(bytes: number) {
@@ -90,7 +95,13 @@ export default function StudentContent() {
     return () => unsub();
   }, [educatorId, branchId, courseId]);
 
+  const studentBatchId = profile?.batchId ?? "";
+
   const filtered = items.filter((i) => {
+    if (i.isPublished === false) return false;
+    if (i.sharingScope === "batch" && i.targetBatchId && i.targetBatchId !== studentBatchId) {
+      return false;
+    }
     if (filterType !== "all" && i.type !== filterType) return false;
     if (search.trim() && !i.title.toLowerCase().includes(search.toLowerCase())) return false;
     return true;

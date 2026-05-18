@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Clock, FileText, Lock, Unlock, Play, Eye, Timer, CalendarClock } from "lucide-react";
-import { Card, CardContent, CardFooter } from "@shared/ui/card";
 import { Badge } from "@shared/ui/badge";
 import { Button } from "@shared/ui/button";
 import { cn } from "@shared/lib/utils";
@@ -97,154 +96,195 @@ export function TestCard({ test, attemptsUsed = 0, onView, onStart, onUnlock }: 
   const attemptsUsedSafe = Math.max(0, safeNum(attemptsUsed, 0));
   const attemptsRemaining = Math.max(0, attemptsAllowed - attemptsUsedSafe);
 
+  const rawDifficulty = test.difficulty || test.level || "Medium";
+  const difficultyLabel =
+    typeof rawDifficulty === "string"
+      ? rawDifficulty.charAt(0).toUpperCase() + rawDifficulty.slice(1).toLowerCase()
+      : "Medium";
+  const diffColor =
+    difficultyColors[difficultyLabel as keyof typeof difficultyColors] || difficultyColors.Medium;
+
   return (
-    <Card
+    <div
       className={cn(
-        "card-soft card-hover overflow-hidden border-0",
+        "flex flex-col justify-between gap-4 rounded-xl border border-border/80 bg-card p-4 shadow-sm transition-all duration-200 hover:bg-muted/10 md:flex-row md:items-center",
         test.isLive
-          ? "bg-red-50 ring-2 ring-red-500/20 dark:bg-red-900/10"
+          ? "border-red-200 bg-red-50/30 dark:border-red-900/30 dark:bg-red-900/10"
           : test.isUpcoming
-            ? "bg-amber-50 ring-2 ring-amber-400/30 dark:bg-amber-900/10"
-            : subjectColors[test.subject] || "bg-pastel-cream"
+            ? "border-amber-200 bg-amber-50/30 dark:border-amber-900/30 dark:bg-amber-900/10"
+            : ""
       )}
     >
-      <CardContent className="space-y-4 p-5">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1">
-            <div className="mb-1 flex items-center gap-2">
-              <h3 className="line-clamp-2 font-semibold text-foreground">{test.title}</h3>
-              {test.isLive && (
-                <Badge variant="destructive" className="h-4 animate-pulse px-1 py-0 text-[10px]">
-                  LIVE
-                </Badge>
-              )}
-              {test.isUpcoming && (
-                <Badge className="h-4 bg-amber-500 px-1 py-0 text-[10px] text-white">
-                  UPCOMING
-                </Badge>
-              )}
-            </div>
-            <p className="text-sm text-muted-foreground">{test.subject}</p>
-          </div>
+      {/* Left Column: Icon + Subject/Title */}
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div
+          className={cn(
+            "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl font-bold shadow-sm transition-transform",
+            test.isLive
+              ? "bg-red-500/10 text-red-500"
+              : test.isUpcoming
+                ? "bg-amber-500/10 text-amber-500"
+                : subjectColors[test.subject] || "bg-pastel-cream text-foreground"
+          )}
+        >
           {test.isLocked ? (
-            <div className="rounded-lg bg-destructive/10 p-2">
-              <Lock className="h-4 w-4 text-destructive" />
-            </div>
+            <Lock className="h-5 w-5 text-destructive" />
           ) : (
-            <div className="rounded-lg bg-green-500/10 p-2">
-              <Unlock className="h-4 w-4 text-green-600" />
+            <Unlock className="h-5 w-5 text-green-600" />
+          )}
+        </div>
+
+        <div className="min-w-0 space-y-0.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate text-sm font-semibold leading-snug text-foreground sm:text-base">
+              {test.title}
+            </h3>
+            {test.isLive && (
+              <Badge
+                variant="destructive"
+                className="h-4 animate-pulse px-1.5 py-0 text-[9px] font-bold tracking-wider"
+              >
+                LIVE
+              </Badge>
+            )}
+            {test.isUpcoming && (
+              <Badge className="h-4 bg-amber-500 px-1.5 py-0 text-[9px] font-bold tracking-wider text-white hover:bg-amber-500">
+                UPCOMING
+              </Badge>
+            )}
+          </div>
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {test.subject}
+          </p>
+        </div>
+      </div>
+
+      {/* Middle Column: Stats & Attempts */}
+      <div className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-2 md:min-w-[280px]">
+        {/* Stats Badges */}
+        <div className="flex items-center gap-2">
+          <Badge
+            variant="secondary"
+            className="rounded-full bg-muted/60 px-2.5 py-0.5 text-xs font-medium"
+          >
+            <Clock className="mr-1 h-3 w-3 text-muted-foreground" />
+            {test.duration} min
+          </Badge>
+          <Badge
+            variant="secondary"
+            className="rounded-full bg-muted/60 px-2.5 py-0.5 text-xs font-medium"
+          >
+            <FileText className="mr-1 h-3 w-3 text-muted-foreground" />
+            {test.questionsCount} Q
+          </Badge>
+          <Badge
+            className={cn(
+              "rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+              diffColor
+            )}
+          >
+            {difficultyLabel}
+          </Badge>
+        </div>
+
+        {/* Attempts / Price */}
+        <div className="flex flex-col text-xs text-muted-foreground">
+          {!test.isLocked &&
+            (attemptsRemaining > 0 ? (
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                {attemptsRemaining} attempt{attemptsRemaining > 1 ? "s" : ""} left
+              </span>
+            ) : (
+              <span className="font-semibold text-destructive">No attempts left</span>
+            ))}
+          {test.isLocked && test.price > 0 && !test.isLive && (
+            <span className="text-sm font-bold text-primary">₹{test.price}</span>
+          )}
+          {test.isLive && (
+            <span className="text-[10px] font-bold uppercase text-red-500">Free during live</span>
+          )}
+        </div>
+      </div>
+
+      {/* Right Column: Timing/Countdown & Actions */}
+      <div className="flex w-full shrink-0 flex-col items-stretch gap-4 sm:flex-row sm:items-center md:w-auto md:min-w-[280px] md:justify-end">
+        {/* Timing Information */}
+        <div className="flex shrink-0 flex-col text-xs md:text-right">
+          {!test.isLocked && timeLeft !== null && (
+            <div
+              className={cn(
+                "flex items-center gap-1 font-semibold",
+                timeLeft < 5 * 60 * 1000 ? "animate-pulse text-red-600" : "text-amber-600"
+              )}
+            >
+              <Timer className="h-3.5 w-3.5" />
+              {formatTimeLeft(timeLeft)}
+            </div>
+          )}
+
+          {test.isUpcoming && countdown !== null && (
+            <div className="flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-400">
+              <CalendarClock className="h-3.5 w-3.5" />
+              Starting in {formatCountdown(countdown)}
             </div>
           )}
         </div>
 
-        {/* Stats */}
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="secondary" className="rounded-full bg-background/60">
-            <Clock className="mr-1 h-3 w-3" />
-            {test.duration} min
-          </Badge>
-          <Badge variant="secondary" className="rounded-full bg-background/60">
-            <FileText className="mr-1 h-3 w-3" />
-            {test.questionsCount} Q
-          </Badge>
-          <Badge className={cn("rounded-full", difficultyColors[test.difficulty])}>
-            {test.difficulty}
-          </Badge>
+        {/* Buttons */}
+        <div className="flex shrink-0 items-center gap-2">
+          {test.isUpcoming ? (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 rounded-lg bg-background/60 px-3 text-xs font-medium"
+                onClick={() => onView(test.id)}
+              >
+                <Eye className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
+                View
+              </Button>
+              <Button
+                size="sm"
+                className="h-9 rounded-lg bg-amber-500 px-3 text-xs font-medium text-white hover:bg-amber-600"
+                disabled
+              >
+                <CalendarClock className="mr-1.5 h-3.5 w-3.5" />
+                {countdown !== null && countdown > 0 ? `In ${formatCountdown(countdown)}` : "Soon"}
+              </Button>
+            </>
+          ) : test.isLocked ? (
+            <Button
+              size="sm"
+              className="gradient-bg h-9 rounded-lg px-4 text-xs font-semibold"
+              onClick={() => onUnlock(test.id)}
+            >
+              <Lock className="mr-1.5 h-3.5 w-3.5" />
+              Unlock
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 rounded-lg bg-background/60 px-3 text-xs font-medium"
+                onClick={() => onView(test.id)}
+              >
+                <Eye className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
+                View
+              </Button>
+              <Button
+                size="sm"
+                className="gradient-bg h-9 rounded-lg px-4 text-xs font-semibold"
+                onClick={() => onStart(test.id)}
+                disabled={attemptsRemaining <= 0}
+              >
+                <Play className="mr-1.5 h-3.5 w-3.5" />
+                Start
+              </Button>
+            </>
+          )}
         </div>
-
-        {/* Attempts Info */}
-        {!test.isLocked && (
-          <div className="text-xs text-muted-foreground">
-            {attemptsRemaining > 0 ? (
-              <span>
-                {attemptsRemaining} attempt{attemptsRemaining > 1 ? "s" : ""} remaining
-              </span>
-            ) : (
-              <span className="text-destructive">No attempts remaining</span>
-            )}
-          </div>
-        )}
-
-        {/* Access window countdown */}
-        {!test.isLocked && timeLeft !== null && (
-          <div
-            className={cn(
-              "flex items-center gap-1 text-xs font-medium",
-              timeLeft < 5 * 60 * 1000 ? "text-red-600" : "text-amber-600"
-            )}
-          >
-            <Timer className="h-3 w-3" />
-            {formatTimeLeft(timeLeft)}
-          </div>
-        )}
-
-        {/* Price */}
-        {test.isLocked && test.price > 0 && !test.isLive && (
-          <div className="text-sm font-semibold text-primary">₹{test.price}</div>
-        )}
-
-        {test.isLive && (
-          <div className="text-[10px] font-bold uppercase text-red-500">
-            Available for free during live window
-          </div>
-        )}
-
-        {test.isUpcoming && countdown !== null && (
-          <div className="flex items-center gap-1 text-xs font-medium text-amber-700">
-            <CalendarClock className="h-3 w-3" />
-            Starting in {formatCountdown(countdown)}
-          </div>
-        )}
-      </CardContent>
-
-      <CardFooter className="gap-2 p-4 pt-0">
-        {test.isUpcoming ? (
-          <>
-            <Button
-              variant="outline"
-              className="flex-1 rounded-xl bg-background/60"
-              onClick={() => onView(test.id)}
-            >
-              <Eye className="mr-2 h-4 w-4" />
-              View
-            </Button>
-            <Button
-              className="flex-1 rounded-xl bg-amber-500 text-white hover:bg-amber-600"
-              disabled
-            >
-              <CalendarClock className="mr-2 h-4 w-4" />
-              {countdown !== null && countdown > 0
-                ? `In ${formatCountdown(countdown)}`
-                : "Starting soon"}
-            </Button>
-          </>
-        ) : test.isLocked ? (
-          <Button className="gradient-bg w-full rounded-xl" onClick={() => onUnlock(test.id)}>
-            <Lock className="mr-2 h-4 w-4" />
-            Unlock
-          </Button>
-        ) : (
-          <>
-            <Button
-              variant="outline"
-              className="flex-1 rounded-xl bg-background/60"
-              onClick={() => onView(test.id)}
-            >
-              <Eye className="mr-2 h-4 w-4" />
-              View
-            </Button>
-            <Button
-              className="gradient-bg flex-1 rounded-xl"
-              onClick={() => onStart(test.id)}
-              disabled={attemptsRemaining <= 0}
-            >
-              <Play className="mr-2 h-4 w-4" />
-              Start
-            </Button>
-          </>
-        )}
-      </CardFooter>
-    </Card>
+      </div>
+    </div>
   );
 }

@@ -36,7 +36,7 @@ import { cn } from "@shared/lib/utils";
 import { useAuth } from "@app/providers/AuthProvider";
 import { useTenant } from "@app/providers/TenantProvider";
 import { db } from "@shared/lib/firebase";
-import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, where, getDoc } from "firebase/firestore";
 import { getAuth, signOut } from "firebase/auth";
 import ImpersonationBanner from "@shared/components/ImpersonationBanner";
 import NotificationBell from "@shared/components/NotificationBell";
@@ -78,6 +78,45 @@ export default function StudentLayout() {
 
   const uid = firebaseUser?.uid || null;
   const educatorId = tenant?.educatorId || profile?.educatorId || null;
+
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [instituteName, setInstituteName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!educatorId) return;
+
+    const docRef = doc(db, "educators", educatorId);
+    getDoc(docRef).then((snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+
+        // Resolve logo url
+        const resolvedLogo = data.builderConfig?.instituteLogo || null;
+
+        // Resolve institute/coaching name
+        const resolvedName = data.builderConfig?.instituteName || null;
+
+        setLogoUrl(resolvedLogo);
+        setInstituteName(resolvedName);
+
+        // Also set favicon dynamically!
+        if (resolvedLogo) {
+          let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+          if (!link) {
+            link = document.createElement("link");
+            link.rel = "icon";
+            document.getElementsByTagName("head")[0].appendChild(link);
+          }
+          link.href = resolvedLogo;
+        }
+
+        // Also set tab title dynamically!
+        if (resolvedName) {
+          document.title = `${resolvedName}`;
+        }
+      }
+    });
+  }, [educatorId]);
 
   const [userDoc, setUserDoc] = useState<UserDoc | null>(null);
   const [unreadThreadsCount, setUnreadThreadsCount] = useState(0);
@@ -164,7 +203,9 @@ export default function StudentLayout() {
     return safeStr(userDoc?.batchName) || safeStr(userDoc?.batch) || "Batch";
   }, [userDoc, profile, tenant]);
 
-  const sidebarItems = useMemo(
+  const sidebarItems = useMemo<
+    { icon: any; label: string; href: string; badge?: string | number | null }[]
+  >(
     () => [
       { icon: LayoutDashboard, label: "Dashboard", href: "/student/dashboard" },
       { icon: FileText, label: "Tests", href: "/student/tests" },
@@ -231,13 +272,28 @@ export default function StudentLayout() {
           <div className="flex h-full flex-col overflow-hidden">
             {/* Logo Section */}
             <div className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4">
-              <div className="flex items-center gap-2">
-                <img
-                  src={sidebarCollapsed ? "/logo-compact.png" : "/logo.png"}
-                  alt="UNIV.LIVE"
-                  className={sidebarCollapsed ? "h-10 w-10 object-contain" : "h-10 w-auto"}
-                />
-              </div>
+              <Link
+                to="/student/dashboard"
+                className={cn(
+                  "flex items-center gap-2.5 overflow-hidden",
+                  sidebarCollapsed && "lg:w-full lg:justify-center"
+                )}
+              >
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt={instituteName || "Logo"}
+                    className="h-9 w-9 rounded-md object-contain"
+                  />
+                ) : (
+                  <img src="/logo-compact.png" alt="Logo" className="h-9 w-9 object-contain" />
+                )}
+                {!sidebarCollapsed && (
+                  <span className="truncate font-display text-base font-bold text-foreground">
+                    {instituteName || "UNIV.LIVE"}
+                  </span>
+                )}
+              </Link>
               <Button
                 variant="ghost"
                 size="icon"

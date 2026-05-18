@@ -33,6 +33,7 @@ export type Test = {
   duration: number;
   questionsCount: number;
   difficulty: "Easy" | "Medium" | "Hard";
+  level?: string;
   isLocked?: boolean;
   price: number;
   attemptsAllowed?: number;

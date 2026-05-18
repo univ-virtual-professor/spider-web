@@ -5,6 +5,7 @@ import { useAuth } from "@app/providers/AuthProvider";
 import { useTenant } from "@app/providers/TenantProvider";
 import { db } from "@shared/lib/firebase";
 import { collection, onSnapshot, orderBy, query, where, Timestamp } from "firebase/firestore";
+import { cn } from "@shared/lib/utils";
 
 type AttemptDoc = {
   testId: string;
@@ -75,6 +76,16 @@ export default function StudentAttempts() {
 
   const [loading, setLoading] = useState(true);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
+  const [activeTab, setActiveTab] = useState<"test" | "dpp">("test");
+
+  const filteredAttempts = useMemo(() => {
+    return attempts.filter((attempt) => {
+      const title = attempt.testTitle.toLowerCase();
+      const isDpp = title.includes("dpp") || title.includes("practice");
+      if (activeTab === "dpp") return isDpp;
+      return !isDpp;
+    });
+  }, [attempts, activeTab]);
 
   const canLoad = useMemo(() => {
     return !authLoading && !tenantLoading && !!firebaseUser?.uid && !!educatorId;
@@ -164,17 +175,48 @@ export default function StudentAttempts() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">My Attempts</h1>
-        <p className="text-muted-foreground">Review all your test attempts and performance</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">My Attempts</h1>
+          <p className="text-muted-foreground">Review all your test attempts and performance</p>
+        </div>
+
+        <div className="inline-flex shrink-0 rounded-lg border border-border/50 bg-muted/30 p-1">
+          <button
+            onClick={() => setActiveTab("test")}
+            className={cn(
+              "rounded-md px-4 py-1.5 text-xs font-medium transition-all duration-200",
+              activeTab === "test"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            Tests
+          </button>
+          <button
+            onClick={() => setActiveTab("dpp")}
+            className={cn(
+              "rounded-md px-4 py-1.5 text-xs font-medium transition-all duration-200",
+              activeTab === "dpp"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            DPPs
+          </button>
+        </div>
       </div>
 
       {attempts.length === 0 ? (
         <div className="rounded-xl border border-border p-6 text-muted-foreground">
           No attempts found yet. Start a test to see your attempts here.
         </div>
+      ) : filteredAttempts.length === 0 ? (
+        <div className="rounded-xl border border-border p-6 text-muted-foreground">
+          No {activeTab === "dpp" ? "DPP" : "Test"} attempts found.
+        </div>
       ) : (
-        <AttemptTable attempts={attempts} />
+        <AttemptTable attempts={filteredAttempts} />
       )}
     </div>
   );

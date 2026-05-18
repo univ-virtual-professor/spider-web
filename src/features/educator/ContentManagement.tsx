@@ -11,6 +11,7 @@ import {
   query,
   Timestamp,
   where,
+  updateDoc,
 } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
@@ -39,6 +40,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { uploadToImageKit, getContentUploadLimit } from "@shared/lib/imagekitUpload";
 import type { User } from "firebase/auth";
 import { useEducatorFeatures } from "@shared/hooks/useEducatorFeatures";
+import { Switch } from "@shared/ui/switch";
 
 const MONKEY_KING = import.meta.env.VITE_MONKEY_KING_API_URL as string;
 
@@ -73,6 +75,7 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
   note: FileText,
   mindmap: Network,
   formulasheet: ScrollText,
+  others: Library,
 };
 
 function ContentTypeIcon({ slug }: { slug: string }) {
@@ -96,6 +99,10 @@ type ContentItem = {
   adminLibraryId?: string;
   addedBy: string;
   createdAt: Timestamp;
+  isPublished?: boolean;
+  sharingScope?: "branch" | "program" | "batch";
+  targetBatchId?: string;
+  targetBatchName?: string;
 };
 type AdminLibraryItem = {
   id: string;
@@ -133,6 +140,10 @@ export default function ContentManagement() {
 
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [batches, setBatches] = useState<{ id: string; name: string; courseId: string }[]>([]);
+  const [selectedBatchId, setSelectedBatchId] = useState("all");
+  const [sharingScope, setSharingScope] = useState<"branch" | "program" | "batch">("program");
+  const [targetBatchId, setTargetBatchId] = useState("");
 
   const [content, setContent] = useState<ContentItem[]>([]);
   const [contentLoading, setContentLoading] = useState(false);
@@ -188,6 +199,37 @@ export default function ContentManagement() {
     );
     return () => unsubs.forEach((u) => u());
   }, [branches, educatorId]);
+
+  // Load batches when branches and courses load
+  useEffect(() => {
+    if (!educatorId || branches.length === 0 || courses.length === 0) {
+      setBatches([]);
+      return;
+    }
+    const unsubs = courses.map((course) =>
+      onSnapshot(
+        collection(
+          db,
+          "educators",
+          educatorId,
+          "branches",
+          course.branchId,
+          "courses",
+          course.id,
+          "batches"
+        ),
+        (snap) => {
+          const cb = snap.docs.map((d) => ({
+            id: d.id,
+            courseId: course.id,
+            name: d.data().name as string,
+          }));
+          setBatches((prev) => [...prev.filter((b) => b.courseId !== course.id), ...cb]);
+        }
+      )
+    );
+    return () => unsubs.forEach((u) => u());
+  }, [branches, courses, educatorId]);
 
   // Load content when course selected
   useEffect(() => {
@@ -251,13 +293,19 @@ export default function ContentManagement() {
       const allowedSubjectIds = subjectSnap.docs.map((d) => d.id);
       setAdminItems(all.filter((i) => allowedSubjectIds.includes(i.subjectId)));
     }
+    setSharingScope("program");
+    setTargetBatchId("");
     setImportOpen(true);
   }
 
   async function handleImport(item: AdminLibraryItem) {
     if (!selectedCourseId) return toast.error("Select a course first");
+    if (sharingScope === "batch" && !targetBatchId) {
+      return toast.error("Select a target batch first");
+    }
     setImportBusy(true);
     try {
+      const selectedBatch = batches.find((b) => b.id === targetBatchId);
       await addDoc(
         collection(
           db,
@@ -283,7 +331,11 @@ export default function ContentManagement() {
           addedBy: educatorId,
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
+          isPublished: true,
           indexed: false,
+          sharingScope,
+          targetBatchId: sharingScope === "batch" ? targetBatchId : null,
+          targetBatchName: sharingScope === "batch" ? (selectedBatch?.name ?? "") : null,
         }
       );
       toast.success(`"${item.title}" added to course`);
@@ -299,6 +351,8 @@ export default function ContentManagement() {
     setDescription("");
     setType("book");
     setFile(null);
+    setSharingScope("program");
+    setTargetBatchId("");
     if (fileRef.current) fileRef.current.value = "";
     setUploadOpen(true);
   }
@@ -307,6 +361,9 @@ export default function ContentManagement() {
     if (!selectedCourseId) return toast.error("Select a course first");
     if (!title.trim()) return toast.error("Title required");
     if (!file) return toast.error("File required");
+    if (sharingScope === "batch" && !targetBatchId) {
+      return toast.error("Select a target batch first");
+    }
 
     const limitBytes = uploadLimitMB * 1024 * 1024;
     if (file.size > limitBytes) {
@@ -322,6 +379,7 @@ export default function ContentManagement() {
         "content"
       );
 
+      const selectedBatch = batches.find((b) => b.id === targetBatchId);
       const ref = await addDoc(
         collection(
           db,
@@ -346,7 +404,11 @@ export default function ContentManagement() {
           addedBy: educatorId,
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
+          isPublished: true,
           indexed: false,
+          sharingScope,
+          targetBatchId: sharingScope === "batch" ? targetBatchId : null,
+          targetBatchName: sharingScope === "batch" ? (selectedBatch?.name ?? "") : null,
         }
       );
 
@@ -396,6 +458,37 @@ export default function ContentManagement() {
     }
   }
 
+  async function handleTogglePublish(item: ContentItem, published: boolean) {
+    try {
+      await updateDoc(
+        doc(
+          db,
+          "educators",
+          educatorId,
+          "branches",
+          selectedBranchId,
+          "courses",
+          selectedCourseId,
+          "content",
+          item.id
+        ),
+        {
+          isPublished: published,
+          updatedAt: Timestamp.now(),
+        }
+      );
+      toast.success(published ? "Content published" : "Content unpublished");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update status");
+    }
+  }
+
+  const displayedContent = content.filter((item) => {
+    if (selectedBatchId === "all") return true;
+    if (item.sharingScope === "branch" || item.sharingScope === "program") return true;
+    return item.sharingScope === "batch" && item.targetBatchId === selectedBatchId;
+  });
+
   const selectedCourse = courses.find((c) => c.id === selectedCourseId);
 
   if (loading) {
@@ -424,6 +517,7 @@ export default function ContentManagement() {
             onValueChange={(v) => {
               setSelectedBranchId(v);
               setSelectedCourseId("");
+              setSelectedBatchId("all");
             }}
           >
             <SelectTrigger className="w-full sm:w-48">
@@ -440,7 +534,10 @@ export default function ContentManagement() {
 
           <Select
             value={selectedCourseId}
-            onValueChange={setSelectedCourseId}
+            onValueChange={(v) => {
+              setSelectedCourseId(v);
+              setSelectedBatchId("all");
+            }}
             disabled={!selectedBranchId}
           >
             <SelectTrigger className="w-full sm:w-48">
@@ -452,6 +549,26 @@ export default function ContentManagement() {
                 .map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={selectedBatchId}
+            onValueChange={setSelectedBatchId}
+            disabled={!selectedCourseId}
+          >
+            <SelectTrigger className="w-full sm:w-48">
+              <SelectValue placeholder="All Batches" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Batches</SelectItem>
+              {batches
+                .filter((b) => b.courseId === selectedCourseId)
+                .map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.name}
                   </SelectItem>
                 ))}
             </SelectContent>
@@ -478,7 +595,7 @@ export default function ContentManagement() {
               <div className="flex justify-center py-10">
                 <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               </div>
-            ) : content.length === 0 ? (
+            ) : displayedContent.length === 0 ? (
               <div className="py-10 text-center text-muted-foreground">No content yet</div>
             ) : (
               <div className="w-full overflow-x-auto">
@@ -488,13 +605,15 @@ export default function ContentManagement() {
                       <TableHead>Title</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Source</TableHead>
+                      <TableHead>Scope</TableHead>
                       <TableHead>Size</TableHead>
                       <TableHead>Added</TableHead>
+                      <TableHead>Published</TableHead>
                       <TableHead className="w-20" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {content.map((item) => (
+                    {displayedContent.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell className="font-medium">{item.title}</TableCell>
                         <TableCell>
@@ -510,11 +629,41 @@ export default function ContentManagement() {
                             {item.source === "admin_library" ? "Admin Library" : "Own"}
                           </Badge>
                         </TableCell>
+                        <TableCell>
+                          {item.sharingScope === "branch" ? (
+                            <Badge
+                              variant="outline"
+                              className="border-blue-500 bg-blue-500/10 text-blue-500"
+                            >
+                              Branch
+                            </Badge>
+                          ) : item.sharingScope === "batch" ? (
+                            <Badge
+                              variant="outline"
+                              className="border-purple-500 bg-purple-500/10 text-purple-500"
+                            >
+                              Batch: {item.targetBatchName || "Specific"}
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="border-emerald-500 bg-emerald-500/10 text-emerald-500"
+                            >
+                              Program
+                            </Badge>
+                          )}
+                        </TableCell>
                         <TableCell className="text-muted-foreground">
                           {formatBytes(item.fileSize)}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {item.createdAt?.toDate().toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <Switch
+                            checked={item.isPublished !== false}
+                            onCheckedChange={(val) => handleTogglePublish(item, val)}
+                          />
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-1">
@@ -573,6 +722,58 @@ export default function ContentManagement() {
               </Select>
             </div>
             <div className="space-y-1">
+              <Label>Sharing Scope</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={sharingScope === "branch" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSharingScope("branch")}
+                  className="flex-1"
+                >
+                  Branch
+                </Button>
+                <Button
+                  type="button"
+                  variant={sharingScope === "program" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSharingScope("program")}
+                  className="flex-1"
+                >
+                  Program
+                </Button>
+                <Button
+                  type="button"
+                  variant={sharingScope === "batch" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSharingScope("batch")}
+                  className="flex-1"
+                >
+                  Batch
+                </Button>
+              </div>
+            </div>
+
+            {sharingScope === "batch" && (
+              <div className="space-y-1 duration-200 animate-in fade-in slide-in-from-top-1">
+                <Label>Select Target Batch</Label>
+                <Select value={targetBatchId} onValueChange={setTargetBatchId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a batch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {batches
+                      .filter((b) => b.courseId === selectedCourseId)
+                      .map((b) => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-1">
               <Label>
                 File <span className="text-xs text-muted-foreground">(max {uploadLimitMB} MB)</span>
               </Label>
@@ -597,6 +798,63 @@ export default function ContentManagement() {
           <DialogHeader>
             <DialogTitle>Import from Admin Library</DialogTitle>
           </DialogHeader>
+
+          {/* Scope selection for library import */}
+          <div className="mb-4 space-y-3 border-b pb-4">
+            <div className="space-y-1">
+              <Label>Target Sharing Scope</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={sharingScope === "branch" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSharingScope("branch")}
+                  className="flex-1"
+                >
+                  Branch
+                </Button>
+                <Button
+                  type="button"
+                  variant={sharingScope === "program" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSharingScope("program")}
+                  className="flex-1"
+                >
+                  Program
+                </Button>
+                <Button
+                  type="button"
+                  variant={sharingScope === "batch" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSharingScope("batch")}
+                  className="flex-1"
+                >
+                  Batch
+                </Button>
+              </div>
+            </div>
+
+            {sharingScope === "batch" && (
+              <div className="space-y-1 duration-200 animate-in fade-in slide-in-from-top-1">
+                <Label>Select Target Batch</Label>
+                <Select value={targetBatchId} onValueChange={setTargetBatchId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a batch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {batches
+                      .filter((b) => b.courseId === selectedCourseId)
+                      .map((b) => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+
           {adminItems.length === 0 ? (
             <p className="py-4 text-center text-sm text-muted-foreground">
               No admin content available for your assigned courses

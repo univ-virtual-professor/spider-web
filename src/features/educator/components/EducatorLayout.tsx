@@ -22,6 +22,7 @@ import {
   Users,
   Building2,
   UserCheck,
+  Palette,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
@@ -69,6 +70,7 @@ function EducatorLayoutInner() {
   const { profile } = useAuth();
   const { isEmployee, hasPermission } = useEmployee();
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [instituteName, setInstituteName] = useState<string | null>(null);
 
   useEffect(() => {
     const uid = profile?.uid;
@@ -78,8 +80,30 @@ function EducatorLayoutInner() {
     getDoc(docRef).then((snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        if (data.builderConfig?.logoUrl) {
-          setLogoUrl(data.builderConfig.logoUrl);
+
+        // Resolve logo url
+        const resolvedLogo = data.builderConfig?.instituteLogo || null;
+
+        // Resolve institute/coaching name
+        const resolvedName = data.builderConfig?.instituteName || null;
+
+        setLogoUrl(resolvedLogo);
+        setInstituteName(resolvedName);
+
+        // Also set favicon dynamically!
+        if (resolvedLogo) {
+          let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+          if (!link) {
+            link = document.createElement("link");
+            link.rel = "icon";
+            document.getElementsByTagName("head")[0].appendChild(link);
+          }
+          link.href = resolvedLogo;
+        }
+
+        // Also set tab title dynamically!
+        if (resolvedName) {
+          document.title = `${resolvedName}`;
         }
       }
     });
@@ -169,6 +193,14 @@ function EducatorLayoutInner() {
       items.push({ icon: Building2, label: "Organization", href: "/educator/organization" });
     }
 
+    if (!isEmployee || hasPermission("website.manage")) {
+      items.push({
+        icon: Palette,
+        label: "Customize Website",
+        href: "/educator/settings?builder=true",
+      });
+    }
+
     return items;
   }, [isEmployee, hasPermission]);
 
@@ -252,15 +284,24 @@ function EducatorLayoutInner() {
               <Link
                 to="/"
                 className={cn(
-                  "flex items-center gap-2",
+                  "flex items-center gap-2.5 overflow-hidden",
                   sidebarCollapsed && "lg:w-full lg:justify-center"
                 )}
               >
-                <img
-                  src={logoUrl || (sidebarCollapsed ? "/logo-compact.png" : "/logo.png")}
-                  alt="UNIV.LIVE"
-                  className={sidebarCollapsed ? "h-10 w-10 object-contain" : "h-10 w-auto"}
-                />
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt={instituteName || "Logo"}
+                    className="h-9 w-9 rounded-md object-contain"
+                  />
+                ) : (
+                  <img src="/logo-compact.png" alt="Logo" className="h-9 w-9 object-contain" />
+                )}
+                {!sidebarCollapsed && (
+                  <span className="truncate font-display text-base font-bold text-foreground">
+                    {instituteName || "UNIV.LIVE"}
+                  </span>
+                )}
               </Link>
               <Button
                 variant="ghost"

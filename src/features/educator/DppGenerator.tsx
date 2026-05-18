@@ -1,5 +1,14 @@
-import { useEffect, useState } from "react";
-import { collection, getDocs, onSnapshot, orderBy, query, limit } from "firebase/firestore";
+import { useEffect, useState, useRef } from "react";
+import {
+  collection,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  query,
+  limit,
+  addDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { useEducatorFeatures } from "@shared/hooks/useEducatorFeatures";
@@ -27,8 +36,11 @@ import {
   Settings,
   Trash2,
   Zap,
+  Upload,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { uploadToImageKit } from "@shared/lib/imagekitUpload";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@shared/ui/dialog";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -127,13 +139,26 @@ function ContentPicker({
   selectedIds,
   onToggle,
   singleCourseOnly,
+  coursesList,
+  educatorUid,
+  onUploadSuccess,
 }: {
   content: ContentItem[];
   loading: boolean;
   selectedIds: Set<string>;
   onToggle: (id: string) => void;
   singleCourseOnly?: boolean;
+  coursesList: { courseId: string; courseName: string; branchId: string; branchName: string }[];
+  educatorUid: string;
+  onUploadSuccess: (item: ContentItem) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [title, setTitle] = useState("");
+  const [selectedCourseIdx, setSelectedCourseIdx] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const grouped: Record<string, { courseName: string; items: ContentItem[] }> = {};
   for (const item of content) {
     const key = `${item.branchId}::${item.courseId}`;
@@ -144,46 +169,196 @@ function ContentPicker({
   const selectedContent = content.filter((c) => selectedIds.has(c.id));
   const courseIds = [...new Set(selectedContent.map((c) => c.courseId))];
 
+  const handleUploadClick = async () => {
+    if (!file) return toast.error("Please select a file first");
+    if (!title.trim()) return toast.error("Please enter a file title");
+    if (!selectedCourseIdx) return toast.error("Please select a target course");
+
+    const courseObj = coursesList[parseInt(selectedCourseIdx)];
+    if (!courseObj) return toast.error("Invalid course selected");
+
+    setUploading(true);
+    try {
+      const result = await uploadToImageKit(
+        file,
+        file.name,
+        `/content/educator/${educatorUid}`,
+        "content"
+      );
+
+      const docRef = await addDoc(
+        collection(
+          db,
+          "educators",
+          educatorUid,
+          "branches",
+          courseObj.branchId,
+          "courses",
+          courseObj.courseId,
+          "content"
+        ),
+        {
+          type: "note",
+          title: title.trim(),
+          fileUrl: result.url,
+          fileId: result.fileId,
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type,
+          source: "educator",
+          addedBy: educatorUid,
+          createdAt: serverTimestamp(),
+        }
+      );
+
+      const newItem: ContentItem = {
+        id: docRef.id,
+        title: title.trim(),
+        type: "note",
+        courseId: courseObj.courseId,
+        courseName: courseObj.courseName,
+        branchId: courseObj.branchId,
+        branchName: courseObj.branchName,
+      };
+
+      onUploadSuccess(newItem);
+      onToggle(newItem.id);
+
+      setTitle("");
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      setOpen(false);
+      toast.success("Content uploaded and selected!");
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e?.message || "Failed to upload content");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   if (loading)
     return (
       <div className="flex justify-center py-6">
         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
       </div>
     );
-  if (content.length === 0)
-    return (
-      <p className="py-6 text-center text-sm text-muted-foreground">No content uploaded yet.</p>
-    );
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">{selectedIds.size} file(s) selected</span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 gap-1 text-xs"
+          onClick={() => {
+            if (coursesList.length === 0) {
+              toast.error("No active courses found to upload content to.");
+              return;
+            }
+            setSelectedCourseIdx("0");
+            setOpen(true);
+          }}
+        >
+          <Upload className="h-3 w-3" /> Direct Upload File
+        </Button>
+      </div>
+
       {singleCourseOnly && selectedContent.length > 0 && courseIds.length > 1 && (
         <p className="text-xs text-destructive">Select content from the same course only</p>
       )}
-      <div className="max-h-56 space-y-3 overflow-y-auto pr-1">
-        {Object.entries(grouped).map(([key, group]) => (
-          <div key={key} className="space-y-1.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {group.courseName}
-            </p>
-            {group.items.map((item) => (
-              <label
-                key={item.id}
-                className="flex cursor-pointer items-center gap-3 rounded-lg p-2 hover:bg-muted"
+
+      {content.length === 0 ? (
+        <p className="py-6 text-center text-sm text-muted-foreground">No content uploaded yet.</p>
+      ) : (
+        <div className="max-h-56 space-y-3 overflow-y-auto pr-1">
+          {Object.entries(grouped).map(([key, group]) => (
+            <div key={key} className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {group.courseName}
+              </p>
+              {group.items.map((item) => (
+                <label
+                  key={item.id}
+                  className="flex cursor-pointer items-center gap-3 rounded-lg p-2 hover:bg-muted"
+                >
+                  <Checkbox
+                    checked={selectedIds.has(item.id)}
+                    onCheckedChange={() => onToggle(item.id)}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{item.title}</p>
+                    <p className="text-xs capitalize text-muted-foreground">{item.type}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md bg-card text-card-foreground">
+          <DialogHeader>
+            <DialogTitle>Quick Upload Content</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-1">
+              <Label>Target Course</Label>
+              <select
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                value={selectedCourseIdx}
+                onChange={(e) => setSelectedCourseIdx(e.target.value)}
               >
-                <Checkbox
-                  checked={selectedIds.has(item.id)}
-                  onCheckedChange={() => onToggle(item.id)}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{item.title}</p>
-                  <p className="text-xs capitalize text-muted-foreground">{item.type}</p>
-                </div>
-              </label>
-            ))}
+                {coursesList.map((c, idx) => (
+                  <option key={`${c.branchId}::${c.courseId}`} value={idx.toString()}>
+                    {c.branchName} / {c.courseName}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <Label>File Title</Label>
+              <Input
+                placeholder="e.g. Electric Charges and Fields Notes"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label>Select Document / PDF File</Label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  setFile(f);
+                  if (f && !title) {
+                    setTitle(f.name.replace(/\.[^/.]+$/, ""));
+                  }
+                }}
+              />
+            </div>
+
+            <Button className="mt-2 w-full" onClick={handleUploadClick} disabled={uploading}>
+              {uploading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading &amp; Ingesting…
+                </>
+              ) : (
+                <>
+                  <Upload className="mr-2 h-4 w-4" /> Upload &amp; Select File
+                </>
+              )}
+            </Button>
           </div>
-        ))}
-      </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -198,12 +373,16 @@ function ScheduleWizard({
   firebaseUser,
   educatorUid,
   onCreated,
+  coursesList,
+  onUploadSuccess,
 }: {
   content: ContentItem[];
   loadingContent: boolean;
   firebaseUser: any;
   educatorUid: string;
   onCreated: (schedule: ScheduleRecord) => void;
+  coursesList: { courseId: string; courseName: string; branchId: string; branchName: string }[];
+  onUploadSuccess: (item: ContentItem) => void;
 }) {
   const [step, setStep] = useState<WizardStep>(1);
   const [saving, setSaving] = useState(false);
@@ -215,6 +394,7 @@ function ScheduleWizard({
   const [subjectFilter, setSubjectFilter] = useState("");
   const [chapterFilter, setChapterFilter] = useState("");
   const [topicInput, setTopicInput] = useState("");
+  const [numQuestions, setNumQuestions] = useState<number>(10);
 
   // Step 2: Template summary + difficulty
   const [difficulty, setDifficulty] = useState("medium");
@@ -306,6 +486,8 @@ function ScheduleWizard({
           time_of_day: schedTime,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           topic_rotation: topicRotation,
+          question_count: numQuestions,
+          num_questions: numQuestions,
         }),
       });
       const data = await res.json();
@@ -433,6 +615,9 @@ function ScheduleWizard({
                   selectedIds={selectedIds}
                   onToggle={toggleId}
                   singleCourseOnly
+                  coursesList={coursesList}
+                  educatorUid={educatorUid}
+                  onUploadSuccess={onUploadSuccess}
                 />
               </div>
             )}
@@ -578,6 +763,26 @@ function ScheduleWizard({
                     {d}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Number of Questions</Label>
+              <div className="flex items-center gap-3">
+                <Input
+                  type="number"
+                  min={5}
+                  max={50}
+                  value={numQuestions}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    if (!isNaN(val)) setNumQuestions(val);
+                  }}
+                  className="w-24 bg-background text-foreground"
+                />
+                <span className="text-xs text-muted-foreground">
+                  Specify how many questions to generate (5 - 50)
+                </span>
               </div>
             </div>
 
@@ -758,6 +963,15 @@ export default function DppGenerator() {
   const [usageToday, setUsageToday] = useState(0);
   const [dailyLimit, setDailyLimit] = useState(3);
 
+  // Courses List for direct upload dropdown
+  type CourseOption = {
+    courseId: string;
+    courseName: string;
+    branchId: string;
+    branchName: string;
+  };
+  const [coursesList, setCoursesList] = useState<CourseOption[]>([]);
+
   // Generate-now state
   const [genSource, setGenSource] = useState<SourceMode>("hybrid");
   const [genSelectedIds, setGenSelectedIds] = useState<Set<string>>(new Set());
@@ -768,6 +982,7 @@ export default function DppGenerator() {
   const [genDifficulty, setGenDifficulty] = useState("medium");
   const [genTopicHint, setGenTopicHint] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [genNumQuestions, setGenNumQuestions] = useState<number>(10);
 
   const [view, setView] = useState<"generate" | "schedule">("generate");
 
@@ -776,6 +991,9 @@ export default function DppGenerator() {
     if (!educatorUid) return;
     setLoadingContent(true);
     const items: ContentItem[] = [];
+    const uniqueCourses: CourseOption[] = [];
+    const seenCourseKeys = new Set<string>();
+
     getDocs(collection(db, "educators", educatorUid, "branches"))
       .then(async (branchSnap) => {
         for (const bDoc of branchSnap.docs) {
@@ -785,6 +1003,17 @@ export default function DppGenerator() {
           );
           for (const cDoc of courseSnap.docs) {
             const courseName = (cDoc.data() as any).name || cDoc.id;
+            const courseKey = `${bDoc.id}::${cDoc.id}`;
+            if (!seenCourseKeys.has(courseKey)) {
+              seenCourseKeys.add(courseKey);
+              uniqueCourses.push({
+                courseId: cDoc.id,
+                courseName,
+                branchId: bDoc.id,
+                branchName,
+              });
+            }
+
             const contentSnap = await getDocs(
               collection(
                 db,
@@ -815,6 +1044,7 @@ export default function DppGenerator() {
       .catch(() => toast.error("Failed to load content"))
       .finally(() => {
         setContent(items);
+        setCoursesList(uniqueCourses);
         setLoadingContent(false);
       });
   }, [educatorUid]);
@@ -887,6 +1117,8 @@ export default function DppGenerator() {
           topic_filters: genTopicFilters,
           subject_filter: genSubject,
           chapter_filter: genChapter,
+          question_count: genNumQuestions,
+          num_questions: genNumQuestions,
         }),
       });
       const data = await res.json();
@@ -1022,6 +1254,9 @@ export default function DppGenerator() {
                       })
                     }
                     singleCourseOnly
+                    coursesList={coursesList}
+                    educatorUid={educatorUid}
+                    onUploadSuccess={(newItem) => setContent((prev) => [newItem, ...prev])}
                   />
                 )}
 
@@ -1097,6 +1332,26 @@ export default function DppGenerator() {
                         {d}
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Number of Questions</Label>
+                  <div className="flex items-center gap-3">
+                    <Input
+                      type="number"
+                      min={5}
+                      max={50}
+                      value={genNumQuestions}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        if (!isNaN(val)) setGenNumQuestions(val);
+                      }}
+                      className="w-24 bg-background text-foreground"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      Specify how many questions to generate (5 - 50)
+                    </span>
                   </div>
                 </div>
 
@@ -1196,6 +1451,8 @@ export default function DppGenerator() {
             firebaseUser={firebaseUser}
             educatorUid={educatorUid}
             onCreated={(s) => setSchedules((prev) => [s, ...prev])}
+            coursesList={coursesList}
+            onUploadSuccess={(newItem) => setContent((prev) => [newItem, ...prev])}
           />
 
           <div className="space-y-3">

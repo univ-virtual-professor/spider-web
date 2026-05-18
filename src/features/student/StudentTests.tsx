@@ -7,7 +7,6 @@ import {
   Search,
   Folder,
   ChevronDown,
-  ChevronRight,
   CalendarClock,
 } from "lucide-react";
 import { Input } from "@shared/ui/input";
@@ -31,6 +30,7 @@ import {
 import { TestCard } from "@features/student/components/TestCard";
 import { Badge } from "@shared/ui/badge";
 import { useQuery } from "@tanstack/react-query";
+import { cn } from "@shared/lib/utils";
 
 export default function StudentTests() {
   const nav = useNavigate();
@@ -456,7 +456,7 @@ export default function StudentTests() {
               {upcomingTests.length}
             </Badge>
           </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="flex flex-col gap-3">
             {upcomingTests.map((t) => (
               <TestCard
                 key={t.id}
@@ -477,31 +477,49 @@ export default function StudentTests() {
         </div>
       )}
 
-      <div className="space-y-8">
+      <div className="space-y-6">
         {Object.entries(groupedTests).map(([groupId, group]) => {
           const isExpanded = !!expandedFolders[groupId];
           return (
-            <div key={groupId} className="space-y-4">
+            <div key={groupId} className="space-y-3">
               <div
-                className="group flex cursor-pointer items-center justify-between rounded-xl bg-muted/20 p-2"
+                className={cn(
+                  "group flex cursor-pointer items-center justify-between rounded-xl border border-l-4 border-border border-l-primary/60 bg-card p-4 shadow-sm transition-all duration-300 hover:bg-muted/15 hover:shadow-md",
+                  isExpanded && "border-l-primary bg-muted/5 shadow-md"
+                )}
                 onClick={() => toggleFolder(groupId)}
               >
-                <div className="flex items-center gap-2">
-                  {isExpanded ? (
-                    <ChevronDown className="h-5 w-5" />
-                  ) : (
-                    <ChevronRight className="h-5 w-5" />
+                <div className="flex items-center gap-3.5">
+                  <div
+                    className={cn(
+                      "flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-sm transition-all duration-300 group-hover:scale-105",
+                      isExpanded && "bg-primary text-primary-foreground shadow-md shadow-primary/20"
+                    )}
+                  >
+                    <Folder className="h-5 w-5" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <h3 className="text-base font-bold tracking-tight text-foreground sm:text-lg">
+                      {group.name}
+                    </h3>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {group.tests.length} test{group.tests.length !== 1 ? "s" : ""} available
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  className={cn(
+                    "flex h-8 w-8 items-center justify-center rounded-full border border-border/60 bg-background text-muted-foreground shadow-sm transition-all duration-300 group-hover:border-primary/45 group-hover:text-foreground",
+                    isExpanded && "rotate-180 border-primary/25 bg-primary/10 text-primary"
                   )}
-                  <Folder className="h-5 w-5 text-muted-foreground" />
-                  <h3 className="text-lg font-semibold">{group.name}</h3>
-                  <Badge variant="secondary" className="ml-2 rounded-full">
-                    {group.tests.length}
-                  </Badge>
+                >
+                  <ChevronDown className="h-4 w-4 transition-transform duration-300" />
                 </div>
               </div>
 
               {isExpanded && (
-                <div className="grid gap-4 pl-4 md:grid-cols-2 xl:grid-cols-3">
+                <div className="flex flex-col gap-3 pl-2 transition-all duration-200 duration-300 animate-in fade-in sm:pl-4">
                   {group.tests.map((t) => {
                     const unlockEntry = unlockedIds.get(t.id);
                     const windowValid =

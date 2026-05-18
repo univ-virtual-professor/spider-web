@@ -28,6 +28,7 @@ import {
   Network,
   ScrollText,
   RefreshCw,
+  Library,
 } from "lucide-react";
 import { useContentTypes } from "@shared/hooks/useContentTypes";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@shared/ui/dialog";
@@ -42,6 +43,7 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
   note: FileText,
   mindmap: Network,
   formulasheet: ScrollText,
+  others: Library,
 };
 
 function ContentTypeIcon({ slug }: { slug: string }) {

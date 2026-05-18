@@ -175,6 +175,7 @@ export default function StudentRankings() {
   const [prevRankMap, setPrevRankMap] = useState<Record<string, number>>({});
 
   // Filters
+  const [filterType, setFilterType] = useState<"all" | "test" | "dpp">("all");
   const [filterTest, setFilterTest] = useState<string>("all");
   const [filterSubject, setFilterSubject] = useState<string>("all");
 
@@ -215,6 +216,16 @@ export default function StudentRankings() {
           const subAt = a.submittedAt?.toMillis?.() || 0;
           if (subAt < cur.start.toMillis()) return;
 
+          // Classify attempt as DPP or Test
+          const title = (a.testTitle || "").toLowerCase();
+          const isDpp = title.includes("dpp") || title.includes("practice");
+          const matchesType =
+            filterType === "all" ||
+            (filterType === "dpp" && isDpp) ||
+            (filterType === "test" && !isDpp);
+
+          if (!matchesType) return;
+
           if (a.testId && a.testTitle) testsMap[a.testId] = a.testTitle;
           if (a.subject) subjectsSet.add(a.subject);
         });
@@ -228,7 +239,7 @@ export default function StudentRankings() {
     );
 
     return () => unsub();
-  }, [canLoad, educatorId, tenantSlug]);
+  }, [canLoad, educatorId, tenantSlug, filterType]);
 
   // 2) Load previous window ranks (for rankChange)
   useEffect(() => {
@@ -258,13 +269,23 @@ export default function StudentRankings() {
         // Client-side filtering
         attempts = attempts.filter((a) => {
           const subAt = a.submittedAt?.toMillis?.() || 0;
+
+          // Classify attempt as DPP or Test
+          const title = (a.testTitle || "").toLowerCase();
+          const isDpp = title.includes("dpp") || title.includes("practice");
+          const matchesType =
+            filterType === "all" ||
+            (filterType === "dpp" && isDpp) ||
+            (filterType === "test" && !isDpp);
+
           return (
             validStatuses.includes(a.status || "") &&
             subAt >= pStart &&
             subAt < pEnd &&
             (!tenantSlug || a.tenantSlug === tenantSlug) &&
             (filterTest === "all" || a.testId === filterTest) &&
-            (filterSubject === "all" || a.subject === filterSubject)
+            (filterSubject === "all" || a.subject === filterSubject) &&
+            matchesType
           );
         });
 
@@ -286,7 +307,7 @@ export default function StudentRankings() {
     return () => {
       mounted = false;
     };
-  }, [canLoad, educatorId, tenantSlug, filterTest, filterSubject]);
+  }, [canLoad, educatorId, tenantSlug, filterTest, filterSubject, filterType]);
 
   // 3) Live leaderboard (current window)
   useEffect(() => {
@@ -320,12 +341,22 @@ export default function StudentRankings() {
           // Client-side filtering
           attempts = attempts.filter((a) => {
             const subAt = a.submittedAt?.toMillis?.() || 0;
+
+            // Classify attempt as DPP or Test
+            const title = (a.testTitle || "").toLowerCase();
+            const isDpp = title.includes("dpp") || title.includes("practice");
+            const matchesType =
+              filterType === "all" ||
+              (filterType === "dpp" && isDpp) ||
+              (filterType === "test" && !isDpp);
+
             return (
               validStatuses.includes(a.status || "") &&
               subAt >= cStart &&
               (!tenantSlug || a.tenantSlug === tenantSlug) &&
               (filterTest === "all" || a.testId === filterTest) &&
-              (filterSubject === "all" || a.subject === filterSubject)
+              (filterSubject === "all" || a.subject === filterSubject) &&
+              matchesType
             );
           });
 
@@ -387,11 +418,13 @@ export default function StudentRankings() {
     prevRankMap,
     filterTest,
     filterSubject,
+    filterType,
   ]);
 
   const top3 = leaderboard.slice(0, 3);
 
   const clearFilters = () => {
+    setFilterType("all");
     setFilterTest("all");
     setFilterSubject("all");
   };
@@ -426,6 +459,51 @@ export default function StudentRankings() {
             </span>
           </div>
 
+          <div className="inline-flex rounded-xl border border-border/80 bg-muted/40 p-1">
+            <button
+              onClick={() => {
+                setFilterType("all");
+                setFilterTest("all");
+              }}
+              className={cn(
+                "rounded-lg px-4 py-1.5 text-xs font-semibold transition-all duration-200",
+                filterType === "all"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Overall
+            </button>
+            <button
+              onClick={() => {
+                setFilterType("test");
+                setFilterTest("all");
+              }}
+              className={cn(
+                "rounded-lg px-4 py-1.5 text-xs font-semibold transition-all duration-200",
+                filterType === "test"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Tests
+            </button>
+            <button
+              onClick={() => {
+                setFilterType("dpp");
+                setFilterTest("all");
+              }}
+              className={cn(
+                "rounded-lg px-4 py-1.5 text-xs font-semibold transition-all duration-200",
+                filterType === "dpp"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              DPPs
+            </button>
+          </div>
+
           <Select value={filterTest} onValueChange={setFilterTest}>
             <SelectTrigger className="h-9 w-[180px] rounded-xl bg-card">
               <SelectValue placeholder="Test Series" />
@@ -454,7 +532,7 @@ export default function StudentRankings() {
             </SelectContent>
           </Select>
 
-          {(filterTest !== "all" || filterSubject !== "all") && (
+          {(filterType !== "all" || filterTest !== "all" || filterSubject !== "all") && (
             <Button
               variant="ghost"
               size="sm"

@@ -117,6 +117,9 @@ export default function ActiveTestsFeed() {
             return test.startTime.toMillis() <= Date.now();
           })
           .sort((a, b) => {
+            if (a.status === "running" && b.status !== "running") return -1;
+            if (b.status === "running" && a.status !== "running") return 1;
+
             const aTime = a.updatedAt?.toMillis() || a.createdAt?.toMillis() || 0;
 
             const bTime = b.updatedAt?.toMillis() || b.createdAt?.toMillis() || 0;

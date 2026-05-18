@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import InstituteBuilder from "./InstituteBuilder";
 import {
@@ -15,7 +16,6 @@ import {
   Globe,
   ExternalLink,
   ArrowLeft,
-  Palette,
 } from "lucide-react";
 import { Input } from "@shared/ui/input";
 import { Button } from "@shared/ui/button";
@@ -56,12 +56,23 @@ type EducatorProfileDoc = {
   photoURL?: string;
   prefs?: EducatorPrefs;
   tenantSlug?: string;
+  coachingName?: string;
+  websiteConfig?: any;
 };
 
 export default function Settings() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const { firebaseUser, profile, loading: authLoading, refreshProfile } = useAuth();
   const [showBuilder, setShowBuilder] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("builder") === "true") {
+      setShowBuilder(true);
+    } else {
+      setShowBuilder(false);
+    }
+  }, [searchParams]);
 
   // Profile fields. Initialize from profile.
   const [fullName, setFullName] = useState(profile?.fullName || "");
@@ -342,6 +353,7 @@ export default function Settings() {
   }
 
   async function handleUpdatePassword() {
+    console.log("changing password", auth);
     const user = auth.currentUser;
     if (!user) return;
 
@@ -390,6 +402,8 @@ export default function Settings() {
       setCurrentPass("");
       setNewPass("");
       setConfirmPass("");
+
+      console.log("password updated successfully");
 
       toast({
         title: "Password updated",
@@ -446,7 +460,7 @@ export default function Settings() {
     return (
       <div className="space-y-4">
         <button
-          onClick={() => setShowBuilder(false)}
+          onClick={() => setSearchParams({})}
           className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -464,14 +478,6 @@ export default function Settings() {
           <h1 className="font-display text-2xl font-bold">Settings</h1>
           <p className="text-sm text-muted-foreground">Manage your account and preferences</p>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => setShowBuilder(true)}
-          className="flex shrink-0 items-center gap-2"
-        >
-          <Palette className="h-4 w-4" />
-          Customize Website
-        </Button>
       </div>
 
       <div className="max-w-3xl space-y-6">
@@ -773,17 +779,6 @@ export default function Settings() {
                     <Switch
                       checked={notifications.email}
                       onCheckedChange={(v) => setNotifications((prev) => ({ ...prev, email: v }))}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium">SMS Notifications</p>
-                      <p className="text-xs text-muted-foreground">Receive alerts via SMS</p>
-                    </div>
-                    <Switch
-                      checked={notifications.sms}
-                      onCheckedChange={(v) => setNotifications((prev) => ({ ...prev, sms: v }))}
                     />
                   </div>
 
