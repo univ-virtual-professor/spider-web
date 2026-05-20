@@ -178,13 +178,26 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
 
   // Reset dependent filters when parent changes
   useEffect(() => {
-    if (selectedCourse && selectedCourse !== "All" && !uniqueCourses.includes(selectedCourse)) {
+    if (uniqueBranches.length === 1 && !selectedBranch) {
+      setSelectedBranch(uniqueBranches[0]);
+    }
+  }, [uniqueBranches, selectedBranch]);
+  useEffect(() => {
+    if (uniqueCourses.length === 1) {
+      if (selectedCourse !== uniqueCourses[0]) setSelectedCourse(uniqueCourses[0]);
+    } else if (
+      selectedCourse &&
+      selectedCourse !== "All" &&
+      !uniqueCourses.includes(selectedCourse)
+    ) {
       setSelectedCourse("All");
     }
   }, [uniqueCourses, selectedCourse]);
 
   useEffect(() => {
-    if (selectedBatch !== "All" && !uniqueBatches.includes(selectedBatch)) {
+    if (uniqueBatches.length === 1) {
+      if (selectedBatch !== uniqueBatches[0]) setSelectedBatch(uniqueBatches[0]);
+    } else if (selectedBatch !== "All" && !uniqueBatches.includes(selectedBatch)) {
       setSelectedBatch("All");
     }
   }, [uniqueBatches, selectedBatch]);
@@ -320,7 +333,7 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
                 <SelectValue placeholder="Select Program" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="All">All Programs</SelectItem>
+                {uniqueCourses.length !== 1 && <SelectItem value="All">All Programs</SelectItem>}
                 {uniqueCourses.map((c) => (
                   <SelectItem key={c} value={c}>
                     {c}
@@ -402,9 +415,9 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
                   <TableCell colSpan={5} className="h-64 text-center">
                     <div className="flex flex-col items-center justify-center space-y-3 text-muted-foreground">
                       <AlertCircle className="h-10 w-10 opacity-20" />
-                      <p className="text-base font-medium">Select a Branch and Program</p>
+                      <p className="text-base font-medium">Select a Branch</p>
                       <p className="max-w-[300px] text-center text-sm opacity-80">
-                        Please select a specific Branch and Program from the filters above to view{" "}
+                        Please select a specific Branch from the filters above to view{" "}
                         {type === "tests" ? "scheduled tests" : "scheduled DPPs"}.
                       </p>
                     </div>
