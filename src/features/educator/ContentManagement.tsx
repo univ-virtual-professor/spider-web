@@ -103,6 +103,8 @@ type ContentItem = {
   sharingScope?: "branch" | "program" | "batch";
   targetBatchId?: string;
   targetBatchName?: string;
+  branchId?: string;
+  courseId?: string;
 };
 type AdminLibraryItem = {
   id: string;
@@ -138,9 +140,12 @@ export default function ContentManagement() {
   const [loading, setLoading] = useState(true);
   const [uploadLimitMB, setUploadLimitMB] = useState(20);
 
-  const [selectedBranchId, setSelectedBranchId] = useState("");
-  const [selectedCourseId, setSelectedCourseId] = useState("");
-  const [batches, setBatches] = useState<{ id: string; name: string; courseId: string }[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState("all");
+  const [selectedCourseId, setSelectedCourseId] = useState("all");
+  const [targetCourseId, setTargetCourseId] = useState("");
+  const [batches, setBatches] = useState<
+    { id: string; name: string; courseId: string; branchId: string }[]
+  >([]);
   const [selectedBatchId, setSelectedBatchId] = useState("all");
   const [sharingScope, setSharingScope] = useState<"branch" | "program" | "batch">("program");
   const [targetBatchId, setTargetBatchId] = useState("");
@@ -222,6 +227,7 @@ export default function ContentManagement() {
           const cb = snap.docs.map((d) => ({
             id: d.id,
             courseId: course.id,
+            branchId: course.branchId,
             name: d.data().name as string,
           }));
           setBatches((prev) => [...prev.filter((b) => b.courseId !== course.id), ...cb]);
@@ -231,34 +237,61 @@ export default function ContentManagement() {
     return () => unsubs.forEach((u) => u());
   }, [branches, courses, educatorId]);
 
-  // Load content when course selected
+  // Load content across courses
   useEffect(() => {
-    if (!educatorId || !selectedBranchId || !selectedCourseId) {
+    if (!educatorId || courses.length === 0) {
       setContent([]);
+      setContentLoading(false);
       return;
     }
+
     setContentLoading(true);
-    const unsub = onSnapshot(
-      query(
-        collection(
-          db,
-          "educators",
-          educatorId,
-          "branches",
-          selectedBranchId,
-          "courses",
-          selectedCourseId,
-          "content"
+    let loadedCount = 0;
+
+    const unsubs = courses.map((course) => {
+      return onSnapshot(
+        query(
+          collection(
+            db,
+            "educators",
+            educatorId,
+            "branches",
+            course.branchId,
+            "courses",
+            course.id,
+            "content"
+          ),
+          orderBy("createdAt", "desc")
         ),
-        orderBy("createdAt", "desc")
-      ),
-      (snap) => {
-        setContent(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ContentItem, "id">) })));
-        setContentLoading(false);
-      }
-    );
-    return () => unsub();
-  }, [educatorId, selectedBranchId, selectedCourseId]);
+        (snap) => {
+          const docs = snap.docs.map((d) => ({
+            id: d.id,
+            branchId: course.branchId,
+            courseId: course.id,
+            ...(d.data() as Omit<ContentItem, "id" | "branchId" | "courseId">),
+          }));
+
+          setContent((prev) => {
+            const filtered = prev.filter((item) => item.courseId !== course.id);
+            const combined = [...filtered, ...docs];
+            return combined.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+          });
+
+          loadedCount++;
+          if (loadedCount >= courses.length) {
+            setContentLoading(false);
+          }
+        },
+        (error) => {
+          console.error("Failed to fetch content for course", course.id, error);
+          loadedCount++;
+          if (loadedCount >= courses.length) setContentLoading(false);
+        }
+      );
+    });
+
+    return () => unsubs.forEach((u) => u());
+  }, [educatorId, courses]);
 
   if (!featuresLoading && !features.contentLibrary) {
     return (
@@ -299,22 +332,26 @@ export default function ContentManagement() {
   }
 
   async function handleImport(item: AdminLibraryItem) {
-    if (!selectedCourseId) return toast.error("Select a course first");
+    const courseIdToUse = selectedCourseId === "all" ? targetCourseId : selectedCourseId;
+    if (!courseIdToUse) return toast.error("Select a target program");
     if (sharingScope === "batch" && !targetBatchId) {
       return toast.error("Select a target batch first");
     }
     setImportBusy(true);
     try {
       const selectedBatch = batches.find((b) => b.id === targetBatchId);
+      const branchIdToUse = courses.find((c) => c.id === courseIdToUse)?.branchId;
+      if (!branchIdToUse) throw new Error("Branch not found");
+
       await addDoc(
         collection(
           db,
           "educators",
           educatorId,
           "branches",
-          selectedBranchId,
+          branchIdToUse,
           "courses",
-          selectedCourseId,
+          courseIdToUse,
           "content"
         ),
         {
@@ -347,18 +384,18 @@ export default function ContentManagement() {
   }
 
   function openUpload() {
+    setFile(null);
     setTitle("");
     setDescription("");
-    setType("book");
-    setFile(null);
-    setSharingScope("program");
-    setTargetBatchId("");
+    setType("note");
     if (fileRef.current) fileRef.current.value = "";
+    setTargetCourseId(selectedCourseId === "all" ? "" : selectedCourseId);
     setUploadOpen(true);
   }
 
   async function handleUpload() {
-    if (!selectedCourseId) return toast.error("Select a course first");
+    const courseIdToUse = selectedCourseId === "all" ? targetCourseId : selectedCourseId;
+    if (!courseIdToUse) return toast.error("Select a target program");
     if (!title.trim()) return toast.error("Title required");
     if (!file) return toast.error("File required");
     if (sharingScope === "batch" && !targetBatchId) {
@@ -380,15 +417,18 @@ export default function ContentManagement() {
       );
 
       const selectedBatch = batches.find((b) => b.id === targetBatchId);
+      const branchIdToUse = courses.find((c) => c.id === courseIdToUse)?.branchId;
+      if (!branchIdToUse) throw new Error("Branch not found");
+
       const ref = await addDoc(
         collection(
           db,
           "educators",
           educatorId,
           "branches",
-          selectedBranchId,
+          branchIdToUse,
           "courses",
-          selectedCourseId,
+          courseIdToUse,
           "content"
         ),
         {
@@ -484,6 +524,9 @@ export default function ContentManagement() {
   }
 
   const displayedContent = content.filter((item) => {
+    if (selectedBranchId !== "all" && item.branchId !== selectedBranchId) return false;
+    if (selectedCourseId !== "all" && item.courseId !== selectedCourseId) return false;
+
     if (selectedBatchId === "all") return true;
     if (item.sharingScope === "branch" || item.sharingScope === "program") return true;
     return item.sharingScope === "batch" && item.targetBatchId === selectedBatchId;
@@ -521,9 +564,10 @@ export default function ContentManagement() {
             }}
           >
             <SelectTrigger className="w-full sm:w-48">
-              <SelectValue placeholder="Branch" />
+              <SelectValue placeholder="All Branches" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">All Branches</SelectItem>
               {branches.map((b) => (
                 <SelectItem key={b.id} value={b.id}>
                   {b.name}
@@ -541,11 +585,12 @@ export default function ContentManagement() {
             disabled={!selectedBranchId}
           >
             <SelectTrigger className="w-full sm:w-48">
-              <SelectValue placeholder="Course" />
+              <SelectValue placeholder="All Programs" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">All Programs</SelectItem>
               {courses
-                .filter((c) => c.branchId === selectedBranchId)
+                .filter((c) => selectedBranchId === "all" || c.branchId === selectedBranchId)
                 .map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.name}
@@ -557,7 +602,7 @@ export default function ContentManagement() {
           <Select
             value={selectedBatchId}
             onValueChange={setSelectedBatchId}
-            disabled={!selectedCourseId}
+            disabled={selectedCourseId === "all" && selectedBranchId === "all"}
           >
             <SelectTrigger className="w-full sm:w-48">
               <SelectValue placeholder="All Batches" />
@@ -565,7 +610,11 @@ export default function ContentManagement() {
             <SelectContent>
               <SelectItem value="all">All Batches</SelectItem>
               {batches
-                .filter((b) => b.courseId === selectedCourseId)
+                .filter((b) =>
+                  selectedCourseId === "all"
+                    ? selectedBranchId === "all" || b.branchId === selectedBranchId
+                    : b.courseId === selectedCourseId
+                )
                 .map((b) => (
                   <SelectItem key={b.id} value={b.id}>
                     {b.name}
@@ -577,115 +626,116 @@ export default function ContentManagement() {
       </Card>
 
       {/* Content list */}
-      {selectedCourseId && (
-        <Card>
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-base">Content — {selectedCourse?.name}</CardTitle>
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-              <Button variant="outline" size="sm" onClick={openImport}>
-                <Library className="mr-2 h-4 w-4" /> Import from Library
-              </Button>
-              <Button size="sm" onClick={openUpload}>
-                <Plus className="mr-2 h-4 w-4" /> Add Content
-              </Button>
+      <Card>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle className="text-base">
+            Content{" "}
+            {selectedCourseId === "all"
+              ? "— All Programs"
+              : `— ${courses.find((c) => c.id === selectedCourseId)?.name}`}
+          </CardTitle>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <Button variant="outline" size="sm" onClick={openImport}>
+              <Library className="mr-2 h-4 w-4" /> Import from Library
+            </Button>
+            <Button size="sm" onClick={openUpload}>
+              <Plus className="mr-2 h-4 w-4" /> Add Content
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {contentLoading ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {contentLoading ? (
-              <div className="flex justify-center py-10">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
-            ) : displayedContent.length === 0 ? (
-              <div className="py-10 text-center text-muted-foreground">No content yet</div>
-            ) : (
-              <div className="w-full overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Title</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Source</TableHead>
-                      <TableHead>Scope</TableHead>
-                      <TableHead>Size</TableHead>
-                      <TableHead>Added</TableHead>
-                      <TableHead>Published</TableHead>
-                      <TableHead className="w-20" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {displayedContent.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-medium">{item.title}</TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">
-                            <ContentTypeIcon slug={item.type} />
-                            {activeTypes.find((t) => t.slug === item.type)?.name ?? item.type}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
+          ) : displayedContent.length === 0 ? (
+            <div className="py-10 text-center text-muted-foreground">No content yet</div>
+          ) : (
+            <div className="w-full overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead>Scope</TableHead>
+                    <TableHead>Size</TableHead>
+                    <TableHead>Added</TableHead>
+                    <TableHead>Published</TableHead>
+                    <TableHead className="w-20" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {displayedContent.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-medium">{item.title}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">
+                          <ContentTypeIcon slug={item.type} />
+                          {activeTypes.find((t) => t.slug === item.type)?.name ?? item.type}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={item.source === "admin_library" ? "outline" : "secondary"}>
+                          {item.source === "admin_library" ? "Admin Library" : "Own"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {item.sharingScope === "branch" ? (
                           <Badge
-                            variant={item.source === "admin_library" ? "outline" : "secondary"}
+                            variant="outline"
+                            className="border-blue-500 bg-blue-500/10 text-blue-500"
                           >
-                            {item.source === "admin_library" ? "Admin Library" : "Own"}
+                            Branch
                           </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {item.sharingScope === "branch" ? (
-                            <Badge
-                              variant="outline"
-                              className="border-blue-500 bg-blue-500/10 text-blue-500"
-                            >
-                              Branch
-                            </Badge>
-                          ) : item.sharingScope === "batch" ? (
-                            <Badge
-                              variant="outline"
-                              className="border-purple-500 bg-purple-500/10 text-purple-500"
-                            >
-                              Batch: {item.targetBatchName || "Specific"}
-                            </Badge>
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="border-emerald-500 bg-emerald-500/10 text-emerald-500"
-                            >
-                              Program
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatBytes(item.fileSize)}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {item.createdAt?.toDate().toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>
-                          <Switch
-                            checked={item.isPublished !== false}
-                            onCheckedChange={(val) => handleTogglePublish(item, val)}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            <Button size="icon" variant="ghost" asChild>
-                              <a href={item.fileUrl} target="_blank" rel="noreferrer">
-                                <ExternalLink className="h-4 w-4" />
-                              </a>
-                            </Button>
-                            <Button size="icon" variant="ghost" onClick={() => handleDelete(item)}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+                        ) : item.sharingScope === "batch" ? (
+                          <Badge
+                            variant="outline"
+                            className="border-purple-500 bg-purple-500/10 text-purple-500"
+                          >
+                            Batch: {item.targetBatchName || "Specific"}
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="border-emerald-500 bg-emerald-500/10 text-emerald-500"
+                          >
+                            Program
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {formatBytes(item.fileSize)}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {item.createdAt?.toDate().toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        <Switch
+                          checked={item.isPublished !== false}
+                          onCheckedChange={(val) => handleTogglePublish(item, val)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" asChild>
+                            <a href={item.fileUrl} target="_blank" rel="noreferrer">
+                              <ExternalLink className="h-4 w-4" />
+                            </a>
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => handleDelete(item)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Upload dialog */}
       <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
@@ -694,6 +744,23 @@ export default function ContentManagement() {
             <DialogTitle>Add Content</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {selectedCourseId === "all" && (
+              <div className="space-y-1">
+                <Label>Target Program</Label>
+                <Select value={targetCourseId} onValueChange={setTargetCourseId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a program" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {courses.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-1">
               <Label>Title</Label>
               <Input
@@ -763,7 +830,11 @@ export default function ContentManagement() {
                   </SelectTrigger>
                   <SelectContent>
                     {batches
-                      .filter((b) => b.courseId === selectedCourseId)
+                      .filter(
+                        (b) =>
+                          b.courseId ===
+                          (selectedCourseId === "all" ? targetCourseId : selectedCourseId)
+                      )
                       .map((b) => (
                         <SelectItem key={b.id} value={b.id}>
                           {b.name}
@@ -798,6 +869,24 @@ export default function ContentManagement() {
           <DialogHeader>
             <DialogTitle>Import from Admin Library</DialogTitle>
           </DialogHeader>
+
+          {selectedCourseId === "all" && (
+            <div className="mb-4 space-y-1">
+              <Label>Target Program</Label>
+              <Select value={targetCourseId} onValueChange={setTargetCourseId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a program" />
+                </SelectTrigger>
+                <SelectContent>
+                  {courses.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Scope selection for library import */}
           <div className="mb-4 space-y-3 border-b pb-4">
@@ -843,7 +932,11 @@ export default function ContentManagement() {
                   </SelectTrigger>
                   <SelectContent>
                     {batches
-                      .filter((b) => b.courseId === selectedCourseId)
+                      .filter(
+                        (b) =>
+                          b.courseId ===
+                          (selectedCourseId === "all" ? targetCourseId : selectedCourseId)
+                      )
                       .map((b) => (
                         <SelectItem key={b.id} value={b.id}>
                           {b.name}

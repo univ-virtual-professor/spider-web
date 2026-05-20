@@ -60,7 +60,7 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
 
   // Filter State
   const [selectedBranch, setSelectedBranch] = useState("");
-  const [selectedCourse, setSelectedCourse] = useState("");
+  const [selectedCourse, setSelectedCourse] = useState("All");
   const [selectedBatch, setSelectedBatch] = useState("All");
 
   useEffect(() => {
@@ -165,7 +165,7 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
               const branch = allBranches.find((br) => br.name === selectedBranch);
               if (!branch || b.branchId !== branch.id) valid = false;
             }
-            if (selectedCourse) {
+            if (selectedCourse && selectedCourse !== "All") {
               const course = allCourses.find((c) => c.name === selectedCourse);
               if (!course || b.courseId !== course.id) valid = false;
             }
@@ -178,8 +178,8 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
 
   // Reset dependent filters when parent changes
   useEffect(() => {
-    if (selectedCourse && !uniqueCourses.includes(selectedCourse)) {
-      setSelectedCourse("");
+    if (selectedCourse && selectedCourse !== "All" && !uniqueCourses.includes(selectedCourse)) {
+      setSelectedCourse("All");
     }
   }, [uniqueCourses, selectedCourse]);
 
@@ -189,25 +189,31 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
     }
   }, [uniqueBatches, selectedBatch]);
 
-  // Filter Data
+  // Filter + Sort Data
   const displayedAssessments = useMemo(() => {
-    if (!selectedBranch || !selectedCourse) return [];
+    if (!selectedBranch) return [];
 
     const now = new Date().getTime();
 
     return assessments
       .filter((a) => {
-        // 1. Filter by Time (Upcoming vs Past)
-        const endTime = a.endTime?.toMillis?.() || a.startTime?.toMillis?.() || 0;
-        if (activeTab === "upcoming" && endTime < now) return false;
-        if (activeTab === "past" && endTime >= now) return false;
+        const startTime = a.startTime?.toMillis?.() ?? 0;
+        // Fallback to startTime if endTime is missing
+        const endTime = a.endTime?.toMillis?.() ?? startTime;
 
-        // 2. Filter by Hierarchy
+        // Upcoming: only tests whose startTime is strictly in the future (not yet started)
+        if (activeTab === "upcoming" && startTime <= now) return false;
+
+        // Past: only tests that have fully ended
+        if (activeTab === "past" && endTime > now) return false;
+
+        // Hierarchy filters
         const aCourse = allCourses.find((c) => c.id === a.courseId);
         const aBranch = allBranches.find((b) => b.id === aCourse?.branchId);
         const aBatches = allBatches.filter((b) => (a.targetBatches || []).includes(b.id));
 
-        if (selectedBranch !== "All") {
+        // Branch filter
+        if (selectedBranch) {
           const matchesCourseBranch = aBranch?.name === selectedBranch;
           const matchesAnyBatchBranch = aBatches.some((b) => {
             const br = allBranches.find((brn) => brn.id === b.branchId);
@@ -216,7 +222,8 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
           if (!matchesCourseBranch && !matchesAnyBatchBranch) return false;
         }
 
-        if (selectedCourse !== "All") {
+        // Course filter
+        if (selectedCourse && selectedCourse !== "All") {
           const matchesCourse = aCourse?.name === selectedCourse;
           const matchesAnyBatchCourse = aBatches.some((b) => {
             const c = allCourses.find((crs) => crs.id === b.courseId);
@@ -225,16 +232,17 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
           if (!matchesCourse && !matchesAnyBatchCourse) return false;
         }
 
-        if (selectedBatch !== "All") {
+        // Batch filter
+        if (selectedBatch && selectedBatch !== "All") {
           const matchesBatch = aBatches.some((b) => b.name === selectedBatch);
-          if (!matchesBatch && a.targetBatches && a.targetBatches.length > 0) return false;
+          if (!matchesBatch) return false;
         }
 
         return true;
       })
       .sort((a, b) => {
-        const timeA = a.startTime?.toMillis?.() || 0;
-        const timeB = b.startTime?.toMillis?.() || 0;
+        const timeA = a.startTime?.toMillis?.() ?? 0;
+        const timeB = b.startTime?.toMillis?.() ?? 0;
         return activeTab === "upcoming" ? timeA - timeB : timeB - timeA;
       });
   }, [
@@ -257,16 +265,16 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
 
   const getStatusBadge = (a: AssessmentDoc) => {
     const now = new Date().getTime();
-    const end = a.endTime?.toMillis?.() || 0;
-    const start = a.startTime?.toMillis?.() || 0;
+    const end = a.endTime?.toMillis?.() ?? 0;
+    const start = a.startTime?.toMillis?.() ?? 0;
 
-    if (end < now)
+    if (end < now && end !== 0)
       return (
         <Badge variant="secondary" className="bg-muted text-muted-foreground">
           Completed
         </Badge>
       );
-    if (start <= now && end >= now)
+    if (start <= now && (end === 0 || end >= now))
       return (
         <Badge className="border-green-500/20 bg-green-500/10 text-green-500 hover:bg-green-500/20">
           Active Now
@@ -312,6 +320,7 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
                 <SelectValue placeholder="Select Program" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="All">All Programs</SelectItem>
                 {uniqueCourses.map((c) => (
                   <SelectItem key={c} value={c}>
                     {c}
@@ -325,7 +334,7 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
                 <SelectValue placeholder="All Batches" />
               </SelectTrigger>
               <SelectContent>
-                {uniqueBatches.length !== 1 && <SelectItem value="All">All Batches</SelectItem>}
+                <SelectItem value="All">All Batches</SelectItem>
                 {uniqueBatches.map((b) => (
                   <SelectItem key={b} value={b}>
                     {b}
@@ -388,7 +397,7 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
                     </TableCell>
                   </TableRow>
                 ))
-              ) : !selectedBranch || !selectedCourse ? (
+              ) : !selectedBranch ? (
                 <TableRow>
                   <TableCell colSpan={5} className="h-64 text-center">
                     <div className="flex flex-col items-center justify-center space-y-3 text-muted-foreground">

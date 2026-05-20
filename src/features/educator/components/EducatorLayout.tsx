@@ -282,7 +282,7 @@ function EducatorLayoutInner() {
           <div className="flex h-full flex-col">
             <div className="flex h-16 items-center justify-between border-b border-border px-4">
               <Link
-                to="/"
+                to="/educator/dashboard"
                 className={cn(
                   "flex items-center gap-2.5 overflow-hidden",
                   sidebarCollapsed && "lg:w-full lg:justify-center"

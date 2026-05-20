@@ -43,10 +43,10 @@ export default function ImpersonationBanner() {
         /* noop */
       }
     }
-    window.close();
     setTimeout(() => {
       window.location.href = "/admin/educators";
     }, 300);
+    window.close();
   }
 
   return (

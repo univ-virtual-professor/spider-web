@@ -488,6 +488,7 @@ function ScheduleWizard({
           topic_rotation: topicRotation,
           question_count: numQuestions,
           num_questions: numQuestions,
+          questionCount: numQuestions,
         }),
       });
       const data = await res.json();
@@ -1104,6 +1105,20 @@ export default function DppGenerator() {
   const handleGenerate = async () => {
     if (!canGenerate || !firebaseUser) return;
     setGenerating(true);
+    console.log("Generating DPP with payload:", {
+      content_ids: [...genSelectedIds],
+      content_titles: genSelectedContent.map((c) => c.title),
+      difficulty: genDifficulty,
+      course_id: genCourseId,
+      topic_hint: genTopicHint.trim(),
+      source_mode: genSource,
+      topic_filters: genTopicFilters,
+      subject_filter: genSubject,
+      chapter_filter: genChapter,
+      question_count: genNumQuestions,
+      num_questions: genNumQuestions,
+      questionCount: genNumQuestions,
+    });
     try {
       const res = await apiFetch(firebaseUser, "/api/dpp/generate", {
         method: "POST",
@@ -1119,6 +1134,7 @@ export default function DppGenerator() {
           chapter_filter: genChapter,
           question_count: genNumQuestions,
           num_questions: genNumQuestions,
+          questionCount: genNumQuestions,
         }),
       });
       const data = await res.json();
