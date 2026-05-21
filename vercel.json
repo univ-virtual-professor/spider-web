@@ -1,12 +1,4 @@
 {
-  "redirects": [
-    {
-      "source": "/(.*)",
-      "has": [{ "type": "host", "value": "www.preparekaro.in" }],
-      "destination": "https://preparekaro.in/$1",
-      "permanent": true
-    }
-  ],
   "rewrites": [
     {
       "source": "/api/orders/accept",
