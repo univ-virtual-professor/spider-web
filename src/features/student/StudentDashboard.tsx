@@ -191,35 +191,21 @@ export default function StudentDashboard() {
         collection(db, "attempts"),
         where("educatorId", "==", educatorId!),
         where("status", "in", ["completed", "submitted", "finished", "done"]),
-        orderBy("createdAt", "desc"),
-        limit(500) // fetch more to ensure each student has enough attempts
+        orderBy("score", "desc"),
+        limit(300)
       );
       const snap = await getDocs(qTop);
-
-      // Group attempts by student, keeping insertion order (already desc by createdAt)
-      const studentAttempts: Record<string, number[]> = {};
+      const best: Record<string, number> = {};
       snap.docs.forEach((d) => {
         const a = d.data() as any;
         const sid = String(a?.studentId || "");
         if (!sid) return;
         const sc = safeNum(a?.score, 0);
-        const maxSc = safeNum(a?.maxScore, 1);
-        const pct = (sc / maxSc) * 100; // use percentage so different max scores are comparable
-        if (!studentAttempts[sid]) studentAttempts[sid] = [];
-        studentAttempts[sid].push(pct);
+        best[sid] = Math.max(best[sid] || 0, sc);
       });
-
-      // Average of last 5 (already sorted desc, so first 5 = most recent 5)
-      const avgOf5 = (scores: number[]) => {
-        const last5 = scores.slice(0, 5);
-        return last5.reduce((sum, s) => sum + s, 0) / last5.length;
-      };
-
-      const sorted = Object.entries(studentAttempts)
-        .map(([studentId, scores]) => ({ studentId, avg: avgOf5(scores) }))
-        .sort((a, b) => b.avg - a.avg)
-        .map(({ studentId }) => studentId);
-
+      const sorted = Object.entries(best)
+        .sort((a, b) => b[1] - a[1])
+        .map(([studentId]) => studentId);
       const idx = sorted.findIndex((id) => id === firebaseUser!.uid);
       return { rank: idx >= 0 ? idx + 1 : null, totalParticipants: sorted.length };
     },

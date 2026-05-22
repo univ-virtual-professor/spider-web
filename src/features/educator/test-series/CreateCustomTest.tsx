@@ -110,6 +110,7 @@ type FullTemplateData = {
   totalQuestions?: number;
   templateName?: string;
   difficultyLevel?: number;
+  version?: number | string;
 };
 
 type CreateCustomTestProps = {
@@ -120,7 +121,6 @@ type CreateCustomTestProps = {
   selectedTemplateId: string;
   setSelectedTemplateId: (value: string) => void;
   templates: TemplateOption[];
-  bankTests: FullTemplateData[];
   educatorTemplates: FullTemplateData[];
   accessibleCourses?: { id: string; name: string }[];
   accessibleSubjects?: { id: string; name: string; courseId: string }[];
@@ -140,7 +140,6 @@ const CreateCustomTest = ({
   selectedTemplateId,
   setSelectedTemplateId,
   templates,
-  bankTests,
   educatorTemplates,
   accessibleCourses = [],
   accessibleSubjects = [],
@@ -186,10 +185,10 @@ const CreateCustomTest = ({
     if (!selectedTemplateId || selectedTemplateId === "none") return null;
     const [type, id] = selectedTemplateId.split(":");
     if (!id) return null;
-    if (type === "admin") return bankTests.find((t) => t.id === id) || null;
+
     if (type === "edu") return educatorTemplates.find((t) => t.id === id) || null;
     return null;
-  }, [selectedTemplateId, bankTests, educatorTemplates]);
+  }, [selectedTemplateId, educatorTemplates]);
 
   useEffect(() => {
     if (!resolvedTemplate) {

@@ -8,7 +8,6 @@ import {
   Edit,
   Trash2,
   FileText,
-  Download,
   Clock,
   BookOpen,
   Loader2,
@@ -17,12 +16,11 @@ import {
   CheckCircle2,
   FileUp,
   Folder,
-  ChevronRight,
-  ChevronDown,
   MoreVertical,
   Move,
   Award,
   Key,
+  Building2,
 } from "lucide-react";
 
 import { Input } from "@shared/ui/input";
@@ -30,7 +28,7 @@ import { Button } from "@shared/ui/button";
 import { Badge } from "@shared/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Dialog } from "@shared/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@shared/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@shared/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@shared/ui/popover";
 import {
@@ -69,6 +67,8 @@ import {
   updateDoc,
   where,
   writeBatch,
+  orderBy,
+  limit,
 } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
@@ -263,11 +263,11 @@ async function appendImageToField(current: string, folder = "/test-questions") {
 export default function TestSeries() {
   const navigate = useNavigate();
   const { firebaseUser: currentUser } = useAuth();
-  const [activeTab, setActiveTab] = useState<"library" | "bank">("library");
+  const [activeTab, setActiveTab] = useState<"overall" | "dpp" | "test">("overall");
 
   // Data
   const [myTests, setMyTests] = useState<any[]>([]);
-  const [bankTests, setBankTests] = useState<any[]>([]);
+  const [dpps, setDpps] = useState<any[]>([]);
   const [folders, setFolders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   /** testId → true if source template has been updated since test creation */
@@ -294,7 +294,10 @@ export default function TestSeries() {
   // Batch assignment dialog
   const [batchAssignOpen, setBatchAssignOpen] = useState(false);
   const [batchAssignTest, setBatchAssignTest] = useState<any>(null);
-  const [allBatches, setAllBatches] = useState<{ id: string; label: string }[]>([]);
+
+  const [allBatches, setAllBatches] = useState<
+    { id: string; name: string; courseId: string; branchId: string; label: string }[]
+  >([]);
   const [selectedBatchIds, setSelectedBatchIds] = useState<string[]>([]);
   const [savingBatches, setSavingBatches] = useState(false);
 
@@ -312,6 +315,10 @@ export default function TestSeries() {
 
   // Batch filter (library tab)
   const [batchFilter, setBatchFilter] = useState<string>("all");
+  const [branches, setBranches] = useState<any[]>([]);
+  const [programs, setPrograms] = useState<any[]>([]);
+  const [branchFilter, setBranchFilter] = useState<string>("all");
+  const [programFilter, setProgramFilter] = useState<string>("all");
 
   // Template state
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("none");
@@ -339,20 +346,32 @@ export default function TestSeries() {
       setMyTests([]);
       setFolders([]);
       setEducatorTemplates([]);
-      setBankTests([]);
       return;
     }
 
     const uid = currentUser.uid;
 
-    // Load all batches for batch-assignment dialog
+    // Load all branches, courses/programs, and batches for cascading filters and batch-assignment dialog
     getDocs(collection(db, "educators", uid, "branches")).then(async (branchSnap) => {
-      const batchList: { id: string; label: string }[] = [];
+      const branchList: { id: string; name: string }[] = [];
+      const programList: { id: string; name: string; branchId: string }[] = [];
+      const batchList: any[] = [];
+
       for (const branchDoc of branchSnap.docs) {
+        const branchData = branchDoc.data();
+        branchList.push({ id: branchDoc.id, name: branchData.name || "Unnamed Branch" });
+
         const courseSnap = await getDocs(
           collection(db, "educators", uid, "branches", branchDoc.id, "courses")
         );
         for (const courseDoc of courseSnap.docs) {
+          const courseData = courseDoc.data();
+          programList.push({
+            id: courseDoc.id,
+            name: courseData.name || "Unnamed Program",
+            branchId: branchDoc.id,
+          });
+
           const batchSnap = await getDocs(
             collection(
               db,
@@ -365,14 +384,20 @@ export default function TestSeries() {
               "batches"
             )
           );
-          batchSnap.docs.forEach((b) =>
+          batchSnap.docs.forEach((b) => {
+            const batchData = b.data();
             batchList.push({
               id: b.id,
-              label: `${branchDoc.data().name} / ${courseDoc.data().name} / ${b.data().name}`,
-            })
-          );
+              name: batchData.name || "Unnamed Batch",
+              courseId: courseDoc.id,
+              branchId: branchDoc.id,
+              label: `${branchData.name || "Unnamed Branch"} / ${courseData.name || "Unnamed Program"} / ${batchData.name || "Unnamed Batch"}`,
+            });
+          });
         }
       }
+      setBranches(branchList);
+      setPrograms(programList);
       setAllBatches(batchList);
     });
 
@@ -429,37 +454,30 @@ export default function TestSeries() {
             })
         );
         setDriftTests(drifted);
+        setLoading(false);
       },
       () => {
         toast.error("Failed to load your tests.");
+        setLoading(false);
       }
     );
 
-    // BANK tests: root templates collection
-    const bankQ = query(collection(db, "templates"));
-    const unsubBank = onSnapshot(
-      bankQ,
-      (snap) => {
-        const rows = snap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          // Hide drafts if admin uses isPublished === false
-          .filter((t: any) => t?.isPublished !== false);
-
-        setBankTests(rows);
-        setLoading(false);
-      },
-      () => {
-        setLoading(false);
-        toast.error("Failed to load bank tests.");
-      }
+    const dppsQ = query(
+      collection(db, "educators", uid, "dpps"),
+      orderBy("generatedAt", "desc"),
+      limit(20)
     );
+    const unsubDpps = onSnapshot(dppsQ, (snap) => {
+      const rows = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any), type: "dpp" }));
+      setDpps(rows);
+    });
 
     return () => {
       unsubEdu();
       unsubFolders();
       unsubTemplates();
       unsubMy();
-      unsubBank();
+      unsubDpps();
     };
   }, [currentUser?.uid]);
 
@@ -731,103 +749,95 @@ export default function TestSeries() {
     "History",
   ];
 
-  const groupedTests = useMemo(() => {
+  const batchMap = useMemo(() => {
+    const map = new Map<string, { branchId: string; courseId: string; name: string }>();
+    allBatches.forEach((b) => {
+      map.set(b.id, { branchId: b.branchId, courseId: b.courseId, name: b.name });
+    });
+    return map;
+  }, [allBatches]);
+
+  const filteredProgramOptions = useMemo(() => {
+    if (branchFilter === "all") return programs;
+    return programs.filter((p) => p.branchId === branchFilter);
+  }, [programs, branchFilter]);
+
+  const filteredBatchOptions = useMemo(() => {
+    if (programFilter !== "all") {
+      return allBatches.filter((b) => b.courseId === programFilter);
+    }
+    if (branchFilter !== "all") {
+      return allBatches.filter((b) => b.branchId === branchFilter);
+    }
+    return allBatches;
+  }, [allBatches, branchFilter, programFilter]);
+
+  const handleBranchChange = (v: string) => {
+    setBranchFilter(v);
+    setProgramFilter("all");
+    setBatchFilter("all");
+  };
+
+  const handleProgramChange = (v: string) => {
+    setProgramFilter(v);
+    setBatchFilter("all");
+  };
+
+  const filteredTests = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const filtered = myTests.filter((t) => {
+    const allItems = [...myTests, ...dpps];
+    const filtered = allItems.filter((t) => {
+      const isDpp =
+        t.type === "dpp" ||
+        String(t.title || "")
+          .toLowerCase()
+          .includes("dpp");
+
+      if (activeTab === "dpp" && !isDpp) return false;
+      if (activeTab === "test" && isDpp) return false;
+
       if (q) {
         const hay =
           `${t.title || ""} ${t.description || ""} ${t.subject || ""} ${t.level || ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
+
+      // Org-level cascading filters
+      const testBatches: string[] = t.targetBatches || [];
       if (batchFilter !== "all") {
-        const batches: string[] = t.targetBatches || [];
-        if (!batches.includes(batchFilter)) return false;
+        if (!testBatches.includes(batchFilter)) return false;
+      } else if (programFilter !== "all") {
+        const matchesProgram = testBatches.some((bId) => {
+          const bMeta = batchMap.get(bId);
+          return bMeta && bMeta.courseId === programFilter;
+        });
+        if (!matchesProgram) return false;
+      } else if (branchFilter !== "all") {
+        const matchesBranch = testBatches.some((bId) => {
+          const bMeta = batchMap.get(bId);
+          return bMeta && bMeta.branchId === branchFilter;
+        });
+        if (!matchesBranch) return false;
       }
+
       if (courseFilter !== "all" && t.courseId !== courseFilter) return false;
       if (subjectFilter !== "all" && t.subject !== subjectFilter) return false;
       return true;
     });
 
-    const groups: Record<
-      string,
-      { name: string; type: "custom" | "subject" | "uncategorized"; tests: any[] }
-    > = {};
-
-    // 1. Custom Folders (Preserve empty custom folders)
-    folders.forEach((f) => {
-      groups[f.id] = { name: f.name, type: "custom", tests: [] };
-    });
-
-    // 2. Pre-create empty folders for main subjects if they have tests or to keep them visible
-    // (Actually, let's only create them if tests exist or user has custom folder with same name)
-
-    // 3. Distribute Tests
-    filtered.forEach((t) => {
-      if (t.folderId && groups[t.folderId]) {
-        groups[t.folderId].tests.push(t);
-      } else if (t.subject) {
-        const normalizedName = normalizeSubjectName(t.subject);
-        const subKey = `subject_${normalizedName.toLowerCase().replace(/\s+/g, "_")}`;
-        if (!groups[subKey]) {
-          groups[subKey] = { name: normalizedName, type: "subject", tests: [] };
-        }
-        groups[subKey].tests.push(t);
-      } else {
-        const unKey = "uncategorized";
-        if (!groups[unKey]) {
-          groups[unKey] = { name: "Uncategorized", type: "uncategorized", tests: [] };
-        }
-        groups[unKey].tests.push(t);
-      }
-    });
-
-    return groups;
-  }, [myTests, folders, search, courseFilter, subjectFilter, batchFilter]);
-
-  // Pre-filter bankTests to only courses educator has access to
-  const visibleBankTests = useMemo(() => {
-    if (accessibleCourses.length === 0) return bankTests;
-    const accessibleCourseIds = new Set(accessibleCourses.map((c) => c.id));
-    return bankTests.filter((t: any) => !t.courseId || accessibleCourseIds.has(t.courseId));
-  }, [bankTests, accessibleCourses]);
-
-  const groupedBankTests = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const filtered = visibleBankTests.filter((t) => {
-      if (q) {
-        const hay =
-          `${t.title || ""} ${t.description || ""} ${t.subject || ""} ${t.level || ""}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      if (courseFilter !== "all" && t.courseId !== courseFilter) return false;
-      if (subjectFilter !== "all" && t.subject !== subjectFilter) return false;
-      return true;
-    });
-
-    const groups: Record<
-      string,
-      { name: string; type: "subject" | "uncategorized"; tests: any[] }
-    > = {};
-
-    filtered.forEach((t) => {
-      if (t.subject) {
-        const normalizedName = normalizeSubjectName(t.subject);
-        const subKey = `bank_subject_${normalizedName.toLowerCase().replace(/\s+/g, "_")}`;
-        if (!groups[subKey]) {
-          groups[subKey] = { name: normalizedName, type: "subject", tests: [] };
-        }
-        groups[subKey].tests.push(t);
-      } else {
-        const unKey = "bank_uncategorized";
-        if (!groups[unKey]) {
-          groups[unKey] = { name: "Uncategorized", type: "uncategorized", tests: [] };
-        }
-        groups[unKey].tests.push(t);
-      }
-    });
-
-    return groups;
-  }, [visibleBankTests, search, courseFilter, subjectFilter]);
+    return filtered;
+  }, [
+    myTests,
+    dpps,
+    search,
+    courseFilter,
+    subjectFilter,
+    branchFilter,
+    programFilter,
+    batchFilter,
+    activeTab,
+    batchMap,
+  ]);
 
   // Subjects available for current course filter (for filter dropdowns)
   const filterSubjectOptions = useMemo(() => {
@@ -840,37 +850,14 @@ export default function TestSeries() {
 
   const templateOptions = useMemo(
     () => [
-      ...bankTests.map((test: any) => ({
-        id: `admin:${test.id}`,
-        label: String(test?.title || "Untitled template"),
-        group: "admin" as const,
-      })),
       ...educatorTemplates.map((template: any) => ({
         id: `edu:${template.id}`,
         label: String(template?.templateName || template?.title || "Custom template"),
         group: "educator" as const,
       })),
     ],
-    [bankTests, educatorTemplates]
+    [educatorTemplates]
   );
-
-  const importedAdminTestIds = useMemo(() => {
-    const ids = new Set<string>();
-
-    myTests.forEach((test: any) => {
-      const linkedId = String(test?.linkedAdminTestId || test?.originalTestId || "").trim();
-      const isImportedFromAdmin =
-        test?.originSource === "admin" ||
-        test?.source === "imported" ||
-        test?.source === "linked_admin";
-
-      if (linkedId && isImportedFromAdmin) {
-        ids.add(linkedId);
-      }
-    });
-
-    return ids;
-  }, [myTests]);
 
   const folderState = {
     createFolderOpen,
@@ -1021,68 +1008,13 @@ export default function TestSeries() {
   };
 
   // Import admin test as a shared reference (no question copy)
-  const handleImport = async (bankTest: any) => {
-    if (!currentUser) return;
-
-    if (importedAdminTestIds.has(bankTest.id)) {
-      toast.info("Already added to your library");
-      return;
-    }
-
-    setImportingId(bankTest.id);
-
-    try {
-      const meta: any = pruneUndefined({
-        title: bankTest.title ?? "",
-        description: bankTest.description ?? "",
-        subject: bankTest.subject ?? "",
-        level: bankTest.level ?? "",
-        durationMinutes: Number(bankTest.durationMinutes ?? bankTest.duration ?? 0),
-
-        sections: bankTest.sections ?? [],
-        instructions: bankTest.instructions ?? "",
-
-        attemptsAllowed: globalAttemptsAllowed,
-        markingScheme: bankTest.markingScheme ?? undefined,
-
-        positiveMarks: bankTest.positiveMarks != null ? Number(bankTest.positiveMarks) : undefined,
-        negativeMarks: bankTest.negativeMarks != null ? Number(bankTest.negativeMarks) : undefined,
-
-        source: "linked_admin",
-        originSource: "admin",
-        linkedAdminTestId: bankTest.id,
-        originalTestId: bankTest.id,
-        isQuestionSourceShared: true,
-        targetBatches: [],
-
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        createdBy: currentUser.uid,
-        questionsCount: Math.max(
-          0,
-          Number(bankTest.questionsCount ?? bankTest.questionCount ?? bankTest.totalQuestions ?? 0)
-        ),
-      });
-
-      await setDoc(doc(db, "educators", currentUser.uid, "my_tests", bankTest.id), meta);
-
-      toast.success("Added as linked admin test");
-      setActiveTab("library");
-    } catch (e) {
-      console.error(e);
-      toast.error("Failed to import test");
-    } finally {
-      setImportingId(null);
-    }
-  };
 
   // Create educator custom test (NO question bank import allowed, manual questions only)
   const handleCreateCustom = async (values: any) => {
     if (!currentUser) return;
 
     const [templateType, templateId] = String(selectedTemplateId || "none").split(":");
-    const adminTemplate =
-      templateType === "admin" ? bankTests.find((test) => test.id === templateId) : null;
+
     const educatorTemplate =
       templateType === "edu"
         ? educatorTemplates.find((template) => template.id === templateId)
@@ -1100,6 +1032,7 @@ export default function TestSeries() {
       difficultyLevel: values.difficultyLevel ?? 0.5,
       durationMinutes: Number(values.durationMinutes || 0),
       attemptsAllowed: values.attemptsAllowed || globalAttemptsAllowed,
+      type: "test",
       source: "custom",
       originSource: "educator",
       createdBy: currentUser.uid,
@@ -1131,14 +1064,6 @@ export default function TestSeries() {
 
     // Add origin metadata (template reference only, NOT admin-linked)
     // Tests created from templates are fully editable custom tests.
-    if (adminTemplate) {
-      payload.templateRef = { source: "admin", id: adminTemplate.id };
-      if (payload.isPublished === undefined)
-        payload.isPublished = adminTemplate.isPublished ?? false;
-      if (payload.requiresUnlock === undefined)
-        payload.requiresUnlock = adminTemplate.requiresUnlock ?? true;
-      if (payload.price === undefined) payload.price = adminTemplate.price ?? 0;
-    }
 
     if (educatorTemplate) {
       payload.originSource = "educator_template";
@@ -1160,7 +1085,7 @@ export default function TestSeries() {
       toast.success("Test created");
       setCreateOpen(false);
       setSelectedTemplateId("none");
-      setActiveTab("library");
+      setActiveTab("overall");
     } catch (err) {
       console.error(err);
       toast.error("Failed to create test");
@@ -1177,7 +1102,6 @@ export default function TestSeries() {
     selectedTemplateId,
     setSelectedTemplateId,
     templates: templateOptions,
-    bankTests,
     educatorTemplates,
     accessibleCourses,
     accessibleSubjects,
@@ -1283,7 +1207,7 @@ export default function TestSeries() {
           />
         </div>
 
-        {accessibleCourses.length > 0 && (
+        {accessibleCourses.length > 1 && (
           <>
             <Select
               value={courseFilter}
@@ -1357,11 +1281,14 @@ export default function TestSeries() {
         <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="w-full overflow-x-auto">
             <TabsList className="inline-flex min-w-max rounded-xl">
-              <TabsTrigger value="library" className="rounded-xl">
-                Your Library
+              <TabsTrigger value="overall" className="rounded-xl">
+                Overall
               </TabsTrigger>
-              <TabsTrigger value="bank" className="rounded-xl">
-                Admin Bank
+              <TabsTrigger value="dpp" className="rounded-xl">
+                DPP
+              </TabsTrigger>
+              <TabsTrigger value="test" className="rounded-xl">
+                Test
               </TabsTrigger>
             </TabsList>
           </div>
@@ -1369,515 +1296,386 @@ export default function TestSeries() {
           <NewFolderButton {...folderState} />
         </div>
 
-        {/* Library */}
-        <TabsContent value="library" className="mt-6">
-          {allBatches.length > 0 && (
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              <span className="shrink-0 text-sm text-muted-foreground">Filter by Batch:</span>
-              <Select value={batchFilter} onValueChange={setBatchFilter}>
-                <SelectTrigger className="h-8 w-[220px] rounded-xl text-sm">
-                  <SelectValue placeholder="All Batches" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Batches</SelectItem>
-                  {allBatches.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {batchFilter !== "all" && (
-                <button
-                  onClick={() => setBatchFilter("all")}
-                  className="text-xs text-muted-foreground underline hover:text-foreground"
+        <div className="mt-6">
+          {/* Branch, Program, and Batch Filters */}
+          {(branches.length > 1 || programs.length > 1 || allBatches.length > 1) && (
+            <div className="mb-6 flex flex-wrap items-center gap-4 rounded-2xl border border-border/40 bg-muted/30 p-4 dark:bg-card/45">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <Folder className="h-3.5 w-3.5" />
+                <span>Filter By:</span>
+              </div>
+
+              {branches.length > 1 && (
+                <div className="flex items-center gap-2">
+                  <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs font-medium text-muted-foreground">Branch:</span>
+                  <Select value={branchFilter} onValueChange={handleBranchChange}>
+                    <SelectTrigger className="h-9 w-[160px] rounded-xl text-xs">
+                      <SelectValue placeholder="All Branches" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Branches</SelectItem>
+                      {branches.map((b) => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {programs.length > 1 && (
+                <div className="flex items-center gap-2">
+                  <BookOpen className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs font-medium text-muted-foreground">Program:</span>
+                  <Select value={programFilter} onValueChange={handleProgramChange}>
+                    <SelectTrigger className="h-9 w-[180px] rounded-xl text-xs">
+                      <SelectValue placeholder="All Programs" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Programs</SelectItem>
+                      {filteredProgramOptions.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {allBatches.length > 1 && (
+                <div className="flex items-center gap-2">
+                  <Award className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs font-medium text-muted-foreground">Batch:</span>
+                  <Select value={batchFilter} onValueChange={setBatchFilter}>
+                    <SelectTrigger className="h-9 w-[220px] rounded-xl text-xs">
+                      <SelectValue placeholder="All Batches" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Batches</SelectItem>
+                      {filteredBatchOptions.map((b) => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {(branchFilter !== "all" || programFilter !== "all" || batchFilter !== "all") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setBranchFilter("all");
+                    setProgramFilter("all");
+                    setBatchFilter("all");
+                  }}
+                  className="h-8 rounded-xl px-2 text-xs text-muted-foreground hover:text-foreground"
                 >
-                  Clear
-                </button>
+                  Clear Filters
+                </Button>
               )}
             </div>
           )}
-          {Object.keys(groupedTests).length === 0 ? (
+          {filteredTests.length === 0 ? (
             <EmptyState
               icon={FileText}
               title="No tests found"
-              description="Create a custom test or import from the admin bank."
+              description="Create a custom test or generate a DPP."
             />
           ) : (
-            <div className="space-y-8">
-              {Object.entries(groupedTests).map(([groupId, group]) => {
-                const isExpanded = !!expandedFolders[groupId]; // default closed
-                return (
-                  <div key={groupId} className="space-y-4">
-                    <div
-                      className="group flex cursor-pointer items-center justify-between rounded-xl bg-muted/20 p-2"
-                      onClick={() => toggleFolder(groupId)}
-                    >
-                      <div className="flex items-center gap-2">
-                        {isExpanded ? (
-                          <ChevronDown className="h-5 w-5" />
-                        ) : (
-                          <ChevronRight className="h-5 w-5" />
-                        )}
-                        <Folder
-                          className={cn(
-                            "h-5 w-5",
-                            group.type === "custom"
-                              ? "fill-primary/20 text-primary"
-                              : "text-muted-foreground"
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {filteredTests.map((test) => (
+                <motion.div key={test.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                  {(() => {
+                    const isAdminLinked =
+                      test.originSource === "admin" ||
+                      test.source === "imported" ||
+                      test.source === "linked_admin" ||
+                      test.isQuestionSourceShared === true ||
+                      !!test.linkedAdminTestId ||
+                      !!test.originalTestId;
+
+                    return (
+                      <Card className="relative flex h-full flex-col transition-shadow hover:shadow-md">
+                        <CardHeader>
+                          <CardTitle className="flex items-start justify-between gap-2">
+                            <span className="truncate text-lg">{test.title}</span>
+                            <div className="flex items-center gap-1">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 rounded-xl"
+                                  >
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="rounded-xl">
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setTestToMove(test);
+                                      setMoveTestOpen(true);
+                                    }}
+                                  >
+                                    <Move className="mr-2 h-4 w-4" /> Move to Folder
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setBatchAssignTest(test);
+                                      setSelectedBatchIds(test.targetBatches || []);
+                                      setBatchAssignOpen(true);
+                                    }}
+                                  >
+                                    <Award className="mr-2 h-4 w-4" /> Assign to Batches
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => openAccessCode(test)}>
+                                    <Key className="mr-2 h-4 w-4" /> Access Code
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setTestToSchedule(test);
+                                      setScheduleOpen(true);
+                                    }}
+                                  >
+                                    <Clock className="mr-2 h-4 w-4" /> Schedule
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    className="text-destructive"
+                                    onClick={async () => {
+                                      if (!currentUser) return;
+                                      if (!confirm("Delete this test and all its questions?"))
+                                        return;
+                                      try {
+                                        const qs = await getDocs(
+                                          collection(
+                                            db,
+                                            "educators",
+                                            currentUser.uid,
+                                            "my_tests",
+                                            test.id,
+                                            "questions"
+                                          )
+                                        );
+                                        const batch = writeBatch(db);
+                                        qs.forEach((d) => batch.delete(d.ref));
+                                        batch.delete(
+                                          doc(db, "educators", currentUser.uid, "my_tests", test.id)
+                                        );
+                                        await batch.commit();
+                                        toast.success("Test deleted");
+                                      } catch (e) {
+                                        console.error(e);
+                                        toast.error("Delete failed");
+                                      }
+                                    }}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="flex flex-1 flex-col gap-4">
+                          {/* Template drift banner */}
+                          {driftTests.has(test.id) && (
+                            <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs dark:border-amber-700 dark:bg-amber-950/40">
+                              <span className="mt-0.5 text-amber-600 dark:text-amber-400">⚠</span>
+                              <div className="flex-1">
+                                <span className="font-semibold text-amber-700 dark:text-amber-400">
+                                  Template updated
+                                </span>
+                                <span className="ml-1 text-amber-600 dark:text-amber-500">
+                                  — section constraints may be outdated.
+                                </span>
+                                <button
+                                  className="ml-2 text-amber-700 underline hover:no-underline dark:text-amber-400"
+                                  onClick={async () => {
+                                    if (!currentUser || !test.sourceTemplateId) return;
+                                    try {
+                                      const tmplSnap = await getDoc(
+                                        doc(db, "templates", test.sourceTemplateId)
+                                      );
+                                      if (!tmplSnap.exists()) {
+                                        toast.error("Template not found");
+                                        return;
+                                      }
+                                      const tmpl = tmplSnap.data() as any;
+                                      await updateDoc(
+                                        doc(db, "educators", currentUser.uid, "my_tests", test.id),
+                                        {
+                                          sections: tmpl.sections ?? [],
+                                          markingScheme: tmpl.markingScheme ?? null,
+                                          durationMinutes:
+                                            tmpl.durationMinutes ?? test.durationMinutes,
+                                          sourceTemplateVersion: Number(tmpl.version ?? 0),
+                                          updatedAt: serverTimestamp(),
+                                        }
+                                      );
+                                      setDriftTests((prev) => {
+                                        const s = new Set(prev);
+                                        s.delete(test.id);
+                                        return s;
+                                      });
+                                      toast.success("Synced section structure from template");
+                                    } catch (e) {
+                                      console.error(e);
+                                      toast.error("Sync failed");
+                                    }
+                                  }}
+                                >
+                                  Sync from template
+                                </button>
+                              </div>
+                            </div>
                           )}
-                        />
-                        <h3 className="text-lg font-semibold">{group.name}</h3>
-                        <Badge variant="secondary" className="ml-2 rounded-full">
-                          {group.tests.length}
-                        </Badge>
-                      </div>
-
-                      {group.type === "custom" && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="rounded-xl text-destructive opacity-0 group-hover:opacity-100"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteFolder(groupId);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-
-                    {isExpanded && (
-                      <div className="grid grid-cols-1 gap-6 pl-4 md:grid-cols-2 lg:grid-cols-3">
-                        {group.tests.length === 0 ? (
-                          <p className="col-span-full py-4 text-sm italic text-muted-foreground">
-                            No tests in this folder.
+                          <p className="line-clamp-2 text-sm text-muted-foreground">
+                            {test.description}
                           </p>
-                        ) : (
-                          group.tests.map((test) => (
-                            <motion.div
-                              key={test.id}
-                              layout
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                            >
-                              {(() => {
-                                const isAdminLinked =
-                                  test.originSource === "admin" ||
-                                  test.source === "imported" ||
-                                  test.source === "linked_admin" ||
-                                  test.isQuestionSourceShared === true ||
-                                  !!test.linkedAdminTestId ||
-                                  !!test.originalTestId;
 
-                                return (
-                                  <Card className="relative flex h-full flex-col transition-shadow hover:shadow-md">
-                                    <CardHeader>
-                                      <CardTitle className="flex items-start justify-between gap-2">
-                                        <span className="truncate text-lg">{test.title}</span>
-                                        <div className="flex items-center gap-1">
-                                          <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                              <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                className="h-8 w-8 rounded-xl"
-                                              >
-                                                <MoreVertical className="h-4 w-4" />
-                                              </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end" className="rounded-xl">
-                                              <DropdownMenuItem
-                                                onClick={() => {
-                                                  setTestToMove(test);
-                                                  setMoveTestOpen(true);
-                                                }}
-                                              >
-                                                <Move className="mr-2 h-4 w-4" /> Move to Folder
-                                              </DropdownMenuItem>
-                                              <DropdownMenuItem
-                                                onClick={() => {
-                                                  setBatchAssignTest(test);
-                                                  setSelectedBatchIds(test.targetBatches || []);
-                                                  setBatchAssignOpen(true);
-                                                }}
-                                              >
-                                                <Award className="mr-2 h-4 w-4" /> Assign to Batches
-                                              </DropdownMenuItem>
-                                              <DropdownMenuItem
-                                                onClick={() => openAccessCode(test)}
-                                              >
-                                                <Key className="mr-2 h-4 w-4" /> Access Code
-                                              </DropdownMenuItem>
-                                              <DropdownMenuItem
-                                                onClick={() => {
-                                                  setTestToSchedule(test);
-                                                  setScheduleOpen(true);
-                                                }}
-                                              >
-                                                <Clock className="mr-2 h-4 w-4" /> Schedule
-                                              </DropdownMenuItem>
-                                              <DropdownMenuItem
-                                                className="text-destructive"
-                                                onClick={async () => {
-                                                  if (!currentUser) return;
-                                                  if (
-                                                    !confirm(
-                                                      "Delete this test and all its questions?"
-                                                    )
-                                                  )
-                                                    return;
-                                                  try {
-                                                    const qs = await getDocs(
-                                                      collection(
-                                                        db,
-                                                        "educators",
-                                                        currentUser.uid,
-                                                        "my_tests",
-                                                        test.id,
-                                                        "questions"
-                                                      )
-                                                    );
-                                                    const batch = writeBatch(db);
-                                                    qs.forEach((d) => batch.delete(d.ref));
-                                                    batch.delete(
-                                                      doc(
-                                                        db,
-                                                        "educators",
-                                                        currentUser.uid,
-                                                        "my_tests",
-                                                        test.id
-                                                      )
-                                                    );
-                                                    await batch.commit();
-                                                    toast.success("Test deleted");
-                                                  } catch (e) {
-                                                    console.error(e);
-                                                    toast.error("Delete failed");
-                                                  }
-                                                }}
-                                              >
-                                                <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                              </DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                          </DropdownMenu>
-                                        </div>
-                                      </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="flex flex-1 flex-col gap-4">
-                                      {/* Template drift banner */}
-                                      {driftTests.has(test.id) && (
-                                        <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs dark:border-amber-700 dark:bg-amber-950/40">
-                                          <span className="mt-0.5 text-amber-600 dark:text-amber-400">
-                                            ⚠
-                                          </span>
-                                          <div className="flex-1">
-                                            <span className="font-semibold text-amber-700 dark:text-amber-400">
-                                              Template updated
-                                            </span>
-                                            <span className="ml-1 text-amber-600 dark:text-amber-500">
-                                              — section constraints may be outdated.
-                                            </span>
-                                            <button
-                                              className="ml-2 text-amber-700 underline hover:no-underline dark:text-amber-400"
-                                              onClick={async () => {
-                                                if (!currentUser || !test.sourceTemplateId) return;
-                                                try {
-                                                  const tmplSnap = await getDoc(
-                                                    doc(db, "templates", test.sourceTemplateId)
-                                                  );
-                                                  if (!tmplSnap.exists()) {
-                                                    toast.error("Template not found");
-                                                    return;
-                                                  }
-                                                  const tmpl = tmplSnap.data() as any;
-                                                  await updateDoc(
-                                                    doc(
-                                                      db,
-                                                      "educators",
-                                                      currentUser.uid,
-                                                      "my_tests",
-                                                      test.id
-                                                    ),
-                                                    {
-                                                      sections: tmpl.sections ?? [],
-                                                      markingScheme: tmpl.markingScheme ?? null,
-                                                      durationMinutes:
-                                                        tmpl.durationMinutes ??
-                                                        test.durationMinutes,
-                                                      sourceTemplateVersion: Number(
-                                                        tmpl.version ?? 0
-                                                      ),
-                                                      updatedAt: serverTimestamp(),
-                                                    }
-                                                  );
-                                                  setDriftTests((prev) => {
-                                                    const s = new Set(prev);
-                                                    s.delete(test.id);
-                                                    return s;
-                                                  });
-                                                  toast.success(
-                                                    "Synced section structure from template"
-                                                  );
-                                                } catch (e) {
-                                                  console.error(e);
-                                                  toast.error("Sync failed");
-                                                }
-                                              }}
-                                            >
-                                              Sync from template
-                                            </button>
-                                          </div>
-                                        </div>
-                                      )}
-                                      <p className="line-clamp-2 text-sm text-muted-foreground">
-                                        {test.description}
-                                      </p>
+                          <div className="mt-auto flex flex-wrap items-center justify-between gap-y-3">
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                              <span className="flex shrink-0 items-center gap-1">
+                                <BookOpen className="h-3 w-3" /> {test.subject || "—"}
+                              </span>
+                              <span className="flex shrink-0 items-center gap-1">
+                                <Clock className="h-3 w-3" /> {Number(test.durationMinutes || 0)}m
+                              </span>
+                              {isAdminLinked ? (
+                                <Badge
+                                  variant="outline"
+                                  className="h-5 shrink-0 px-2 py-0 text-[10px]"
+                                >
+                                  Admin Linked
+                                </Badge>
+                              ) : test.source === "imported" ? (
+                                <Badge
+                                  variant="secondary"
+                                  className="h-5 shrink-0 px-2 py-0 text-[10px]"
+                                >
+                                  Imported
+                                </Badge>
+                              ) : (
+                                <Badge className="h-5 shrink-0 px-2 py-0 text-[10px]">Custom</Badge>
+                              )}
+                            </div>
 
-                                      <div className="mt-auto flex flex-wrap items-center justify-between gap-y-3">
-                                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-                                          <span className="flex shrink-0 items-center gap-1">
-                                            <BookOpen className="h-3 w-3" /> {test.subject || "—"}
-                                          </span>
-                                          <span className="flex shrink-0 items-center gap-1">
-                                            <Clock className="h-3 w-3" />{" "}
-                                            {Number(test.durationMinutes || 0)}m
-                                          </span>
-                                          {isAdminLinked ? (
-                                            <Badge
-                                              variant="outline"
-                                              className="h-5 shrink-0 px-2 py-0 text-[10px]"
-                                            >
-                                              Admin Linked
-                                            </Badge>
-                                          ) : test.source === "imported" ? (
-                                            <Badge
-                                              variant="secondary"
-                                              className="h-5 shrink-0 px-2 py-0 text-[10px]"
-                                            >
-                                              Imported
-                                            </Badge>
-                                          ) : (
-                                            <Badge className="h-5 shrink-0 px-2 py-0 text-[10px]">
-                                              Custom
-                                            </Badge>
-                                          )}
-                                        </div>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <div className="flex shrink-0 cursor-pointer items-center gap-1 rounded-lg bg-muted/30 px-2 py-1 hover:bg-muted/50">
+                                  <span className="text-[9px] font-bold uppercase text-muted-foreground">
+                                    Attempts:
+                                  </span>
+                                  <span className="text-[10px] font-bold">
+                                    {(test.attemptsAllowed ?? 3) === 0
+                                      ? "∞"
+                                      : (test.attemptsAllowed ?? 3)}
+                                  </span>
+                                </div>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-2" align="end" sideOffset={4}>
+                                <ScrollPicker
+                                  options={ATTEMPTS_OPTIONS}
+                                  value={String(test.attemptsAllowed ?? 3)}
+                                  onChange={(v) => handleUpdateTestAttempts(test.id, Number(v))}
+                                />
+                              </PopoverContent>
+                            </Popover>
+                          </div>
 
-                                        <Popover>
-                                          <PopoverTrigger asChild>
-                                            <div className="flex shrink-0 cursor-pointer items-center gap-1 rounded-lg bg-muted/30 px-2 py-1 hover:bg-muted/50">
-                                              <span className="text-[9px] font-bold uppercase text-muted-foreground">
-                                                Attempts:
-                                              </span>
-                                              <span className="text-[10px] font-bold">
-                                                {(test.attemptsAllowed ?? 3) === 0
-                                                  ? "∞"
-                                                  : (test.attemptsAllowed ?? 3)}
-                                              </span>
-                                            </div>
-                                          </PopoverTrigger>
-                                          <PopoverContent
-                                            className="w-auto p-2"
-                                            align="end"
-                                            sideOffset={4}
-                                          >
-                                            <ScrollPicker
-                                              options={ATTEMPTS_OPTIONS}
-                                              value={String(test.attemptsAllowed ?? 3)}
-                                              onChange={(v) =>
-                                                handleUpdateTestAttempts(test.id, Number(v))
-                                              }
-                                            />
-                                          </PopoverContent>
-                                        </Popover>
-                                      </div>
-
-                                      <div className="mt-4 space-y-2 border-t pt-4">
-                                        {/* Quick actions */}
-                                        <div className="flex items-center gap-1">
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="flex-1 rounded-xl text-xs"
-                                            onClick={() => {
-                                              setTestToSchedule(test);
-                                              setScheduleOpen(true);
-                                            }}
-                                          >
-                                            <Clock className="mr-1 h-3 w-3" />
-                                            Schedule
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="flex-1 rounded-xl text-xs"
-                                            onClick={() => {
-                                              setBatchAssignTest(test);
-                                              setSelectedBatchIds(test.targetBatches || []);
-                                              setBatchAssignOpen(true);
-                                            }}
-                                          >
-                                            <Award className="mr-1 h-3 w-3" />
-                                            Batches
-                                            {(test.targetBatches || []).length > 0 && (
-                                              <span className="ml-1 rounded-full bg-primary/10 px-1 text-[10px] font-medium text-primary">
-                                                {test.targetBatches.length}
-                                              </span>
-                                            )}
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="flex-1 rounded-xl text-xs"
-                                            onClick={() => openAccessCode(test)}
-                                          >
-                                            <Key className="mr-1 h-3 w-3" />
-                                            Code
-                                          </Button>
-                                        </div>
-                                        {/* Primary actions */}
-                                        <div className="flex min-w-0 gap-2">
-                                          <Button
-                                            className="gradient-bg min-w-0 flex-1 rounded-xl text-white shadow-sm"
-                                            size="sm"
-                                            onClick={() => {
-                                              navigate(
-                                                `/educator/test-series/${test.id}/questions`
-                                              );
-                                            }}
-                                          >
-                                            <Edit className="mr-1.5 h-3 w-3 shrink-0" />
-                                            <span className="truncate">
-                                              {isAdminLinked ? "View Qs" : "Manage Qs"}
-                                            </span>
-                                          </Button>
-                                          {!isAdminLinked && (test.sections || []).length > 0 && (
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              className="min-w-0 flex-1 rounded-xl"
-                                              disabled={autoFillTestId === test.id}
-                                              onClick={() => handleAutoFill(test)}
-                                            >
-                                              {autoFillTestId === test.id ? (
-                                                <Loader2 className="mr-1.5 h-3 w-3 shrink-0 animate-spin" />
-                                              ) : (
-                                                <FileUp className="mr-1.5 h-3 w-3 shrink-0" />
-                                              )}
-                                              <span className="truncate">Auto-fill</span>
-                                            </Button>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                );
-                              })()}
-                            </motion.div>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                          <div className="mt-4 space-y-2 border-t pt-4">
+                            {/* Quick actions */}
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1 rounded-xl text-xs"
+                                onClick={() => {
+                                  setTestToSchedule(test);
+                                  setScheduleOpen(true);
+                                }}
+                              >
+                                <Clock className="mr-1 h-3 w-3" />
+                                Schedule
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1 rounded-xl text-xs"
+                                onClick={() => {
+                                  setBatchAssignTest(test);
+                                  setSelectedBatchIds(test.targetBatches || []);
+                                  setBatchAssignOpen(true);
+                                }}
+                              >
+                                <Award className="mr-1 h-3 w-3" />
+                                Batches
+                                {(test.targetBatches || []).length > 0 && (
+                                  <span className="ml-1 rounded-full bg-primary/10 px-1 text-[10px] font-medium text-primary">
+                                    {test.targetBatches.length}
+                                  </span>
+                                )}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="flex-1 rounded-xl text-xs"
+                                onClick={() => openAccessCode(test)}
+                              >
+                                <Key className="mr-1 h-3 w-3" />
+                                Code
+                              </Button>
+                            </div>
+                            {/* Primary actions */}
+                            <div className="flex min-w-0 gap-2">
+                              <Button
+                                className="gradient-bg min-w-0 flex-1 rounded-xl text-white shadow-sm"
+                                size="sm"
+                                onClick={() => {
+                                  navigate(`/educator/test-series/${test.id}/questions`);
+                                }}
+                              >
+                                <Edit className="mr-1.5 h-3 w-3 shrink-0" />
+                                <span className="truncate">
+                                  {isAdminLinked ? "View Qs" : "Manage Qs"}
+                                </span>
+                              </Button>
+                              {!isAdminLinked && (test.sections || []).length > 0 && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="min-w-0 flex-1 rounded-xl"
+                                  disabled={autoFillTestId === test.id}
+                                  onClick={() => handleAutoFill(test)}
+                                >
+                                  {autoFillTestId === test.id ? (
+                                    <Loader2 className="mr-1.5 h-3 w-3 shrink-0 animate-spin" />
+                                  ) : (
+                                    <FileUp className="mr-1.5 h-3 w-3 shrink-0" />
+                                  )}
+                                  <span className="truncate">Auto-fill</span>
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
+                </motion.div>
+              ))}
             </div>
           )}
 
           {/* Move Test Dialog */}
           <MoveTest {...moveTestState} />
-        </TabsContent>
-
-        {/* Admin Bank */}
-        <TabsContent value="bank" className="mt-6">
-          {Object.keys(groupedBankTests).length === 0 ? (
-            <EmptyState
-              icon={FileText}
-              title="No bank tests found"
-              description="No admin tests are available for import yet."
-            />
-          ) : (
-            <div className="space-y-8">
-              {Object.entries(groupedBankTests).map(([groupId, group]) => {
-                const isExpanded = !!expandedFolders[groupId]; // default closed
-                return (
-                  <div key={groupId} className="space-y-4">
-                    <div
-                      className="group flex cursor-pointer items-center justify-between rounded-xl bg-muted/20 p-2"
-                      onClick={() => toggleFolder(groupId)}
-                    >
-                      <div className="flex items-center gap-2">
-                        {isExpanded ? (
-                          <ChevronDown className="h-5 w-5" />
-                        ) : (
-                          <ChevronRight className="h-5 w-5" />
-                        )}
-                        <Folder className="h-5 w-5 text-muted-foreground" />
-                        <h3 className="text-lg font-semibold">{group.name}</h3>
-                        <Badge variant="secondary" className="ml-2 rounded-full">
-                          {group.tests.length}
-                        </Badge>
-                      </div>
-                    </div>
-
-                    {isExpanded && (
-                      <div className="grid grid-cols-1 gap-6 pl-4 md:grid-cols-2 lg:grid-cols-3">
-                        {group.tests.map((test) => {
-                          const alreadyLinked = importedAdminTestIds.has(test.id);
-
-                          return (
-                            <Card
-                              key={test.id}
-                              className="border-dashed bg-muted/30 transition-colors hover:border-primary"
-                            >
-                              <CardHeader>
-                                <CardTitle className="flex items-start justify-between">
-                                  <span className="truncate">{test.title}</span>
-                                  <Badge variant="outline">Admin</Badge>
-                                </CardTitle>
-                              </CardHeader>
-                              <CardContent className="space-y-4">
-                                <p className="line-clamp-2 text-sm text-muted-foreground">
-                                  {test.description}
-                                </p>
-                                <div className="flex gap-2 text-xs text-muted-foreground">
-                                  <span className="flex items-center gap-1">
-                                    <BookOpen className="h-3 w-3" /> {test.subject || "—"}
-                                  </span>
-                                  <span>•</span>
-                                  <span>{test.level || "—"}</span>
-                                </div>
-                                <Button
-                                  className="w-full rounded-xl"
-                                  disabled={importingId === test.id || alreadyLinked}
-                                  onClick={() => handleImport(test)}
-                                >
-                                  {alreadyLinked ? (
-                                    <>
-                                      <CheckCircle2 className="mr-2 h-4 w-4" /> Added to Library
-                                    </>
-                                  ) : importingId === test.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <>
-                                      <Download className="mr-2 h-4 w-4" /> Import to Library
-                                    </>
-                                  )}
-                                </Button>
-                              </CardContent>
-                            </Card>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </TabsContent>
+        </div>
       </Tabs>
 
       {/* Access Code Dialog */}
