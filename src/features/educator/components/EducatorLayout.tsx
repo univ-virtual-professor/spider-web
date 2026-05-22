@@ -195,20 +195,6 @@ function EducatorLayoutInner() {
       items.push({ icon: BookOpen, label: "Content", href: "/educator/content" });
     }
 
-    // Billing and Organization are org-head only
-    if (!isEmployee) {
-      items.push({ icon: CreditCard, label: "Billing", href: "/educator/billing" });
-      items.push({ icon: Building2, label: "Organization", href: "/educator/organization" });
-    }
-
-    if (!isEmployee || hasPermission("website.manage")) {
-      items.push({
-        icon: Palette,
-        label: "Customize Website",
-        href: "/educator/settings?builder=true",
-      });
-    }
-
     return items;
   }, [isEmployee, hasPermission]);
 
@@ -472,7 +458,36 @@ function EducatorLayoutInner() {
               })}
             </nav>
 
-            <div className="mt-auto border-t border-border p-4">
+            <div className="mt-auto space-y-2 border-t border-border p-4">
+              <Button
+                variant="ghost"
+                className={cn(
+                  "w-full text-muted-foreground hover:text-white",
+                  sidebarCollapsed ? "justify-center px-0" : "justify-start"
+                )}
+                onClick={() => {
+                  setSidebarOpen(false);
+                  navigate("/educator/messages");
+                }}
+                title={sidebarCollapsed ? "Help & Support" : undefined}
+              >
+                <div className={cn("relative flex items-center", !sidebarCollapsed && "mr-3")}>
+                  <MessageSquare className="h-5 w-5 hover:text-white" />
+                  {sidebarCollapsed && unreadMessages > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-2 w-2 rounded-full bg-primary" />
+                  )}
+                </div>
+                {!sidebarCollapsed && (
+                  <div className="flex flex-1 items-center justify-between">
+                    <span>Help & Support</span>
+                    {unreadMessages > 0 && (
+                      <Badge variant="secondary" className="ml-2 text-xs">
+                        {unreadMessages}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </Button>
               <Button
                 variant="ghost"
                 className={cn(
@@ -508,14 +523,6 @@ function EducatorLayoutInner() {
             </div>
 
             <div className="flex items-center gap-1 sm:gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate("/educator/settings")}
-                title="Settings"
-              >
-                <Settings className="h-5 w-5 text-muted-foreground" />
-              </Button>
               {profile?.uid && (
                 <NotificationBell
                   uid={profile.uid}
@@ -545,14 +552,27 @@ function EducatorLayoutInner() {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/educator/messages")}>
-                    <MessageSquare className="mr-2 h-4 w-4" />
-                    Help &amp; Support
-                    {unreadMessages > 0 && (
-                      <Badge variant="secondary" className="ml-auto text-xs">
-                        {unreadMessages}
-                      </Badge>
-                    )}
+                  {!isEmployee && (
+                    <>
+                      <DropdownMenuItem onClick={() => navigate("/educator/billing")}>
+                        <CreditCard className="mr-2 h-4 w-4" />
+                        Billing
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate("/educator/organization")}>
+                        <Building2 className="mr-2 h-4 w-4" />
+                        Organization
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  {(!isEmployee || hasPermission("website.manage")) && (
+                    <DropdownMenuItem onClick={() => navigate("/educator/settings?builder=true")}>
+                      <Palette className="mr-2 h-4 w-4" />
+                      Customize Website
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={() => navigate("/educator/settings")}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleViewWebsite}>
                     <Globe className="mr-2 h-4 w-4" />

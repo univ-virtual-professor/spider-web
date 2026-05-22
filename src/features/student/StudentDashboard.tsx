@@ -16,7 +16,6 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { StudentMetricCard } from "@features/student/components/StudentMetricCard";
-import { AttemptTable } from "@features/student/components/AttemptTable";
 
 import { useAuth } from "@app/providers/AuthProvider";
 import { useTenant } from "@app/providers/TenantProvider";
@@ -192,21 +191,35 @@ export default function StudentDashboard() {
         collection(db, "attempts"),
         where("educatorId", "==", educatorId!),
         where("status", "in", ["completed", "submitted", "finished", "done"]),
-        orderBy("score", "desc"),
-        limit(300)
+        orderBy("createdAt", "desc"),
+        limit(500) // fetch more to ensure each student has enough attempts
       );
       const snap = await getDocs(qTop);
-      const best: Record<string, number> = {};
+
+      // Group attempts by student, keeping insertion order (already desc by createdAt)
+      const studentAttempts: Record<string, number[]> = {};
       snap.docs.forEach((d) => {
         const a = d.data() as any;
         const sid = String(a?.studentId || "");
         if (!sid) return;
         const sc = safeNum(a?.score, 0);
-        best[sid] = Math.max(best[sid] || 0, sc);
+        const maxSc = safeNum(a?.maxScore, 1);
+        const pct = (sc / maxSc) * 100; // use percentage so different max scores are comparable
+        if (!studentAttempts[sid]) studentAttempts[sid] = [];
+        studentAttempts[sid].push(pct);
       });
-      const sorted = Object.entries(best)
-        .sort((a, b) => b[1] - a[1])
-        .map(([studentId]) => studentId);
+
+      // Average of last 5 (already sorted desc, so first 5 = most recent 5)
+      const avgOf5 = (scores: number[]) => {
+        const last5 = scores.slice(0, 5);
+        return last5.reduce((sum, s) => sum + s, 0) / last5.length;
+      };
+
+      const sorted = Object.entries(studentAttempts)
+        .map(([studentId, scores]) => ({ studentId, avg: avgOf5(scores) }))
+        .sort((a, b) => b.avg - a.avg)
+        .map(({ studentId }) => studentId);
+
       const idx = sorted.findIndex((id) => id === firebaseUser!.uid);
       return { rank: idx >= 0 ? idx + 1 : null, totalParticipants: sorted.length };
     },
@@ -220,6 +233,7 @@ export default function StudentDashboard() {
   const { data: liveTests = [] } = useQuery<LiveTest[]>({
     queryKey: ["liveTests", educatorId, studentBatchId],
     queryFn: async () => {
+      const now = Date.now();
       const q = query(
         collection(db, "educators", educatorId!, "my_tests"),
         where("isPublished", "==", true),
@@ -236,6 +250,8 @@ export default function StudentDashboard() {
               ? t.targetBatches.includes(studentBatchId)
               : t.targetBatches.length === 0
         )
+        .filter((t: any) => toMillis(t.startTime) <= now)
+        .filter((t: any) => toMillis(t.endTime) >= now)
         .slice(0, 4);
     },
     enabled: !!educatorId,
@@ -395,14 +411,7 @@ export default function StudentDashboard() {
   const avgScore = useMemo(() => {
     if (completedAttempts.length === 0) return 0;
     return Math.round(
-      completedAttempts.reduce((acc, a) => acc + a.score, 0) / completedAttempts.length
-    );
-  }, [completedAttempts]);
-
-  const avgMaxScore = useMemo(() => {
-    if (completedAttempts.length === 0) return 0;
-    return Math.round(
-      completedAttempts.reduce((acc, a) => acc + a.maxScore, 0) / completedAttempts.length
+      completedAttempts.reduce((acc, a) => acc + a.accuracy, 0) / completedAttempts.length
     );
   }, [completedAttempts]);
 
@@ -508,7 +517,7 @@ export default function StudentDashboard() {
       {/* Live Tests */}
       <section>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground">Available Tests</h2>
+          <h2 className="text-lg font-semibold text-foreground">Today's Tests</h2>
           <Button variant="ghost" size="sm" asChild>
             <Link to="/student/tests">
               View All <ArrowRight className="ml-1 h-4 w-4" />
@@ -559,8 +568,8 @@ export default function StudentDashboard() {
           color="peach"
         />
         <StudentMetricCard
-          title="Avg Score"
-          value={`${avgScore}/${avgMaxScore}`}
+          title="Avg Accuracy"
+          value={`${avgScore}%`}
           icon={Target}
           color="yellow"
         />
@@ -663,21 +672,6 @@ export default function StudentDashboard() {
           </CardContent>
         </Card>
       )}
-
-      {/* Recent Attempts */}
-      <Card className="card-soft border-0">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Recent Attempts</CardTitle>
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/student/attempts">
-              View All <ArrowRight className="ml-1 h-4 w-4" />
-            </Link>
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <AttemptTable attempts={completedAttempts.slice(0, 5) as any} compact />
-        </CardContent>
-      </Card>
     </div>
   );
 }

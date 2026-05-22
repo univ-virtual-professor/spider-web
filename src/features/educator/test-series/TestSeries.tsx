@@ -1254,6 +1254,7 @@ export default function TestSeries() {
                 </span>
               </div>
               <button
+                disabled={globalAttemptsAllowed >= 2}
                 onClick={() => {
                   const idx = ATTEMPTS_OPTIONS.findIndex(
                     (o) => o.value === String(globalAttemptsAllowed)
