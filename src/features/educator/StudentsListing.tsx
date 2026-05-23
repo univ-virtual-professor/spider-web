@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search, Filter, X, ChevronRight, GraduationCap, Users, LayoutGrid } from "lucide-react";
+import {
+  Search,
+  Filter,
+  X,
+  ChevronRight,
+  GraduationCap,
+  Users,
+  LayoutGrid,
+  ArrowLeft,
+} from "lucide-react";
 import { collection, getDocs, onSnapshot, query, orderBy } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
@@ -183,11 +192,19 @@ export default function StudentsListing() {
     <div className="space-y-6">
       {/* Page Header */}
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">All Students</h1>
-          <p className="mt-1 text-muted-foreground">
-            Manage and monitor all enrolled students across branches and programs.
-          </p>
+        <div className="flex items-center gap-4">
+          <div
+            className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+            onClick={() => navigate("/educator")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">All Students</h1>
+            <p className="mt-1 text-muted-foreground">
+              Manage and monitor all enrolled students across branches and programs.
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">

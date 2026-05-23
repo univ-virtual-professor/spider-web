@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { FileUp, Loader2, Pencil, Trash2, UploadCloud, ExternalLink } from "lucide-react";
+import {
+  FileUp,
+  Loader2,
+  Pencil,
+  Trash2,
+  UploadCloud,
+  ExternalLink,
+  ArrowLeft,
+} from "lucide-react";
 import { toast } from "sonner";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
@@ -9,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Input } from "@shared/ui/input";
 import { Label } from "@shared/ui/label";
 import { Textarea } from "@shared/ui/textarea";
+import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@shared/ui/dialog";
 import {
   AlertDialog,
@@ -149,6 +158,8 @@ export default function QuestionPaperRequests() {
   const [cancelTarget, setCancelTarget] = useState<QPRequest | null>(null);
   const [cancelBusy, setCancelBusy] = useState(false);
 
+  const navigate = useNavigate();
+
   useEffect(() => {
     if (!profile?.uid) return;
     fetchRequests();
@@ -264,11 +275,19 @@ export default function QuestionPaperRequests() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Question Paper Requests</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Upload a question paper and request admin to add it to your panel.
-          </p>
+        <div className="flex items-center">
+          <div
+            className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+            onClick={() => navigate("/educator/test-series")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold">Question Paper Requests</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Upload a question paper and request admin to add it to your panel.
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <MonthlyUsage requests={requests} limit={monthlyLimit} />

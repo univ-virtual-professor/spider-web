@@ -14,11 +14,13 @@ import {
   FileSpreadsheet,
   BookOpen,
   FlaskConical,
+  ArrowLeft,
 } from "lucide-react";
 import JSZip from "jszip";
 import Papa from "papaparse";
 import katex from "katex";
 import "katex/dist/katex.min.css";
+import { useNavigate } from "react-router-dom";
 
 import { db } from "@shared/lib/firebase";
 import {
@@ -529,6 +531,7 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
 
   const [editorOpen, setEditorOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const [course, setCourse] = useState("");
   const [chapter, setChapter] = useState("");
@@ -1847,9 +1850,17 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-1">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="font-display text-2xl font-bold">{questionBankLabel}</h1>
-          <p className="text-sm text-muted-foreground">{questionBankDescription}</p>
+        <div className="flex items-center gap-2">
+          <div
+            className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+            onClick={() => navigate("/educator/test-series")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </div>
+          <div>
+            <h1 className="font-display text-2xl font-bold">{questionBankLabel}</h1>
+            <p className="text-sm text-muted-foreground">{questionBankDescription}</p>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">

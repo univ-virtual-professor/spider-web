@@ -20,6 +20,7 @@ import {
   Award,
   Key,
   Building2,
+  ArrowLeft,
 } from "lucide-react";
 
 import { Input } from "@shared/ui/input";
@@ -1129,11 +1130,19 @@ export default function TestSeries() {
   return (
     <div className="space-y-6 p-1">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Test Series</h1>
-          <p className="text-muted-foreground">
-            Import admin tests to your library, or create custom tests (manual questions only).
-          </p>
+        <div className="flex items-center gap-2">
+          <div
+            className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+            onClick={() => navigate("/educator")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">Test Series</h1>
+            <p className="text-muted-foreground">
+              Import admin tests to your library, or create custom tests (manual questions only).
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-3 rounded-2xl border border-border/50 bg-white px-4 py-2 shadow-sm dark:bg-card">

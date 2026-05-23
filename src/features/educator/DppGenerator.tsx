@@ -9,6 +9,8 @@ import {
   addDoc,
   serverTimestamp,
 } from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { useEducatorFeatures } from "@shared/hooks/useEducatorFeatures";
@@ -115,6 +117,7 @@ function SourceLabel({ mode }: { mode?: string }) {
 
 export default function DppGenerator() {
   const { firebaseUser } = useAuth();
+  const navigate = useNavigate();
   const educatorUid = firebaseUser?.uid || "";
   const { features, loading: featuresLoading } = useEducatorFeatures(educatorUid);
 
@@ -559,11 +562,19 @@ export default function DppGenerator() {
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold">
-            <Zap className="h-6 w-6 text-primary" /> DPP Generator
-          </h1>
-          <p className="text-sm text-muted-foreground">Daily practice papers for your students</p>
+        <div className="flex items-center gap-4">
+          <div
+            className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+            onClick={() => navigate("/educator/test-series")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </div>
+          <div>
+            <h1 className="flex items-center gap-2 text-2xl font-bold">
+              <Zap className="h-6 w-6 text-primary" /> DPP Generator
+            </h1>
+            <p className="text-sm text-muted-foreground">Daily practice papers for your students</p>
+          </div>
         </div>
       </div>
 

@@ -10,9 +10,12 @@ import { toast } from "sonner";
 import { useAuth } from "@app/providers/AuthProvider";
 import { Link } from "react-router-dom";
 import { HtmlView } from "@shared/lib/safeHtml";
+import { useNavigate } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 
 export default function ReportedQuestionsDashboard({ isAdmin = false }: { isAdmin?: boolean }) {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -79,11 +82,19 @@ export default function ReportedQuestionsDashboard({ isAdmin = false }: { isAdmi
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Reported Questions</h1>
-          <p className="mt-2 text-muted-foreground">
-            Review and resolve issues reported by students or other educators.
-          </p>
+        <div className="flex items-center gap-4">
+          <div
+            className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+            onClick={() => navigate("/educator/test-series")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </div>
+          <div className="flex flex-col">
+            <h1 className="text-3xl font-bold tracking-tight">Reported Questions</h1>
+            <p className="mt-2 text-muted-foreground">
+              Review and resolve issues reported by students or other educators.
+            </p>
+          </div>
         </div>
       </div>
 

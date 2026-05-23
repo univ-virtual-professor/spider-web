@@ -15,6 +15,7 @@ import {
   UserPlus,
   UserX,
   Pencil,
+  ArrowLeft,
 } from "lucide-react";
 import {
   collection,
@@ -478,11 +479,19 @@ export default function Learners() {
   return (
     <div className="space-y-5 p-6">
       <div className="flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Learners</h1>
-          <p className="text-sm text-muted-foreground">
-            Seats used: <b>{usedSeats}</b> / <b>{seatLimit}</b>
-          </p>
+        <div className="flex items-center gap-2">
+          <div
+            className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+            onClick={() => nav("/educator")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">Learners</h1>
+            <p className="text-sm text-muted-foreground">
+              Seats used: <b>{usedSeats}</b> / <b>{seatLimit}</b>
+            </p>
+          </div>
         </div>
         <Button variant="outline" onClick={() => setRefreshTick((x) => x + 1)}>
           <RefreshCw className="mr-2 h-4 w-4" />
@@ -863,7 +872,7 @@ export default function Learners() {
               </button>
 
               <div className="flex flex-wrap gap-2">
-                <Button variant="secondary" onClick={() => nav(`/educator/learners/${l.id}`)}>
+                <Button variant="secondary" onClick={() => nav(`/educator/students/${l.id}`)}>
                   View Details <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
                 <Button variant="outline" onClick={() => openAssignBatch(l)}>

@@ -37,6 +37,7 @@ import {
   ArrowLeftRight,
   PlusCircle,
   CalendarDays,
+  ArrowLeft,
 } from "lucide-react";
 import BatchSchedulePanel, { type PanelBatch } from "./components/BatchSchedulePanel";
 
@@ -538,11 +539,19 @@ export default function BatchesListing() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Batches</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage your teaching batches and invite students
-          </p>
+        <div className="flex items-center gap-4">
+          <div
+            className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+            onClick={() => navigate("/educator")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">Batches</h1>
+            <p className="text-sm text-muted-foreground">
+              Manage your teaching batches and invite students
+            </p>
+          </div>
         </div>
         <Button onClick={openWizard}>
           <Plus className="mr-2 h-4 w-4" />

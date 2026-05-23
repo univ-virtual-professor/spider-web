@@ -52,6 +52,7 @@ import {
   Github,
   Phone,
   MessageCircle,
+  MapPin,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -3227,8 +3228,9 @@ function FooterComponent({
     phone: data.phone || "",
     email: data.email || "",
     whatsapp: data.whatsapp || "",
+    address: data.address || "",
   };
-  const hasContact = contact.phone || contact.email || contact.whatsapp;
+  const hasContact = contact.phone || contact.email || contact.whatsapp || contact.address;
 
   return (
     <div
@@ -3466,6 +3468,26 @@ function FooterComponent({
                   onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.5)")}
                 >
                   <MessageCircle size={16} /> WhatsApp Us
+                </a>
+              )}
+              {contact.address && (
+                <a
+                  href={contact.address}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    color: "rgba(255,255,255,0.5)",
+                    textDecoration: "none",
+                    fontSize: 14,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.5)")}
+                >
+                  <MapPin size={16} /> {contact.address}
                 </a>
               )}
             </div>
@@ -5578,6 +5600,7 @@ function RightPanel({
               {renderField("Phone", "phone")}
               {renderField("Email", "email")}
               {renderField("WhatsApp", "whatsapp")}
+              {renderField("Address", "address")}
             </div>
             {renderArrayEditor(
               "Social Links",
