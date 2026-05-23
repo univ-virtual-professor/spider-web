@@ -79,18 +79,13 @@ export default function EducatorDashboard() {
       let dpps = 0;
       snap.docs.forEach((d) => {
         const data = d.data();
-        if (!data.startTime) return; // Only count if it has a schedule
-        // If the test has an end time, check if it is in the future
+        if (!data.startTime) return;
+        const now = Date.now();
+        const startTime = data.startTime.toMillis ? data.startTime.toMillis() : data.startTime;
+        if (startTime <= now) return; // Only count upcoming (not yet started)
         if (data.endTime) {
           const endTime = data.endTime.toMillis ? data.endTime.toMillis() : data.endTime;
-          const now = Date.now();
-          if (now > endTime) return; // Skip completed tests
-        }
-
-        if (data.startTime) {
-          const startTime = data.startTime.toMillis ? data.startTime.toMillis() : data.startTime;
-          const now = Date.now();
-          if (now > startTime) return; // Skip running test
+          if (now > endTime) return; // Skip completed
         }
         const title = (data.title || "").toLowerCase();
         if (title.includes("dpp") || title.includes("practice")) {

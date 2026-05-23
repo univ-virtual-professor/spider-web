@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, Loader2, Home, Mail } from "lucide-react";
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
-import { doc, getDoc, setDoc, arrayUnion, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@shared/lib/firebase";
 import { Button } from "@shared/ui/button";
 import { Input } from "@shared/ui/input";
@@ -157,44 +157,14 @@ export default function Login() {
           return;
         }
 
-        let isEnrolled =
+        const isEnrolled =
           enrolledTenants.includes(tenantSlug) ||
           (typeof data?.tenantSlug === "string" && data.tenantSlug === tenantSlug);
 
-        // Auto-enroll users if they log in to a new coaching with valid credentials
-        if (!isEnrolled && tenantSlug) {
-          const tenantSnap = await getDoc(doc(db, "tenants", tenantSlug));
-          const educatorId = tenantSnap.data()?.educatorId;
-
-          if (educatorId) {
-            const displayName = data?.displayName || cred.user.email || "";
-            // Add to enrolledTenants in users doc
-            await setDoc(
-              doc(db, "users", cred.user.uid),
-              { enrolledTenants: arrayUnion(tenantSlug) },
-              { merge: true }
-            );
-
-            // Add to educator's students subcollection
-            await setDoc(
-              doc(db, "educators", educatorId, "students", cred.user.uid),
-              {
-                uid: cred.user.uid,
-                name: displayName,
-                email: cred.user.email,
-                status: "ACTIVE",
-                tenantSlug,
-                joinedAt: serverTimestamp(),
-              },
-              { merge: true }
-            );
-
-            isEnrolled = true;
-          }
-        }
-
         if (!isEnrolled) {
-          toast.error("Enrollment failed. Please try signing up again.");
+          toast.error(
+            "You are not enrolled in this coaching. Please signup on this coaching URL first."
+          );
           await auth.signOut();
           return;
         }

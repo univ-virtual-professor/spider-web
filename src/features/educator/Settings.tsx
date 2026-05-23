@@ -353,7 +353,6 @@ export default function Settings() {
   }
 
   async function handleUpdatePassword() {
-    console.log("changing password", auth);
     const user = auth.currentUser;
     if (!user) return;
 
@@ -402,8 +401,6 @@ export default function Settings() {
       setCurrentPass("");
       setNewPass("");
       setConfirmPass("");
-
-      console.log("password updated successfully");
 
       toast({
         title: "Password updated",
