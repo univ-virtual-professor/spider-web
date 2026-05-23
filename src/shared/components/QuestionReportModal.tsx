@@ -12,7 +12,16 @@ import { Label } from "@shared/ui/label";
 import { Textarea } from "@shared/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { toast } from "sonner";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  getDocs,
+  query,
+  where,
+  writeBatch,
+  doc,
+} from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 
@@ -81,6 +90,29 @@ export default function QuestionReportModal({
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
+
+      // Send push notifications to all admin users
+      try {
+        const adminsSnap = await getDocs(
+          query(collection(db, "users"), where("role", "==", "ADMIN"))
+        );
+        if (!adminsSnap.empty) {
+          const batch = writeBatch(db);
+          adminsSnap.forEach((adminDoc) => {
+            const notifRef = doc(collection(db, "users", adminDoc.id, "notifications"));
+            batch.set(notifRef, {
+              title: "Question Reported",
+              body: `Question flagged as "${category}" by ${reportedByName}. Details: ${description.trim().substring(0, 100)}${description.trim().length > 100 ? "..." : ""}`,
+              read: false,
+              createdAt: serverTimestamp(),
+              createdByRole: "EDUCATOR",
+            });
+          });
+          await batch.commit();
+        }
+      } catch (err) {
+        console.error("Error creating admin notifications for reported question:", err);
+      }
 
       toast.success("Question reported successfully");
       handleClose();

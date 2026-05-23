@@ -9,6 +9,8 @@ import {
   addDoc,
   serverTimestamp,
 } from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { useEducatorFeatures } from "@shared/hooks/useEducatorFeatures";
@@ -115,6 +117,7 @@ function SourceLabel({ mode }: { mode?: string }) {
 
 export default function DppGenerator() {
   const { firebaseUser } = useAuth();
+  const navigate = useNavigate();
   const educatorUid = firebaseUser?.uid || "";
   const { features, loading: featuresLoading } = useEducatorFeatures(educatorUid);
 
@@ -161,7 +164,7 @@ export default function DppGenerator() {
     branchName: string;
   };
   const [coursesList, setCoursesList] = useState<CourseOption[]>([]);
-  const [selectedCourseIdx, setSelectedCourseIdx] = useState<string>("0");
+  const [selectedCourseId, setSelectedCourseId] = useState<string>("");
 
   // Load content & branches
   useEffect(() => {
@@ -229,21 +232,32 @@ export default function DppGenerator() {
       })
       .catch(() => toast.error("Failed to load content"))
       .finally(() => {
-        setContent(items.sort((a, b) => b.id.localeCompare(a.id))); // mock sort for recent
+        setContent(items.sort((a, b) => b.id.localeCompare(a.id)));
         setCoursesList(uniqueCourses);
         setLoadingContent(false);
       });
   }, [educatorUid]);
 
+  // Auto-select the first program when the branch or coursesList changes
+  useEffect(() => {
+    if (selectedBranchId) {
+      const firstCourse = coursesList.find((c) => c.branchId === selectedBranchId);
+      if (firstCourse) {
+        setSelectedCourseId(firstCourse.courseId);
+      } else {
+        setSelectedCourseId("");
+      }
+    } else {
+      setSelectedCourseId("");
+    }
+  }, [selectedBranchId, coursesList]);
+
   // Load batches when a branch/course is selected
   useEffect(() => {
-    if (!educatorUid || !selectedBranchId) {
+    if (!educatorUid || !selectedBranchId || !selectedCourseId) {
       setBatches([]);
       return;
     }
-    // We fetch batches for all courses in this branch for simplicity
-    const courseObj = coursesList.find((c) => c.branchId === selectedBranchId);
-    if (!courseObj) return;
 
     getDocs(
       collection(
@@ -253,7 +267,7 @@ export default function DppGenerator() {
         "branches",
         selectedBranchId,
         "courses",
-        courseObj.courseId,
+        selectedCourseId,
         "batches"
       )
     )
@@ -265,10 +279,12 @@ export default function DppGenerator() {
         setBatches(loadedBatches);
         if (loadedBatches.length === 1) {
           setSelectedBatchIds(new Set([loadedBatches[0].id]));
+        } else {
+          setSelectedBatchIds(new Set());
         }
       })
       .catch(() => {});
-  }, [educatorUid, selectedBranchId, coursesList]);
+  }, [educatorUid, selectedBranchId, selectedCourseId]);
 
   // ── Realtime DPP listener ──────────────────────────────────────────────────
   useEffect(() => {
@@ -311,16 +327,20 @@ export default function DppGenerator() {
 
   // ── Generate helpers ───────────────────────────────────────────────────
   const genSelectedContent = content.filter((c) => genSelectedIds.has(c.id));
-  const courseObj = coursesList[parseInt(selectedCourseIdx)] || coursesList[0];
-  const genCourseId = courseObj?.courseId || "";
+  const courseObj = coursesList.find(
+    (c) => c.courseId === selectedCourseId && c.branchId === selectedBranchId
+  );
+  const genCourseId = selectedCourseId;
 
+  // BUG 4 FIX: require courseObj to be defined before enabling the generate button
   const canGenerate =
     !generating &&
     !uploading &&
+    !!courseObj &&
     usageToday < dailyLimit &&
-    ((genSource === "upload" && uploadFile) ||
+    ((genSource === "upload" && !!uploadFile) ||
       (genSource === "content" && genSelectedIds.size > 0) ||
-      (genSource === "qb" && (genTopicFilters.length > 0 || genSubject || genTopicName)));
+      (genSource === "qb" && (genTopicFilters.length > 0 || !!genSubject || !!genTopicName)));
 
   const performGeneration = async (finalContentIds: string[], finalContentTitles: string[]) => {
     if (!firebaseUser) return;
@@ -355,9 +375,7 @@ export default function DppGenerator() {
           time_of_day: schedTime,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           topic_rotation: [],
-          question_count: genNumQuestions,
           num_questions: genNumQuestions,
-          questionCount: genNumQuestions,
           topic_hint: genTopicName.trim(),
           title: customTitle,
           type: "dpp",
@@ -366,10 +384,15 @@ export default function DppGenerator() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.detail || "Failed to save schedule");
+
+      // BUG 3 FIX: resolve scheduleId defensively — backend may return any of these keys
+      const schedId = data.scheduleId ?? data.id ?? data.schedule_id;
+      if (!schedId) throw new Error("No schedule ID returned from server");
+
       toast.success("DPP Schedule activated!");
       setSchedules((prev) => [
         {
-          id: data.scheduleId,
+          id: schedId,
           contentTitles: finalContentTitles,
           difficulty: genDifficulty,
           startDate: startDate.toISOString().split("T")[0],
@@ -404,9 +427,7 @@ export default function DppGenerator() {
           subject_filter: genSubject,
           chapter_filter: genChapter,
           target_batches: [...selectedBatchIds],
-          question_count: genNumQuestions,
           num_questions: genNumQuestions,
-          questionCount: genNumQuestions,
           title: customTitle,
           type: "dpp",
           folderId: "dpp_folder",
@@ -428,6 +449,13 @@ export default function DppGenerator() {
 
   const handleGenerate = async () => {
     if (!canGenerate || !firebaseUser) return;
+
+    // BUG 4 FIX: explicit course guard with user-visible error before any async work
+    if (!genCourseId) {
+      toast.error("Please select a course before generating");
+      return;
+    }
+
     setGenerating(true);
     try {
       let finalContentIds = [...genSelectedIds];
@@ -472,6 +500,7 @@ export default function DppGenerator() {
 
       await performGeneration(finalContentIds, finalContentTitles);
     } catch (e: any) {
+      console.log(e.message);
       toast.error(e?.message || "Failed to process DPP");
       setUploading(false);
     } finally {
@@ -533,11 +562,19 @@ export default function DppGenerator() {
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold">
-            <Zap className="h-6 w-6 text-primary" /> DPP Generator
-          </h1>
-          <p className="text-sm text-muted-foreground">Daily practice papers for your students</p>
+        <div className="flex items-center gap-4">
+          <div
+            className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+            onClick={() => navigate("/educator/test-series")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </div>
+          <div>
+            <h1 className="flex items-center gap-2 text-2xl font-bold">
+              <Zap className="h-6 w-6 text-primary" /> DPP Generator
+            </h1>
+            <p className="text-sm text-muted-foreground">Daily practice papers for your students</p>
+          </div>
         </div>
       </div>
 
@@ -558,19 +595,37 @@ export default function DppGenerator() {
                 {branches.length > 1 && (
                   <div className="w-full space-y-1.5">
                     <Label>Choose Branch</Label>
-
                     <select
                       className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
                       value={selectedBranchId}
                       onChange={(e) => setSelectedBranchId(e.target.value)}
                     >
                       <option value="">Select branch...</option>
-
                       {branches.map((b) => (
                         <option key={b.id} value={b.id}>
                           {b.name}
                         </option>
                       ))}
+                    </select>
+                  </div>
+                )}
+
+                {selectedBranchId && (
+                  <div className={`w-full space-y-1.5 ${branches.length <= 1 ? "col-span-2" : ""}`}>
+                    <Label>Choose Program</Label>
+                    <select
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                      value={selectedCourseId}
+                      onChange={(e) => setSelectedCourseId(e.target.value)}
+                    >
+                      <option value="">Select program...</option>
+                      {coursesList
+                        .filter((c) => c.branchId === selectedBranchId)
+                        .map((c) => (
+                          <option key={c.courseId} value={c.courseId}>
+                            {c.courseName}
+                          </option>
+                        ))}
                     </select>
                   </div>
                 )}
@@ -622,20 +677,6 @@ export default function DppGenerator() {
               {/* Source-specific inputs */}
               {genSource === "upload" && (
                 <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
-                  <div className="space-y-1">
-                    <Label>Target Course</Label>
-                    <select
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={selectedCourseIdx}
-                      onChange={(e) => setSelectedCourseIdx(e.target.value)}
-                    >
-                      {coursesList.map((c, idx) => (
-                        <option key={`${c.branchId}::${c.courseId}`} value={idx.toString()}>
-                          {c.branchName} / {c.courseName}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                   <div className="space-y-1">
                     <Label>File Title</Label>
                     <Input

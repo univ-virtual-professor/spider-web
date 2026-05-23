@@ -1,18 +1,29 @@
-import { CalendarRange } from "lucide-react";
+import { CalendarRange, ArrowLeft } from "lucide-react";
 import ScheduledAssessmentsList from "./components/ScheduledAssessmentsList";
 import { motion } from "framer-motion";
+import { Link } from "react-router-dom";
 
 export default function ScheduledTests() {
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="flex items-center gap-2 text-2xl font-bold">
-          <CalendarRange className="h-6 w-6 text-primary" />
-          Scheduled Tests
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Manage upcoming and previous test schedules.
-        </p>
+      <div className="flex gap-2">
+        <div>
+          <Link
+            to="/educator"
+            className="flex w-fit rounded-full p-1 text-black hover:bg-primary hover:text-white"
+          >
+            <ArrowLeft className="h-6 w-6" />
+          </Link>
+        </div>
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
+            <CalendarRange className="h-6 w-6 text-primary" />
+            Scheduled Tests
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Manage upcoming and previous test schedules.
+          </p>
+        </div>
       </div>
 
       <motion.div

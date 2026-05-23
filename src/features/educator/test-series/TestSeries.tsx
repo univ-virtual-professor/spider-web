@@ -14,13 +14,14 @@ import {
   X,
   Copy,
   CheckCircle2,
-  FileUp,
   Folder,
   MoreVertical,
   Move,
   Award,
   Key,
   Building2,
+  ArrowLeft,
+  FileUp,
 } from "lucide-react";
 
 import { Input } from "@shared/ui/input";
@@ -1203,11 +1204,19 @@ export default function TestSeries() {
   return (
     <div className="space-y-6 p-1">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Test Series</h1>
-          <p className="text-muted-foreground">
-            Import admin tests to your library, or create custom tests (manual questions only).
-          </p>
+        <div className="flex items-center gap-2">
+          <div
+            className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+            onClick={() => navigate("/educator")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">Test Series</h1>
+            <p className="text-muted-foreground">
+              Import admin tests to your library, or create custom tests (manual questions only).
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-3 rounded-2xl border border-border/50 bg-white px-4 py-2 shadow-sm dark:bg-card">
@@ -1473,6 +1482,12 @@ export default function TestSeries() {
                       !!test.linkedAdminTestId ||
                       !!test.originalTestId;
 
+                    const isDpp =
+                      test.type === "dpp" ||
+                      String(test.title || "")
+                        .toLowerCase()
+                        .includes("dpp");
+
                     return (
                       <Card className="relative flex h-full flex-col transition-shadow hover:shadow-md">
                         <CardHeader>
@@ -1664,47 +1679,22 @@ export default function TestSeries() {
 
                           <div className="mt-4 space-y-2 border-t pt-4">
                             {/* Quick actions */}
-                            <div className="flex items-center gap-1">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="flex-1 rounded-xl text-xs"
-                                onClick={() => {
-                                  setTestToSchedule(test);
-                                  setScheduleOpen(true);
-                                }}
-                              >
-                                <Clock className="mr-1 h-3 w-3" />
-                                Schedule
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="flex-1 rounded-xl text-xs"
-                                onClick={() => {
-                                  setBatchAssignTest(test);
-                                  setSelectedBatchIds(test.targetBatches || []);
-                                  setBatchAssignOpen(true);
-                                }}
-                              >
-                                <Award className="mr-1 h-3 w-3" />
-                                Batches
-                                {(test.targetBatches || []).length > 0 && (
-                                  <span className="ml-1 rounded-full bg-primary/10 px-1 text-[10px] font-medium text-primary">
-                                    {test.targetBatches.length}
-                                  </span>
-                                )}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="flex-1 rounded-xl text-xs"
-                                onClick={() => openAccessCode(test)}
-                              >
-                                <Key className="mr-1 h-3 w-3" />
-                                Code
-                              </Button>
-                            </div>
+                            {isDpp && test.targetBatches && test.targetBatches.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 pb-1">
+                                {test.targetBatches.map((bId: string) => {
+                                  const bMeta = batchMap.get(bId);
+                                  return (
+                                    <Badge
+                                      key={bId}
+                                      variant="secondary"
+                                      className="rounded-md border border-border/40 bg-muted/40 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                                    >
+                                      {bMeta?.name || bId}
+                                    </Badge>
+                                  );
+                                })}
+                              </div>
+                            )}
                             {/* Primary actions */}
                             <div className="flex min-w-0 gap-2">
                               <Button

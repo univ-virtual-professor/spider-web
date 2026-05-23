@@ -21,6 +21,8 @@ import { Input } from "@shared/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Badge } from "@shared/ui/badge";
 import { Label } from "@shared/ui/label";
+import { useNavigate } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import {
   Loader2,
   Lock,
@@ -132,6 +134,7 @@ export default function ContentManagement() {
   const educatorId = profile?.uid ?? "";
   const { features, loading: featuresLoading } = useEducatorFeatures(educatorId);
   const { activeTypes } = useContentTypes();
+  const navigate = useNavigate();
 
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -504,9 +507,9 @@ export default function ContentManagement() {
           "educators",
           educatorId,
           "branches",
-          selectedBranchId,
+          item.branchId!, // ✅ use item's own branchId
           "courses",
-          selectedCourseId,
+          item.courseId!, // ✅ use item's own courseId
           "content",
           item.id
         )
@@ -525,9 +528,9 @@ export default function ContentManagement() {
           "educators",
           educatorId,
           "branches",
-          selectedBranchId,
+          item.branchId!, // ✅ use item's own branchId
           "courses",
-          selectedCourseId,
+          item.courseId!, // ✅ use item's own courseId
           "content",
           item.id
         ),
@@ -567,9 +570,17 @@ export default function ContentManagement() {
 
   return (
     <div className="space-y-6 p-4 sm:p-6">
-      <div>
-        <h1 className="text-2xl font-bold">Content</h1>
-        <p className="text-sm text-muted-foreground">Manage books and notes per course</p>
+      <div className="flex items-center gap-4">
+        <div
+          className="flex cursor-pointer items-center rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+          onClick={() => navigate("/educator/dashboard")}
+        >
+          <ArrowLeft />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold">Content</h1>
+          <p className="text-sm text-muted-foreground">Manage books and notes per course</p>
+        </div>
       </div>
 
       {/* Course selector */}
@@ -622,11 +633,7 @@ export default function ContentManagement() {
             </SelectContent>
           </Select>
 
-          <Select
-            value={selectedBatchId}
-            onValueChange={setSelectedBatchId}
-            disabled={selectedCourseId === "all" && selectedBranchId === "all"}
-          >
+          <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
             <SelectTrigger className="w-full sm:w-48">
               <SelectValue placeholder="All Batches" />
             </SelectTrigger>
@@ -827,8 +834,8 @@ export default function ContentManagement() {
             <div className="space-y-1">
               <Label>Type</Label>
               <Select value={type} onValueChange={setType}>
-                <SelectTrigger>
-                  <SelectValue />
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select Type" />
                 </SelectTrigger>
                 <SelectContent>
                   {activeTypes.map((t) => (

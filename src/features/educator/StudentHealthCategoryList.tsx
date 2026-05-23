@@ -26,7 +26,12 @@ export default function StudentHealthCategoryList() {
   return (
     <div className="mx-auto max-w-5xl space-y-6 py-6 duration-700 animate-in fade-in slide-in-from-bottom-4">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/educator/analytics")}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="rounded-full"
+          onClick={() => navigate("/educator/analytics")}
+        >
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
