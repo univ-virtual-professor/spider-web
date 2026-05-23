@@ -101,7 +101,7 @@ function loadServiceAccountFromEnv(): ServiceAccountLike {
   const parseErrors: string[] = [];
 
   function normalizeResult(sa: ServiceAccountLike): ServiceAccountLike {
-    if (typeof sa.private_key === "string" && !sa.private_key.includes("\n")) {
+    if (typeof sa.private_key === "string") {
       sa.private_key = sa.private_key.replace(/\\n/g, "\n");
     }
     return sa;

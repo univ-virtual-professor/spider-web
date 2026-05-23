@@ -21,6 +21,7 @@ import AdminTemplates from "@features/admin/Templates";
 import AdminTestBank from "@features/admin/TestBank";
 import AdminTestForm from "@features/admin/TestForm";
 import AdminRolesManagement from "@features/admin/RolesManagement";
+import AdminReportedQuestions from "@features/admin/ReportedQuestions";
 
 export function getAdminRoutes(adminIndexRoute: React.ReactElement) {
   return (
@@ -52,6 +53,7 @@ export function getAdminRoutes(adminIndexRoute: React.ReactElement) {
       <Route path="payment-logs" element={<AdminPaymentLogs />} />
       <Route path="question-paper-requests" element={<AdminQuestionPaperRequests />} />
       <Route path="roles" element={<AdminRolesManagement />} />
+      <Route path="reported-questions" element={<AdminReportedQuestions />} />
     </Route>
   );
 }

@@ -7,6 +7,7 @@ import { Button } from "@shared/ui/button";
 import { Badge } from "@shared/ui/badge";
 import { cn } from "@shared/lib/utils";
 import { HtmlView } from "@shared/lib/safeHtml";
+import QuestionActionHoverWrapper from "@shared/components/QuestionActionHoverWrapper";
 
 import { useAuth } from "@app/providers/AuthProvider";
 import { db } from "@shared/lib/firebase";
@@ -375,138 +376,144 @@ export default function StudentAttemptDetails() {
                       : -Math.abs(q.marks.incorrect);
 
                   return (
-                    <Card
+                    <QuestionActionHoverWrapper
                       key={q.id}
-                      className={cn(
-                        "card-soft border-0",
-                        !answered
-                          ? "bg-slate-50 dark:bg-slate-900/10"
-                          : correct
-                            ? "bg-green-50 dark:bg-green-900/10"
-                            : "bg-red-50 dark:bg-red-900/10"
-                      )}
+                      questionId={q.id}
+                      contextId={attemptId || ""}
+                      questionContent={q.stem}
                     >
-                      <CardHeader className="pb-2">
-                        <div className="flex items-center justify-between">
-                          <Badge variant="secondary" className="rounded-full">
-                            Q{idx + 1}
-                          </Badge>
-
-                          <div className="flex items-center gap-2">
-                            {answered ? (
-                              correct ? (
-                                <CheckCircle className="h-5 w-5 text-green-600" />
-                              ) : (
-                                <XCircle className="h-5 w-5 text-red-500" />
-                              )
-                            ) : (
-                              <Badge className="rounded-full bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                                Unanswered
-                              </Badge>
-                            )}
-
-                            <Badge
-                              className={cn(
-                                "rounded-full",
-                                !answered
-                                  ? "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                                  : correct
-                                    ? "bg-green-100 text-green-700"
-                                    : "bg-red-100 text-red-700"
-                              )}
-                            >
-                              {!answered ? "0" : awarded > 0 ? `+${awarded}` : `${awarded}`}
+                      <Card
+                        className={cn(
+                          "card-soft border-0",
+                          !answered
+                            ? "bg-slate-50 dark:bg-slate-900/10"
+                            : correct
+                              ? "bg-green-50 dark:bg-green-900/10"
+                              : "bg-red-50 dark:bg-red-900/10"
+                        )}
+                      >
+                        <CardHeader className="pb-2">
+                          <div className="flex items-center justify-between">
+                            <Badge variant="secondary" className="rounded-full">
+                              Q{idx + 1}
                             </Badge>
-                          </div>
-                        </div>
-                      </CardHeader>
 
-                      <CardContent className="space-y-4">
-                        {!!q.passage && (
-                          <div className="rounded-xl bg-pastel-cream p-4">
-                            <p className="mb-2 font-semibold">{q.passage.title}</p>
-                            <p className="whitespace-pre-line text-sm text-muted-foreground">
-                              {q.passage.content}
-                            </p>
-                          </div>
-                        )}
+                            <div className="flex items-center gap-2">
+                              {answered ? (
+                                correct ? (
+                                  <CheckCircle className="h-5 w-5 text-green-600" />
+                                ) : (
+                                  <XCircle className="h-5 w-5 text-red-500" />
+                                )
+                              ) : (
+                                <Badge className="rounded-full bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                                  Unanswered
+                                </Badge>
+                              )}
 
-                        <HtmlView html={q.stem} className="font-medium" />
-
-                        {q.options && q.type === "mcq" && (
-                          <div className="space-y-2">
-                            {q.options.map((opt, j) => {
-                              const isOptCorrect = opt.id === q.correctAnswer;
-                              const isUser = answered && opt.id === String(userAnswer);
-
-                              return (
-                                <div
-                                  key={opt.id}
-                                  className={cn(
-                                    "rounded-xl border-2 p-3",
-                                    isOptCorrect
-                                      ? "border-green-500 bg-green-100/50 dark:bg-green-900/20"
-                                      : isUser && !isOptCorrect
-                                        ? "border-red-500 bg-red-100/50 dark:bg-red-900/20"
-                                        : "border-transparent bg-background/50"
-                                  )}
-                                >
-                                  <div className="flex items-start gap-2">
-                                    <span className="shrink-0 font-medium">
-                                      {String.fromCharCode(65 + j)}.
-                                    </span>
-                                    <HtmlView html={opt.text} className="flex-1" />
-                                  </div>
-
-                                  {isOptCorrect && (
-                                    <Badge className="ml-2 rounded-full bg-green-500">
-                                      Correct
-                                    </Badge>
-                                  )}
-                                  {isUser && !isOptCorrect && (
-                                    <Badge className="ml-2 rounded-full bg-red-500">
-                                      Your Answer
-                                    </Badge>
-                                  )}
-                                  {isUser && isOptCorrect && (
-                                    <Badge className="ml-2 rounded-full bg-green-500">
-                                      Your Answer
-                                    </Badge>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-
-                        {q.type === "integer" && (
-                          <div className="flex flex-wrap gap-4">
-                            <div className="rounded-xl bg-background/50 p-3">
-                              <span className="text-muted-foreground">Your answer:</span>{" "}
-                              <span className="font-bold">{answered ? userAnswer : "—"}</span>
-                            </div>
-                            <div className="rounded-xl bg-green-100/50 p-3 dark:bg-green-900/20">
-                              <span className="text-muted-foreground">Correct:</span>{" "}
-                              <span className="font-bold text-green-600">{q.correctAnswer}</span>
+                              <Badge
+                                className={cn(
+                                  "rounded-full",
+                                  !answered
+                                    ? "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                    : correct
+                                      ? "bg-green-100 text-green-700"
+                                      : "bg-red-100 text-red-700"
+                                )}
+                              >
+                                {!answered ? "0" : awarded > 0 ? `+${awarded}` : `${awarded}`}
+                              </Badge>
                             </div>
                           </div>
-                        )}
+                        </CardHeader>
 
-                        <div className="rounded-xl bg-pastel-cream p-4">
-                          <p className="mb-1 text-sm font-medium">Explanation</p>
-                          {q.explanation?.trim() ? (
-                            <HtmlView
-                              html={q.explanation}
-                              className="text-sm text-muted-foreground"
-                            />
-                          ) : (
-                            <p className="text-sm text-muted-foreground">
-                              No explanation available.
-                            </p>
+                        <CardContent className="space-y-4">
+                          {!!q.passage && (
+                            <div className="rounded-xl bg-pastel-cream p-4">
+                              <p className="mb-2 font-semibold">{q.passage.title}</p>
+                              <p className="whitespace-pre-line text-sm text-muted-foreground">
+                                {q.passage.content}
+                              </p>
+                            </div>
                           )}
-                        </div>
-                      </CardContent>
-                    </Card>
+
+                          <HtmlView html={q.stem} className="font-medium" />
+
+                          {q.options && q.type === "mcq" && (
+                            <div className="space-y-2">
+                              {q.options.map((opt, j) => {
+                                const isOptCorrect = opt.id === q.correctAnswer;
+                                const isUser = answered && opt.id === String(userAnswer);
+
+                                return (
+                                  <div
+                                    key={opt.id}
+                                    className={cn(
+                                      "rounded-xl border-2 p-3",
+                                      isOptCorrect
+                                        ? "border-green-500 bg-green-100/50 dark:bg-green-900/20"
+                                        : isUser && !isOptCorrect
+                                          ? "border-red-500 bg-red-100/50 dark:bg-red-900/20"
+                                          : "border-transparent bg-background/50"
+                                    )}
+                                  >
+                                    <div className="flex items-start gap-2">
+                                      <span className="shrink-0 font-medium">
+                                        {String.fromCharCode(65 + j)}.
+                                      </span>
+                                      <HtmlView html={opt.text} className="flex-1" />
+                                    </div>
+
+                                    {isOptCorrect && (
+                                      <Badge className="ml-2 rounded-full bg-green-500">
+                                        Correct
+                                      </Badge>
+                                    )}
+                                    {isUser && !isOptCorrect && (
+                                      <Badge className="ml-2 rounded-full bg-red-500">
+                                        Your Answer
+                                      </Badge>
+                                    )}
+                                    {isUser && isOptCorrect && (
+                                      <Badge className="ml-2 rounded-full bg-green-500">
+                                        Your Answer
+                                      </Badge>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {q.type === "integer" && (
+                            <div className="flex flex-wrap gap-4">
+                              <div className="rounded-xl bg-background/50 p-3">
+                                <span className="text-muted-foreground">Your answer:</span>{" "}
+                                <span className="font-bold">{answered ? userAnswer : "—"}</span>
+                              </div>
+                              <div className="rounded-xl bg-green-100/50 p-3 dark:bg-green-900/20">
+                                <span className="text-muted-foreground">Correct:</span>{" "}
+                                <span className="font-bold text-green-600">{q.correctAnswer}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="rounded-xl bg-pastel-cream p-4">
+                            <p className="mb-1 text-sm font-medium">Explanation</p>
+                            {q.explanation?.trim() ? (
+                              <HtmlView
+                                html={q.explanation}
+                                className="text-sm text-muted-foreground"
+                              />
+                            ) : (
+                              <p className="text-sm text-muted-foreground">
+                                No explanation available.
+                              </p>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </QuestionActionHoverWrapper>
                   );
                 })}
               </div>

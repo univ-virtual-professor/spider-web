@@ -9,6 +9,7 @@ import { BrowserRouter } from "react-router-dom";
 
 import { AuthProvider } from "@app/providers/AuthProvider";
 import { TenantProvider } from "@app/providers/TenantProvider";
+import { QuestionActionsProvider } from "@app/providers/QuestionActionsProvider";
 
 import AppRoutes from "@/AppRoutes"; // we'll create this as a small inner module below
 
@@ -38,9 +39,11 @@ export default function App() {
             <TooltipProvider>
               <Toaster />
               <Sonner />
-              <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-                <AppRoutes />
-              </BrowserRouter>
+              <QuestionActionsProvider>
+                <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+                  <AppRoutes />
+                </BrowserRouter>
+              </QuestionActionsProvider>
             </TooltipProvider>
           </TenantProvider>
         </AuthProvider>

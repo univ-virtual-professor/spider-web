@@ -16,7 +16,6 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { StudentMetricCard } from "@features/student/components/StudentMetricCard";
-import { AttemptTable } from "@features/student/components/AttemptTable";
 
 import { useAuth } from "@app/providers/AuthProvider";
 import { useTenant } from "@app/providers/TenantProvider";
@@ -220,6 +219,7 @@ export default function StudentDashboard() {
   const { data: liveTests = [] } = useQuery<LiveTest[]>({
     queryKey: ["liveTests", educatorId, studentBatchId],
     queryFn: async () => {
+      const now = Date.now();
       const q = query(
         collection(db, "educators", educatorId!, "my_tests"),
         where("isPublished", "==", true),
@@ -236,6 +236,8 @@ export default function StudentDashboard() {
               ? t.targetBatches.includes(studentBatchId)
               : t.targetBatches.length === 0
         )
+        .filter((t: any) => toMillis(t.startTime) <= now)
+        .filter((t: any) => toMillis(t.endTime) >= now)
         .slice(0, 4);
     },
     enabled: !!educatorId,
@@ -395,14 +397,7 @@ export default function StudentDashboard() {
   const avgScore = useMemo(() => {
     if (completedAttempts.length === 0) return 0;
     return Math.round(
-      completedAttempts.reduce((acc, a) => acc + a.score, 0) / completedAttempts.length
-    );
-  }, [completedAttempts]);
-
-  const avgMaxScore = useMemo(() => {
-    if (completedAttempts.length === 0) return 0;
-    return Math.round(
-      completedAttempts.reduce((acc, a) => acc + a.maxScore, 0) / completedAttempts.length
+      completedAttempts.reduce((acc, a) => acc + a.accuracy, 0) / completedAttempts.length
     );
   }, [completedAttempts]);
 
@@ -508,7 +503,7 @@ export default function StudentDashboard() {
       {/* Live Tests */}
       <section>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground">Available Tests</h2>
+          <h2 className="text-lg font-semibold text-foreground">Today's Tests</h2>
           <Button variant="ghost" size="sm" asChild>
             <Link to="/student/tests">
               View All <ArrowRight className="ml-1 h-4 w-4" />
@@ -559,8 +554,8 @@ export default function StudentDashboard() {
           color="peach"
         />
         <StudentMetricCard
-          title="Avg Score"
-          value={`${avgScore}/${avgMaxScore}`}
+          title="Avg Accuracy"
+          value={`${avgScore}%`}
           icon={Target}
           color="yellow"
         />
@@ -663,21 +658,6 @@ export default function StudentDashboard() {
           </CardContent>
         </Card>
       )}
-
-      {/* Recent Attempts */}
-      <Card className="card-soft border-0">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Recent Attempts</CardTitle>
-          <Button variant="ghost" size="sm" asChild>
-            <Link to="/student/attempts">
-              View All <ArrowRight className="ml-1 h-4 w-4" />
-            </Link>
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <AttemptTable attempts={completedAttempts.slice(0, 5) as any} compact />
-        </CardContent>
-      </Card>
     </div>
   );
 }

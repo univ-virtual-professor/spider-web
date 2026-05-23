@@ -4,6 +4,8 @@ import { Switch } from "@shared/ui/switch";
 import "react-image-crop/dist/ReactCrop.css";
 import { HtmlView } from "@shared/lib/safeHtml";
 import { formatNegativeMarksDisplay } from "@shared/lib/aiQuestionImport";
+import { useQuestionActions } from "@app/providers/QuestionActionsProvider";
+import { Flag, MessageSquare } from "lucide-react";
 
 import { isQuestionPublished, hasPreviewContent } from "./QuestionManager/QuestionManagerUtils";
 import { normalizeQuestionType, QUESTION_TYPE_CONFIG } from "@shared/lib/questionTypes";
@@ -29,6 +31,8 @@ type SortableQuestionListItemProps = {
   onDuplicate: (q: TestQuestion) => void;
   onDelete: (id: string) => void;
   onToggleActive: (q: TestQuestion, next: boolean) => void;
+  contextId?: string;
+  isReported?: boolean;
 };
 
 const SortableQuestionListItem = ({
@@ -43,7 +47,10 @@ const SortableQuestionListItem = ({
   onDuplicate,
   onDelete,
   onToggleActive,
+  contextId,
+  isReported,
 }: SortableQuestionListItemProps) => {
+  const { openReportModal, openCommentsDrawer } = useQuestionActions();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: q.id,
     disabled: dragDisabled,
@@ -182,6 +189,15 @@ const SortableQuestionListItem = ({
                     Draft
                   </Badge>
                 )}
+
+                {isReported && (
+                  <Badge
+                    variant="destructive"
+                    className="flex items-center gap-1 rounded-full text-[10px]"
+                  >
+                    <Flag className="h-3 w-3" /> Reported
+                  </Badge>
+                )}
               </div>
 
               {!readOnly ? (
@@ -233,6 +249,30 @@ const SortableQuestionListItem = ({
               aria-label="Import from question bank after this"
             >
               <Plus className="h-3 w-3" /> Import From Question Bank
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="rounded-full text-destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                openReportModal(q.id, contextId || "manager", q.question);
+              }}
+            >
+              <Flag className="mr-1.5 h-3 w-3" /> Report
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="rounded-full text-blue-600"
+              onClick={(e) => {
+                e.stopPropagation();
+                openCommentsDrawer(q.id, contextId || "manager");
+              }}
+            >
+              <MessageSquare className="mr-1.5 h-3 w-3" /> Comments
             </Button>
           </div>
         </div>

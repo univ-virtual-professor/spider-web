@@ -14,6 +14,7 @@ import {
   Edit,
   CheckCircle2,
   XCircle,
+  X,
 } from "lucide-react";
 import {
   DndContext,
@@ -154,6 +155,35 @@ type SortableSectionCardProps = {
   onToggleQuestionActive: (q: QuestionDoc) => void;
   onSaveQuestion: () => void;
   onCancelEdit: () => void;
+  formQuestion: string;
+  setFormQuestion: (value: string) => void;
+
+  formOptions: string[];
+  setFormOptions: React.Dispatch<React.SetStateAction<string[]>>;
+
+  formCorrect: number;
+  setFormCorrect: (value: number) => void;
+
+  formExplanation: string;
+  setFormExplanation: (value: string) => void;
+
+  formDifficulty: Difficulty;
+  setFormDifficulty: (value: Difficulty) => void;
+
+  formSubject: string;
+  setFormSubject: (value: string) => void;
+
+  formTopic: string;
+  setFormTopic: (value: string) => void;
+
+  formMarks: string;
+  setFormMarks: (value: string) => void;
+
+  formNegMarks: string;
+  setFormNegMarks: (value: string) => void;
+
+  formActive: boolean;
+  setFormActive: (value: boolean) => void;
 };
 
 type QuestionDoc = {
@@ -306,11 +336,51 @@ function QuestionInlineEditor({
   saving,
   onSave,
   onCancel,
+  formQuestion,
+  setFormQuestion,
+  formOptions,
+  setFormOptions,
+  formCorrect,
+  setFormCorrect,
+  formExplanation,
+  setFormExplanation,
+  formDifficulty,
+  setFormDifficulty,
+  formSubject,
+  setFormSubject,
+  formTopic,
+  setFormTopic,
+  formMarks,
+  setFormMarks,
+  formNegMarks,
+  setFormNegMarks,
+  formActive,
+  setFormActive,
 }: {
   question: QuestionDoc;
   saving: boolean;
   onSave: () => void;
   onCancel: () => void;
+  formQuestion: string;
+  setFormQuestion: (value: string) => void;
+  formOptions: string[];
+  setFormOptions: (value: string[]) => void;
+  formCorrect: number;
+  setFormCorrect: (value: number) => void;
+  formExplanation: string;
+  setFormExplanation: (value: string) => void;
+  formDifficulty: Difficulty;
+  setFormDifficulty: (value: Difficulty) => void;
+  formSubject: string;
+  setFormSubject: (value: string) => void;
+  formTopic: string;
+  setFormTopic: (value: string) => void;
+  formMarks: string;
+  setFormMarks: (value: string) => void;
+  formNegMarks: string;
+  setFormNegMarks: (value: string) => void;
+  formActive: boolean;
+  setFormActive: (value: boolean) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -486,6 +556,35 @@ function SortableSectionCard({
   onToggleQuestionActive,
   onSaveQuestion,
   onCancelEdit,
+  formQuestion,
+  setFormQuestion,
+
+  formOptions,
+  setFormOptions,
+
+  formCorrect,
+  setFormCorrect,
+
+  formExplanation,
+  setFormExplanation,
+
+  formDifficulty,
+  setFormDifficulty,
+
+  formSubject,
+  setFormSubject,
+
+  formTopic,
+  setFormTopic,
+
+  formMarks,
+  setFormMarks,
+
+  formNegMarks,
+  setFormNegMarks,
+
+  formActive,
+  setFormActive,
 }: SortableSectionCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: section.id,
@@ -777,6 +876,26 @@ function SortableSectionCard({
                             saving={savingQuestion}
                             onSave={onSaveQuestion}
                             onCancel={onCancelEdit}
+                            formQuestion={formQuestion}
+                            setFormQuestion={setFormQuestion}
+                            formOptions={formOptions}
+                            setFormOptions={setFormOptions}
+                            formCorrect={formCorrect}
+                            setFormCorrect={setFormCorrect}
+                            formExplanation={formExplanation}
+                            setFormExplanation={setFormExplanation}
+                            formDifficulty={formDifficulty}
+                            setFormDifficulty={setFormDifficulty}
+                            formSubject={formSubject}
+                            setFormSubject={setFormSubject}
+                            formTopic={formTopic}
+                            setFormTopic={setFormTopic}
+                            formMarks={formMarks}
+                            setFormMarks={setFormMarks}
+                            formNegMarks={formNegMarks}
+                            setFormNegMarks={setFormNegMarks}
+                            formActive={formActive}
+                            setFormActive={setFormActive}
                           />
                         ) : (
                           <div className="flex items-start justify-between gap-3">
@@ -1806,6 +1925,26 @@ export default function TestForm() {
                       onToggleQuestionActive={toggleQuestionActive}
                       onSaveQuestion={saveQuestion}
                       onCancelEdit={resetQuestionForm}
+                      formQuestion={formQuestion}
+                      setFormQuestion={setFormQuestion}
+                      formOptions={formOptions}
+                      setFormOptions={setFormOptions}
+                      formCorrect={formCorrect}
+                      setFormCorrect={setFormCorrect}
+                      formExplanation={formExplanation}
+                      setFormExplanation={setFormExplanation}
+                      formDifficulty={formDifficulty}
+                      setFormDifficulty={setFormDifficulty}
+                      formSubject={formSubject}
+                      setFormSubject={setFormSubject}
+                      formTopic={formTopic}
+                      setFormTopic={setFormTopic}
+                      formMarks={formMarks}
+                      setFormMarks={setFormMarks}
+                      formNegMarks={formNegMarks}
+                      setFormNegMarks={setFormNegMarks}
+                      formActive={formActive}
+                      setFormActive={setFormActive}
                     />
                   );
                 })}

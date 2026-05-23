@@ -21,6 +21,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
+import { useTenant } from "@app/providers/TenantProvider";
 import {
   Monitor,
   Smartphone,
@@ -31,11 +32,56 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Brain,
+  Target,
+  Trophy,
+  Clock,
+  Star,
+  Award,
+  Book,
+  Users,
+  CheckCircle2,
+  ArrowRight,
+  Zap,
+  Instagram,
+  Youtube,
+  Facebook,
+  Twitter,
+  Linkedin,
+  Globe,
+  Github,
+  Phone,
+  MessageCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
 // ── Types ────────────────────────────────────────────────────
-export type ThemeKey = "indigo" | "emerald" | "crimson" | "slate" | "amber" | "violet";
+export type ThemeKey =
+  | "indigo"
+  | "emerald"
+  | "crimson"
+  | "slate"
+  | "amber"
+  | "violet"
+  | "midnight"
+  | "forest"
+  | "ocean"
+  | "rose"
+  | "sky"
+  | "teal"
+  | "premium"
+  | "charcoal"
+  | "plum"
+  | "mint"
+  | "coffee"
+  | "steel"
+  | "cyber"
+  | "earth"
+  | "berry"
+  | "sunset"
+  | "cyan"
+  | "lemon"
+  | "lavender";
 
 export interface Theme {
   primary: string;
@@ -44,6 +90,7 @@ export interface Theme {
   bg: string;
   text: string;
   surface: string;
+  useGradient?: boolean;
 }
 
 export interface Section {
@@ -58,12 +105,45 @@ interface ComponentProps {
   selected: boolean;
   onClick: () => void;
   previewMode?: boolean;
+  instituteName?: string;
+  instituteLogo?: string;
+  mobile?: boolean;
+  useGradient?: boolean;
+  sections?: Section[];
 }
+
+const ICON_MAP: Record<string, any> = {
+  Brain,
+  Target,
+  Trophy,
+  Clock,
+  Star,
+  Award,
+  Book,
+  Users,
+  CheckCircle2,
+  ArrowRight,
+  Zap,
+};
+
+const ICON_OPTIONS = [
+  { name: "Brain", icon: "🧠" },
+  { name: "Target", icon: "🎯" },
+  { name: "Trophy", icon: "🏆" },
+  { name: "Clock", icon: "🕒" },
+  { name: "Star", icon: "⭐" },
+  { name: "Award", icon: "🏅" },
+  { name: "Book", icon: "📖" },
+  { name: "Users", icon: "👥" },
+  { name: "CheckCircle2", icon: "✅" },
+  { name: "ArrowRight", icon: "➡️" },
+  { name: "Zap", icon: "⚡" },
+];
 
 interface EditorField {
   key: string;
   label: string;
-  type: "text" | "textarea" | "select" | "image";
+  type: "text" | "textarea" | "select" | "image" | "cta-link" | "icon";
   options?: string[];
   arrayKey?: string;
   subKey?: string;
@@ -73,21 +153,105 @@ function resolveCtaUrl(url?: string) {
   if (!url) return "#";
   const trimmed = String(url).trim();
   if (!trimmed) return "#";
+  // Section anchor (e.g. #courses) — pass through as-is
+  if (trimmed.startsWith("#")) return trimmed;
   if (trimmed.startsWith("/") || trimmed.startsWith("http://") || trimmed.startsWith("https://"))
     return trimmed;
   return `https://${trimmed}`;
+}
+
+export function createCustomTheme(primaryHex: string, useGradient?: boolean): Theme {
+  const hex = primaryHex.startsWith("#") ? primaryHex : `#${primaryHex}`;
+  const isValid = /^#([0-9A-F]{3}){1,2}$/i.test(hex);
+  const base = isValid ? hex : "#4f46e5";
+
+  const lighten = (color: string, percent: number) => {
+    const num = parseInt(color.replace("#", ""), 16);
+    const amt = Math.round(2.55 * percent);
+    const R = (num >> 16) + amt;
+    const G = ((num >> 8) & 0x00ff) + amt;
+    const B = (num & 0x0000ff) + amt;
+    return (
+      "#" +
+      (
+        0x1000000 +
+        (R < 255 ? (R < 1 ? 0 : R) : 255) * 0x10000 +
+        (G < 255 ? (G < 1 ? 0 : G) : 255) * 0x100 +
+        (B < 255 ? (B < 1 ? 0 : B) : 255)
+      )
+        .toString(16)
+        .slice(1)
+    );
+  };
+
+  return {
+    primary: base,
+    secondary: lighten(base, 20),
+    accent: "#f59e0b",
+    bg: lighten(base, 94),
+    text: "#1e1b4b",
+    surface: "#ffffff",
+    useGradient,
+  };
 }
 
 function handleCtaClick(e: React.MouseEvent, url?: string) {
   e.stopPropagation();
   const target = resolveCtaUrl(url);
   if (target === "#") return;
+
+  // Smooth scroll to a canvas section anchor
+  if (target.startsWith("#")) {
+    const id = target.substring(1);
+
+    // 1. Try finding by ID (stable unique ID)
+    // 2. Fallback to data-section-type (legacy type-based anchors)
+    const el = document.getElementById(id) || document.querySelector(`[data-section-type="${id}"]`);
+
+    if (el) {
+      // 52px for live sticky nav, 80px for builder header
+      const yOffset = document.getElementById("builder-preview-scroll") ? -80 : -52;
+
+      const scrollContainer = document.getElementById("builder-preview-scroll");
+
+      if (scrollContainer) {
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
+        const relativeTop = elRect.top - containerRect.top + scrollContainer.scrollTop + yOffset;
+        scrollContainer.scrollTo({
+          top: relativeTop,
+          behavior: "smooth",
+        });
+      } else {
+        const y = el.getBoundingClientRect().top + window.pageYOffset + yOffset;
+        window.scrollTo({
+          top: y,
+          behavior: "smooth",
+        });
+      }
+    } else {
+      console.warn(`[CTA Debug] Failed to find scroll target for ${target}`);
+    }
+    return;
+  }
+
   if (target.startsWith("/")) {
     window.location.href = target;
     return;
   }
   window.open(target, "_blank", "noopener,noreferrer");
 }
+
+const SOCIAL_ICONS: Record<string, any> = {
+  instagram: Instagram,
+  youtube: Youtube,
+  facebook: Facebook,
+  twitter: Twitter,
+  linkedin: Linkedin,
+  website: Globe,
+  github: Github,
+  whatsapp: MessageCircle,
+};
 
 // ── Theme Presets ────────────────────────────────────────────
 export const THEME_PRESETS: Record<ThemeKey, Theme> = {
@@ -139,25 +303,176 @@ export const THEME_PRESETS: Record<ThemeKey, Theme> = {
     text: "#3b0764",
     surface: "#fff",
   },
+  midnight: {
+    primary: "#1e293b",
+    secondary: "#64748b",
+    accent: "#38bdf8",
+    bg: "#f1f5f9",
+    text: "#0f172a",
+    surface: "#fff",
+  },
+  forest: {
+    primary: "#065f46",
+    secondary: "#10b981",
+    accent: "#f59e0b",
+    bg: "#f0fdfa",
+    text: "#064e3b",
+    surface: "#fff",
+  },
+  ocean: {
+    primary: "#0369a1",
+    secondary: "#0ea5e9",
+    accent: "#f43f5e",
+    bg: "#f0f9ff",
+    text: "#0c4a6e",
+    surface: "#fff",
+  },
+  rose: {
+    primary: "#9f1239",
+    secondary: "#e11d48",
+    accent: "#fbbf24",
+    bg: "#fff1f2",
+    text: "#4c0519",
+    surface: "#fff",
+  },
+  sky: {
+    primary: "#0ea5e9",
+    secondary: "#7dd3fc",
+    accent: "#f59e0b",
+    bg: "#f0f9ff",
+    text: "#0c4a6e",
+    surface: "#fff",
+  },
+  teal: {
+    primary: "#0d9488",
+    secondary: "#5eead4",
+    accent: "#f43f5e",
+    bg: "#f0fdfa",
+    text: "#134e4a",
+    surface: "#fff",
+  },
+  premium: {
+    primary: "#111827",
+    secondary: "#374151",
+    accent: "#d4af37",
+    bg: "#f9fafb",
+    text: "#111827",
+    surface: "#fff",
+  },
+  charcoal: {
+    primary: "#36454f",
+    secondary: "#708090",
+    accent: "#ff7f50",
+    bg: "#f5f5f5",
+    text: "#2c3e50",
+    surface: "#fff",
+  },
+  plum: {
+    primary: "#581c87",
+    secondary: "#a855f7",
+    accent: "#22c55e",
+    bg: "#faf5ff",
+    text: "#3b0764",
+    surface: "#fff",
+  },
+  mint: {
+    primary: "#059669",
+    secondary: "#6ee7b7",
+    accent: "#ef4444",
+    bg: "#ecfdf5",
+    text: "#064e3b",
+    surface: "#fff",
+  },
+  coffee: {
+    primary: "#451a03",
+    secondary: "#92400e",
+    accent: "#0ea5e9",
+    bg: "#fffbeb",
+    text: "#451a03",
+    surface: "#fff",
+  },
+  steel: {
+    primary: "#334155",
+    secondary: "#64748b",
+    accent: "#f97316",
+    bg: "#f8fafc",
+    text: "#0f172a",
+    surface: "#fff",
+  },
+  cyber: {
+    primary: "#8b5cf6",
+    secondary: "#d946ef",
+    accent: "#06b6d4",
+    bg: "#0f172a",
+    text: "#f8fafc",
+    surface: "#1e293b",
+  },
+  earth: {
+    primary: "#166534",
+    secondary: "#4ade80",
+    accent: "#854d0e",
+    bg: "#f0fdf4",
+    text: "#064e3b",
+    surface: "#fff",
+  },
+  berry: {
+    primary: "#be123c",
+    secondary: "#fb7185",
+    accent: "#10b981",
+    bg: "#fff1f2",
+    text: "#4c0519",
+    surface: "#fff",
+  },
+  sunset: {
+    primary: "#ea580c",
+    secondary: "#fb923c",
+    accent: "#6366f1",
+    bg: "#fff7ed",
+    text: "#7c2d12",
+    surface: "#fff",
+  },
+  cyan: {
+    primary: "#0891b2",
+    secondary: "#67e8f9",
+    accent: "#f43f5e",
+    bg: "#ecfeff",
+    text: "#164e63",
+    surface: "#fff",
+  },
+  lemon: {
+    primary: "#a16207",
+    secondary: "#eab308",
+    accent: "#8b5cf6",
+    bg: "#fefce8",
+    text: "#713f12",
+    surface: "#fff",
+  },
+  lavender: {
+    primary: "#6d28d9",
+    secondary: "#a78bfa",
+    accent: "#f59e0b",
+    bg: "#f5f3ff",
+    text: "#4c1d95",
+    surface: "#fff",
+  },
 };
 
 // ── Editor Fields ────────────────────────────────────────────
 const EDITOR_FIELDS: Record<string, EditorField[]> = {
   hero: [
-    { key: "variant", label: "Layout", type: "select", options: ["centered", "split"] },
+    { key: "variant", label: "Layout", type: "select", options: ["centered", "split", "carousel"] },
     { key: "badge", label: "Badge Text", type: "text" },
     { key: "headline", label: "Headline", type: "textarea" },
     { key: "subtext", label: "Sub-text", type: "textarea" },
     { key: "cta1", label: "Primary CTA", type: "text" },
-    { key: "cta1Url", label: "Primary CTA Link", type: "text" },
+    { key: "cta1Url", label: "Primary CTA Link", type: "cta-link" },
     { key: "cta2", label: "Secondary CTA", type: "text" },
-    { key: "cta2Url", label: "Secondary CTA Link", type: "text" },
-    { key: "heroImage", label: "Hero Image (split layout)", type: "image" },
+    { key: "cta2Url", label: "Secondary CTA Link", type: "cta-link" },
   ],
   courses: [
     { key: "eyebrow", label: "Eyebrow Text", type: "text" },
     { key: "title", label: "Section Title", type: "text" },
-    { key: "ctaUrl", label: "Enroll Button Link", type: "text" },
+    { key: "ctaUrl", label: "Enroll Button Link", type: "cta-link" },
   ],
   faculty: [
     { key: "eyebrow", label: "Eyebrow Text", type: "text" },
@@ -185,13 +500,13 @@ const EDITOR_FIELDS: Record<string, EditorField[]> = {
     { key: "label", label: "Label", type: "text" },
     { key: "text", label: "Announcement Text", type: "textarea" },
     { key: "cta", label: "Button Text", type: "text" },
-    { key: "ctaUrl", label: "Button Link", type: "text" },
+    { key: "ctaUrl", label: "Button Link", type: "cta-link" },
   ],
   pricing: [
     { key: "eyebrow", label: "Eyebrow Text", type: "text" },
     { key: "title", label: "Section Title", type: "text" },
     { key: "cta", label: "Button Text", type: "text" },
-    { key: "ctaUrl", label: "Button Link", type: "text" },
+    { key: "ctaUrl", label: "Button Link", type: "cta-link" },
   ],
   video: [
     { key: "eyebrow", label: "Eyebrow Text", type: "text" },
@@ -204,24 +519,28 @@ const EDITOR_FIELDS: Record<string, EditorField[]> = {
     { key: "email", label: "Email", type: "text" },
     { key: "address", label: "Address", type: "text" },
     { key: "cta", label: "Button Text", type: "text" },
-    { key: "ctaUrl", label: "Button Link", type: "text" },
+    { key: "ctaUrl", label: "Button Link", type: "cta-link" },
   ],
   batches: [
     { key: "eyebrow", label: "Eyebrow Text", type: "text" },
     { key: "title", label: "Section Title", type: "text" },
     { key: "cta", label: "Button Text", type: "text" },
-    { key: "ctaUrl", label: "Button Link", type: "text" },
+    { key: "ctaUrl", label: "Button Link", type: "cta-link" },
   ],
   trust: [],
   app: [
     { key: "eyebrow", label: "Eyebrow Text", type: "text" },
     { key: "title", label: "Section Title", type: "text" },
     { key: "desc", label: "Description", type: "textarea" },
+    { key: "image", label: "App Screenshot", type: "image" },
+    { key: "playStoreUrl", label: "Play Store Link", type: "text" },
+    { key: "appStoreUrl", label: "App Store Link", type: "text" },
   ],
   about: [
     { key: "eyebrow", label: "Eyebrow Text", type: "text" },
     { key: "title", label: "Section Title", type: "text" },
     { key: "desc", label: "Description", type: "textarea" },
+    { key: "image", label: "Mission Image", type: "image" },
   ],
   live: [
     { key: "title", label: "Class Title", type: "text" },
@@ -230,7 +549,7 @@ const EDITOR_FIELDS: Record<string, EditorField[]> = {
     { key: "cta", label: "Button Text", type: "text" },
     { key: "ctaUrl", label: "Button Link", type: "text" },
   ],
-  stats: [{ key: "title", label: "Section Title", type: "text" }],
+  stats: [],
   blog: [
     { key: "eyebrow", label: "Eyebrow Text", type: "text" },
     { key: "title", label: "Section Title", type: "text" },
@@ -239,32 +558,249 @@ const EDITOR_FIELDS: Record<string, EditorField[]> = {
     { key: "eyebrow", label: "Eyebrow Text", type: "text" },
     { key: "title", label: "Timer Title", type: "text" },
     { key: "cta", label: "Button Text", type: "text" },
-    { key: "ctaUrl", label: "Button Link", type: "text" },
+    { key: "ctaUrl", label: "Button Link", type: "cta-link" },
   ],
-  footer: [
-    { key: "name", label: "Institute Name", type: "text" },
-    { key: "tagline", label: "Tagline", type: "textarea" },
-  ],
+  footer: [],
 };
 
 // ── 20 Website Components ────────────────────────────────────
 
-function HeroComponent({ data, theme: t, selected, onClick, previewMode }: ComponentProps) {
+function HeroCarouselSlide({
+  images,
+  placeholder,
+  style,
+}: {
+  images: string[];
+  placeholder: React.CSSProperties;
+  style?: React.CSSProperties;
+}) {
+  const [idx, setIdx] = useState(0);
+  const [fade, setFade] = useState(true);
+
+  useEffect(() => {
+    if (images.length <= 1) return;
+    const t = setInterval(() => {
+      setFade(false);
+      setTimeout(() => {
+        setIdx((i) => (i + 1) % images.length);
+        setFade(true);
+      }, 300);
+    }, 3500);
+    return () => clearInterval(t);
+  }, [images.length]);
+
+  if (!images.length) {
+    return (
+      <div
+        style={{
+          ...placeholder,
+          ...style,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 10,
+          background: "rgba(255,255,255,0.08)",
+          border: "2px dashed rgba(255,255,255,0.35)",
+          borderRadius: (placeholder as any).borderRadius ?? 16,
+        }}
+      >
+        {/* Image icon */}
+        <svg
+          width="40"
+          height="40"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="rgba(255,255,255,0.5)"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <polyline points="21 15 16 10 5 21" />
+        </svg>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,0.55)" }}>
+          Hero Image
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            color: "rgba(255,255,255,0.35)",
+            textAlign: "center",
+            maxWidth: 160,
+            lineHeight: 1.5,
+          }}
+        >
+          Upload an image from the editor panel on the right
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position: "relative", ...style }}>
+      <img
+        src={images[idx]}
+        alt={`Hero ${idx + 1}`}
+        style={{
+          ...placeholder,
+          objectFit: "cover",
+          opacity: fade ? 1 : 0,
+          transition: "opacity 0.3s ease",
+        }}
+      />
+      {images.length > 1 && (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              bottom: 20,
+              left: "50%",
+              transform: "translateX(-50%)",
+              display: "flex",
+              gap: 8,
+            }}
+          >
+            {images.map((_, i) => (
+              <div
+                key={i}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIdx(i);
+                  setFade(true);
+                }}
+                style={{
+                  width: i === idx ? 18 : 6,
+                  height: 6,
+                  borderRadius: 3,
+                  background: i === idx ? "#fff" : "rgba(255,255,255,0.45)",
+                  transition: "all 0.3s",
+                  cursor: "pointer",
+                }}
+              />
+            ))}
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setFade(false);
+              setTimeout(() => {
+                setIdx((idx - 1 + images.length) % images.length);
+                setFade(true);
+              }, 200);
+            }}
+            style={{
+              position: "absolute",
+              left: 8,
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "rgba(0,0,0,0.35)",
+              border: "none",
+              borderRadius: "50%",
+              width: 36,
+              height: 36,
+              color: "#fff",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 20,
+              transition: "all 0.2s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.5)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.35)")}
+          >
+            ‹
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setFade(false);
+              setTimeout(() => {
+                setIdx((idx + 1) % images.length);
+                setFade(true);
+              }, 200);
+            }}
+            style={{
+              position: "absolute",
+              right: 8,
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "rgba(0,0,0,0.35)",
+              border: "none",
+              borderRadius: "50%",
+              width: 36,
+              height: 36,
+              color: "#fff",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 20,
+              transition: "all 0.2s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.5)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.35)")}
+          >
+            ›
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function HeroComponent({
+  data,
+  theme: t,
+  selected,
+  onClick,
+  previewMode,
+  instituteName,
+  instituteLogo,
+  mobile,
+}: ComponentProps) {
   const variant = data.variant || "centered";
+  // heroImages array; fall back to legacy heroImage single string
+  const rawImages: string[] = Array.isArray(data.heroImages)
+    ? data.heroImages.filter(Boolean)
+    : data.heroImage
+      ? [data.heroImage]
+      : [];
+
+  // Full-width carousel variant slides across the entire hero
+  const isCarousel = variant === "carousel";
+  const isSplit = variant === "split";
+
   const s: Record<string, React.CSSProperties> = {
     wrapper: {
       position: "relative",
-      background: `linear-gradient(135deg, ${t.primary}ee 0%, ${t.primary}aa 60%, ${t.secondary}55 100%)`,
-      padding: variant === "centered" ? "80px 40px" : "60px 40px",
+      background: isCarousel
+        ? rawImages.length > 0
+          ? "transparent"
+          : `linear-gradient(135deg, ${t.primary}22 0%, ${t.primary}11 100%)`
+        : t.useGradient
+          ? `linear-gradient(135deg, ${t.primary} 0%, ${t.primary}ee 40%, ${t.secondary}dd 100%)`
+          : `linear-gradient(135deg, ${t.primary}ee 0%, ${t.primary}aa 60%, ${t.secondary}55 100%)`,
+      padding: isCarousel
+        ? "20px 0"
+        : mobile
+          ? "40px 20px"
+          : variant === "centered"
+            ? "80px 40px"
+            : "60px 40px",
       display: "flex",
-      flexDirection: variant === "split" ? "row" : "column",
-      alignItems: "center",
-      gap: 40,
+      // Mobile: always column. On wider containers split = row, else column.
+      flexDirection: isSplit ? "row" : "column",
+      alignItems: isCarousel ? "stretch" : "center",
+      gap: isCarousel ? 0 : 40,
       cursor: "pointer",
       outline: selected ? `3px solid ${t.accent}` : "none",
       outlineOffset: -3,
       overflow: "hidden",
-      minHeight: 360,
+      minHeight: 400,
+      flexWrap: "wrap", // wraps to column on narrow containers
     },
     badge: {
       display: "inline-block",
@@ -273,13 +809,13 @@ function HeroComponent({ data, theme: t, selected, onClick, previewMode }: Compo
       color: "#fff",
       borderRadius: 20,
       padding: "4px 14px",
-      fontSize: 12,
+      fontSize: mobile ? 11 : 12,
       fontWeight: 600,
       letterSpacing: 1,
       marginBottom: 16,
     },
     headline: {
-      fontSize: variant === "centered" ? 48 : 40,
+      fontSize: mobile ? (variant === "centered" ? 28 : 24) : variant === "centered" ? 48 : 40,
       fontWeight: 800,
       color: "#fff",
       lineHeight: 1.1,
@@ -287,7 +823,7 @@ function HeroComponent({ data, theme: t, selected, onClick, previewMode }: Compo
       textAlign: variant === "centered" ? "center" : "left",
     },
     sub: {
-      fontSize: 18,
+      fontSize: mobile ? 14 : 18,
       color: "rgba(255,255,255,0.85)",
       marginBottom: 32,
       maxWidth: 560,
@@ -305,8 +841,8 @@ function HeroComponent({ data, theme: t, selected, onClick, previewMode }: Compo
       color: t.primary,
       border: "none",
       borderRadius: 10,
-      padding: "14px 28px",
-      fontSize: 15,
+      padding: mobile ? "10px 20px" : "14px 28px",
+      fontSize: mobile ? 13 : 15,
       fontWeight: 700,
       cursor: "pointer",
     },
@@ -315,20 +851,20 @@ function HeroComponent({ data, theme: t, selected, onClick, previewMode }: Compo
       color: "#fff",
       border: "2px solid rgba(255,255,255,0.5)",
       borderRadius: 10,
-      padding: "14px 28px",
-      fontSize: 15,
+      padding: mobile ? "10px 20px" : "14px 28px",
+      fontSize: mobile ? 13 : 15,
       fontWeight: 600,
       cursor: "pointer",
     },
     statsRow: {
       display: "flex",
-      gap: 32,
-      marginTop: 40,
+      gap: mobile ? 16 : 32,
+      marginTop: mobile ? 24 : 40,
       justifyContent: variant === "centered" ? "center" : "flex-start",
     },
     imagePlaceholder: {
-      width: 280,
-      height: 220,
+      width: 490,
+      height: 290,
       background: "rgba(255,255,255,0.1)",
       borderRadius: 16,
       border: "2px dashed rgba(255,255,255,0.3)",
@@ -360,11 +896,127 @@ function HeroComponent({ data, theme: t, selected, onClick, previewMode }: Compo
       pointerEvents: "none",
     },
   };
+
+  // Text content block reused by split and carousel
+  const textBlock = (align: "left" | "center") => (
+    <div
+      style={{
+        flex: 1,
+        zIndex: 1,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: align === "center" ? "center" : "flex-start",
+        minWidth: 220,
+      }}
+    >
+      {(instituteLogo || instituteName) && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            marginBottom: 32,
+            alignSelf: align === "center" ? "center" : "flex-start",
+          }}
+        >
+          {instituteLogo && (
+            <img
+              src={instituteLogo}
+              alt="logo"
+              style={{ height: 40, width: "auto", objectFit: "contain" }}
+            />
+          )}
+          <span style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: -0.5 }}>
+            {instituteName}
+          </span>
+        </div>
+      )}
+      <span style={s.badge}>
+        {data.badge || (isCarousel ? "🎯 India's #1 Coaching Platform" : "🎯 Top Ranked Institute")}
+      </span>
+      <div style={{ ...s.headline, textAlign: align }}>
+        {data.headline ||
+          (isCarousel
+            ? "Crack IIT-JEE & NEET with Expert Guidance"
+            : "Your Dream Rank Starts Here")}
+      </div>
+      <div style={{ ...s.sub, textAlign: align }}>
+        {data.subtext || "Expert faculty, AI tools, and a proven system to help you succeed."}
+      </div>
+      <div style={{ ...s.ctaRow, justifyContent: align === "center" ? "center" : "flex-start" }}>
+        <button
+          style={{ ...s.primaryBtn, cursor: previewMode ? "pointer" : "default" }}
+          onClick={previewMode ? (e) => handleCtaClick(e, data.cta1Url) : undefined}
+        >
+          {data.cta1 || "Enroll Now"}
+        </button>
+        <button
+          style={{ ...s.secondaryBtn, cursor: previewMode ? "pointer" : "default" }}
+          onClick={previewMode ? (e) => handleCtaClick(e, data.cta2Url) : undefined}
+        >
+          {data.cta2 || "View Courses"}
+        </button>
+      </div>
+
+      {/* ── Social-proof stats bar ── */}
+      {(() => {
+        const stats: { num: string; label: string }[] = data.stats || [
+          { num: "25+", label: "Years of Experience" },
+          { num: "10000+", label: "Students Guided" },
+        ];
+        if (!stats.length) return null;
+        return (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: mobile ? 12 : 20,
+              marginTop: mobile ? 16 : 24,
+              flexWrap: "wrap",
+            }}
+          >
+            {/* Stat pills */}
+            {stats.map((st: any, i: number) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {(() => {
+                  const IconComp = ICON_MAP[st.icon];
+                  if (!IconComp) return null;
+                  return <IconComp size={mobile ? 14 : 16} color="#fff" style={{ opacity: 0.8 }} />;
+                })()}
+                <span style={{ fontSize: mobile ? 13 : 15, fontWeight: 800, color: "#fff" }}>
+                  {st.num}
+                </span>
+                <span style={{ fontSize: mobile ? 11 : 13, color: "rgba(255,255,255,0.75)" }}>
+                  {st.label}
+                </span>
+                {i < stats.length - 1 && (
+                  <div
+                    style={{
+                      width: 1,
+                      height: 16,
+                      background: "rgba(255,255,255,0.2)",
+                      marginLeft: 6,
+                    }}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+    </div>
+  );
+
   return (
-    <div style={s.wrapper} onClick={onClick}>
+    <div
+      style={s.wrapper}
+      onClick={onClick}
+      className={isSplit ? "ib-hero-split" : isCarousel ? "ib-hero-carousel" : ""}
+    >
       <div style={s.decor1} />
       <div style={s.decor2} />
-      {variant === "centered" ? (
+
+      {variant === "centered" && (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", zIndex: 1 }}>
           <span style={s.badge}>{data.badge || "🎯 India's #1 Coaching Platform"}</span>
           <div style={s.headline}>
@@ -397,47 +1049,65 @@ function HeroComponent({ data, theme: t, selected, onClick, previewMode }: Compo
               ]
             ).map((st: any, i: number) => (
               <div key={i} style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 28, fontWeight: 800, color: "#fff" }}>{st.num}</div>
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", marginTop: 2 }}>
+                <div style={{ fontSize: mobile ? 20 : 28, fontWeight: 800, color: "#fff" }}>
+                  {st.num}
+                </div>
+                <div
+                  style={{
+                    fontSize: mobile ? 10 : 12,
+                    color: "rgba(255,255,255,0.7)",
+                    marginTop: 2,
+                  }}
+                >
                   {st.label}
                 </div>
               </div>
             ))}
           </div>
         </div>
-      ) : (
+      )}
+
+      {isSplit && (
         <>
-          <div style={{ flex: 1, zIndex: 1 }}>
-            <span style={s.badge}>{data.badge || "🎯 Top Ranked Institute"}</span>
-            <div style={s.headline}>{data.headline || "Your Dream Rank Starts Here"}</div>
-            <div style={s.sub}>
-              {data.subtext || "Expert faculty, AI tools, and a proven system to help you succeed."}
-            </div>
-            <div style={s.ctaRow}>
-              <button
-                style={{ ...s.primaryBtn, cursor: previewMode ? "pointer" : "default" }}
-                onClick={previewMode ? (e) => handleCtaClick(e, data.cta1Url) : undefined}
-              >
-                {data.cta1 || "Enroll Now"}
-              </button>
-              <button
-                style={{ ...s.secondaryBtn, cursor: previewMode ? "pointer" : "default" }}
-                onClick={previewMode ? (e) => handleCtaClick(e, data.cta2Url) : undefined}
-              >
-                {data.cta2 || "View Courses"}
-              </button>
-            </div>
-          </div>
-          {data.heroImage ? (
-            <img
-              src={data.heroImage}
-              style={{ ...s.imagePlaceholder, objectFit: "cover" }}
-              alt="Hero"
-            />
-          ) : (
-            <div style={s.imagePlaceholder}>hero image</div>
-          )}
+          {textBlock("left")}
+          <HeroCarouselSlide
+            images={rawImages}
+            placeholder={s.imagePlaceholder as React.CSSProperties}
+            style={{ flexShrink: 0 }}
+          />
         </>
+      )}
+
+      {isCarousel && (
+        <div
+          style={{
+            width: "100%",
+            maxWidth: 1200,
+            margin: "0 auto",
+            padding: mobile ? "0 16px" : "0 40px",
+            zIndex: 1,
+          }}
+        >
+          <HeroCarouselSlide
+            images={rawImages}
+            placeholder={
+              {
+                ...s.imagePlaceholder,
+                width: "100%",
+                height: "auto",
+                aspectRatio: mobile ? "16/9" : "21/6",
+                minHeight: mobile ? 180 : 300,
+                borderRadius: mobile ? 16 : 24,
+              } as React.CSSProperties
+            }
+            style={{
+              width: "100%",
+              borderRadius: mobile ? 16 : 24,
+              overflow: "hidden",
+              boxShadow: "0 20px 40px rgba(0,0,0,0.1)",
+            }}
+          />
+        </div>
       )}
     </div>
   );
@@ -449,6 +1119,7 @@ function CourseCatalogComponent({
   selected,
   onClick,
   previewMode,
+  mobile,
 }: ComponentProps) {
   const courses = data.courses || [
     {
@@ -478,16 +1149,16 @@ function CourseCatalogComponent({
       onClick={onClick}
       style={{
         background: t.bg,
-        padding: "60px 40px",
+        padding: mobile ? "40px 20px" : "60px 40px",
         cursor: "pointer",
         outline: selected ? `3px solid ${t.accent}` : "none",
         outlineOffset: -3,
       }}
     >
-      <div style={{ textAlign: "center", marginBottom: 40 }}>
+      <div style={{ textAlign: "center", marginBottom: mobile ? 24 : 40 }}>
         <div
           style={{
-            fontSize: 13,
+            fontSize: mobile ? 12 : 13,
             fontWeight: 700,
             color: t.primary,
             letterSpacing: 2,
@@ -497,26 +1168,29 @@ function CourseCatalogComponent({
         >
           {data.eyebrow || "Our Programs"}
         </div>
-        <div style={{ fontSize: 34, fontWeight: 800, color: t.text }}>
+        <div style={{ fontSize: mobile ? 24 : 34, fontWeight: 800, color: t.text }}>
           {data.title || "Courses Designed to Get You Results"}
         </div>
       </div>
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-          gap: 24,
+          gridTemplateColumns: mobile ? "1fr" : "repeat(auto-fit, minmax(240px, 1fr))",
+          gap: mobile ? 16 : 24,
         }}
       >
         {courses.map((c: any, i: number) => (
           <div
             key={i}
+            className="ib-card"
             style={{
               background: t.surface,
               borderRadius: 16,
-              padding: 24,
+              padding: mobile ? 20 : 24,
               boxShadow: "0 2px 20px rgba(0,0,0,0.06)",
               border: `1px solid ${t.primary}15`,
+              display: "flex",
+              flexDirection: "column",
             }}
           >
             <div
@@ -534,28 +1208,68 @@ function CourseCatalogComponent({
             <div style={{ fontSize: 18, fontWeight: 700, color: t.text, marginBottom: 12 }}>
               {c.name}
             </div>
-            <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
-              <span style={{ fontSize: 12, color: "#666" }}>👤 {c.students}</span>
-              <span style={{ fontSize: 12, color: "#666" }}>🕐 {c.duration}</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 20, fontWeight: 800, color: t.primary }}>{c.price}</span>
-              <button
+            {c.price ? (
+              <>
+                <div style={{ display: "flex", gap: 16, marginBottom: 16 }}>
+                  <span style={{ fontSize: 12, color: "#666" }}>👤 {c.students}</span>
+                  <span style={{ fontSize: 12, color: "#666" }}>🕐 {c.duration}</span>
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginTop: "auto",
+                  }}
+                >
+                  <span style={{ fontSize: 20, fontWeight: 800, color: t.primary }}>{c.price}</span>
+                  <button
+                    style={{
+                      background: t.primary,
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "8px 16px",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      cursor: previewMode ? "pointer" : "default",
+                    }}
+                    onClick={previewMode ? (e) => handleCtaClick(e, data.ctaUrl) : undefined}
+                  >
+                    Enroll
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div
                 style={{
-                  background: t.primary,
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "8px 16px",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: previewMode ? "pointer" : "default",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginTop: "auto",
                 }}
-                onClick={previewMode ? (e) => handleCtaClick(e, data.ctaUrl) : undefined}
               >
-                Enroll
-              </button>
-            </div>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <span style={{ fontSize: 12, color: "#666" }}>👤 {c.students}</span>
+                  <span style={{ fontSize: 12, color: "#666" }}>🕐 {c.duration}</span>
+                </div>
+                <button
+                  style={{
+                    background: t.primary,
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 8,
+                    padding: "8px 16px",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: previewMode ? "pointer" : "default",
+                  }}
+                  onClick={previewMode ? (e) => handleCtaClick(e, data.ctaUrl) : undefined}
+                >
+                  Enroll
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -607,6 +1321,7 @@ function FacultyComponent({ data, theme: t, selected, onClick }: ComponentProps)
         {faculty.map((f: any, i: number) => (
           <div
             key={i}
+            className="ib-card"
             style={{
               textAlign: "center",
               padding: 24,
@@ -724,8 +1439,14 @@ function ResultsComponent({ data, theme: t, selected, onClick }: ComponentProps)
         {stats.map((s: any, i: number) => (
           <div
             key={i}
+            className="ib-card"
             style={{ padding: 20, background: "rgba(255,255,255,0.08)", borderRadius: 16 }}
           >
+            {(() => {
+              const IconComp = ICON_MAP[s.icon];
+              if (!IconComp) return null;
+              return <IconComp size={32} color={t.secondary} style={{ marginBottom: 8 }} />;
+            })()}
             <div style={{ fontSize: 36, fontWeight: 800, color: "#fff" }}>{s.num}</div>
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 4 }}>
               {s.label}
@@ -743,6 +1464,7 @@ function ResultsComponent({ data, theme: t, selected, onClick }: ComponentProps)
         {results.map((r: any, i: number) => (
           <div
             key={i}
+            className="ib-card"
             style={{
               background: "rgba(255,255,255,0.1)",
               borderRadius: 16,
@@ -751,6 +1473,40 @@ function ResultsComponent({ data, theme: t, selected, onClick }: ComponentProps)
               textAlign: "center",
             }}
           >
+            {r.photo ? (
+              <img
+                src={r.photo}
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  margin: "0 auto 12px",
+                  display: "block",
+                  border: `2px solid ${t.secondary}`,
+                }}
+                alt={r.name}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: "50%",
+                  background: "rgba(255,255,255,0.1)",
+                  margin: "0 auto 12px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 20,
+                  color: t.secondary,
+                  fontWeight: 800,
+                  border: `1px solid ${t.secondary}33`,
+                }}
+              >
+                {r.name?.[0] || "S"}
+              </div>
+            )}
             <div style={{ fontSize: 22, fontWeight: 800, color: t.secondary }}>{r.rank}</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginTop: 4 }}>
               {r.name}
@@ -834,6 +1590,7 @@ function TestimonialsComponent({ data, theme: t, selected, onClick }: ComponentP
         {reviews.map((r: any, i: number) => (
           <div
             key={i}
+            className="ib-card"
             style={{
               background: t.surface,
               borderRadius: 20,
@@ -858,29 +1615,54 @@ function TestimonialsComponent({ data, theme: t, selected, onClick }: ComponentP
               {r.text}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: "50%",
-                  background: `${t.primary}20`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 8,
-                  color: t.primary,
-                }}
-              >
-                photo
-              </div>
+              {r.photo ? (
+                <img
+                  src={r.photo}
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                  }}
+                  alt={r.name}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: "50%",
+                    background: `${t.primary}15`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: t.primary,
+                  }}
+                >
+                  {(r.name || "S")
+                    .split(" ")
+                    .map((n: string) => n[0])
+                    .join("")
+                    .toUpperCase()
+                    .substring(0, 2)}
+                </div>
+              )}
               <div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{r.name}</div>
                 <div style={{ fontSize: 12, color: t.primary }}>{r.role}</div>
               </div>
             </div>
             <div style={{ position: "absolute", top: 20, right: 20, display: "flex", gap: 2 }}>
-              {[1, 2, 3, 4, 5].map((s) => (
-                <span key={s} style={{ fontSize: 12, color: t.accent }}>
+              {Array.from({ length: 5 }).map((_, idx) => (
+                <span
+                  key={idx}
+                  style={{
+                    fontSize: 12,
+                    color: idx < (Number(r.rating) || 5) ? t.accent : "#e5e7eb",
+                  }}
+                >
                   ★
                 </span>
               ))}
@@ -939,6 +1721,7 @@ function GalleryComponent({ data, theme: t, selected, onClick }: ComponentProps)
         {items.map((item: any, i: number) => (
           <div
             key={i}
+            className="ib-card"
             style={{
               borderRadius: 12,
               aspectRatio: "4/3",
@@ -1071,28 +1854,45 @@ function FAQComponent({ data, theme: t, selected, onClick }: ComponentProps) {
   );
 }
 
-function AnnouncementComponent({ data, theme: t, selected, onClick, previewMode }: ComponentProps) {
+function AnnouncementComponent({
+  data,
+  theme: t,
+  selected,
+  onClick,
+  previewMode,
+  mobile,
+}: ComponentProps) {
   return (
     <div
       onClick={onClick}
       style={{
         background: `${t.primary}10`,
         borderLeft: `4px solid ${t.primary}`,
-        padding: "16px 40px",
+        padding: mobile ? "16px 20px" : "16px 40px",
         display: "flex",
-        alignItems: "center",
-        gap: 16,
+        flexDirection: mobile ? "column" : "row",
+        alignItems: mobile ? "flex-start" : "center",
+        gap: mobile ? 12 : 16,
         cursor: "pointer",
         outline: selected ? `3px solid ${t.accent}` : "none",
         outlineOffset: -3,
       }}
     >
-      <span style={{ fontSize: 20 }}>📢</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span style={{ fontSize: 20 }}>📢</span>
+        {mobile && (
+          <span style={{ fontSize: 13, fontWeight: 700, color: t.primary }}>
+            {data.label || "Announcement"}
+          </span>
+        )}
+      </div>
       <div style={{ flex: 1 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: t.primary, marginRight: 8 }}>
-          {data.label || "New Batch Starting:"}
-        </span>
-        <span style={{ fontSize: 13, color: t.text }}>
+        {!mobile && (
+          <span style={{ fontSize: 13, fontWeight: 700, color: t.primary, marginRight: 8 }}>
+            {data.label || "New Batch Starting:"}
+          </span>
+        )}
+        <span style={{ fontSize: 13, color: t.text, lineHeight: 1.5 }}>
           {data.text || "JEE 2026 Dropper Batch begins June 1st. Limited seats available."}
         </span>
       </div>
@@ -1107,6 +1907,7 @@ function AnnouncementComponent({ data, theme: t, selected, onClick, previewMode 
           fontWeight: 600,
           cursor: previewMode ? "pointer" : "default",
           whiteSpace: "nowrap",
+          width: mobile ? "100%" : "auto",
         }}
         onClick={previewMode ? (e) => handleCtaClick(e, data.ctaUrl) : undefined}
       >
@@ -1116,7 +1917,14 @@ function AnnouncementComponent({ data, theme: t, selected, onClick, previewMode 
   );
 }
 
-function PricingComponent({ data, theme: t, selected, onClick, previewMode }: ComponentProps) {
+function PricingComponent({
+  data,
+  theme: t,
+  selected,
+  onClick,
+  previewMode,
+  mobile,
+}: ComponentProps) {
   const plans = data.plans || [
     {
       name: "Foundation",
@@ -1145,16 +1953,16 @@ function PricingComponent({ data, theme: t, selected, onClick, previewMode }: Co
       onClick={onClick}
       style={{
         background: t.bg,
-        padding: "60px 40px",
+        padding: mobile ? "40px 20px" : "60px 40px",
         cursor: "pointer",
         outline: selected ? `3px solid ${t.accent}` : "none",
         outlineOffset: -3,
       }}
     >
-      <div style={{ textAlign: "center", marginBottom: 40 }}>
+      <div style={{ textAlign: "center", marginBottom: mobile ? 24 : 40 }}>
         <div
           style={{
-            fontSize: 13,
+            fontSize: mobile ? 12 : 13,
             fontWeight: 700,
             color: t.primary,
             letterSpacing: 2,
@@ -1164,30 +1972,32 @@ function PricingComponent({ data, theme: t, selected, onClick, previewMode }: Co
         >
           {data.eyebrow || "Pricing"}
         </div>
-        <div style={{ fontSize: 34, fontWeight: 800, color: t.text }}>
+        <div style={{ fontSize: mobile ? 24 : 34, fontWeight: 800, color: t.text }}>
           {data.title || "Simple, Transparent Pricing"}
         </div>
       </div>
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: 24,
+          gridTemplateColumns: mobile ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: mobile ? 20 : 24,
           maxWidth: 860,
           margin: "0 auto",
+          paddingTop: mobile ? 20 : 0,
         }}
       >
         {plans.map((p: any, i: number) => (
           <div
             key={i}
+            className="ib-card"
             style={{
               background: p.popular ? t.primary : t.surface,
               borderRadius: 20,
-              padding: 28,
+              padding: mobile ? 24 : 28,
               position: "relative",
               boxShadow: p.popular ? `0 12px 40px ${t.primary}40` : "0 2px 16px rgba(0,0,0,0.06)",
               border: p.popular ? "none" : `1px solid ${t.primary}10`,
-              transform: p.popular ? "scale(1.04)" : "none",
+              transform: p.popular && !mobile ? "scale(1.04)" : "none",
             }}
           >
             {p.popular && (
@@ -1204,6 +2014,7 @@ function PricingComponent({ data, theme: t, selected, onClick, previewMode }: Co
                   fontSize: 11,
                   fontWeight: 700,
                   whiteSpace: "nowrap",
+                  zIndex: 1,
                 }}
               >
                 Most Popular
@@ -1220,7 +2031,13 @@ function PricingComponent({ data, theme: t, selected, onClick, previewMode }: Co
               {p.name}
             </div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginBottom: 24 }}>
-              <span style={{ fontSize: 36, fontWeight: 800, color: p.popular ? "#fff" : t.text }}>
+              <span
+                style={{
+                  fontSize: mobile ? 30 : 36,
+                  fontWeight: 800,
+                  color: p.popular ? "#fff" : t.text,
+                }}
+              >
                 {p.price}
               </span>
               <span style={{ fontSize: 13, color: p.popular ? "rgba(255,255,255,0.6)" : "#999" }}>
@@ -1444,6 +2261,7 @@ function BatchScheduleComponent({
   selected,
   onClick,
   previewMode,
+  mobile,
 }: ComponentProps) {
   const batches = data.batches || [
     {
@@ -1473,16 +2291,16 @@ function BatchScheduleComponent({
       onClick={onClick}
       style={{
         background: t.surface,
-        padding: "60px 40px",
+        padding: mobile ? "40px 20px" : "60px 40px",
         cursor: "pointer",
         outline: selected ? `3px solid ${t.accent}` : "none",
         outlineOffset: -3,
       }}
     >
-      <div style={{ textAlign: "center", marginBottom: 40 }}>
+      <div style={{ textAlign: "center", marginBottom: mobile ? 24 : 40 }}>
         <div
           style={{
-            fontSize: 13,
+            fontSize: mobile ? 12 : 13,
             fontWeight: 700,
             color: t.primary,
             letterSpacing: 2,
@@ -1492,7 +2310,7 @@ function BatchScheduleComponent({
         >
           {data.eyebrow || "Upcoming Batches"}
         </div>
-        <div style={{ fontSize: 34, fontWeight: 800, color: t.text }}>
+        <div style={{ fontSize: mobile ? 24 : 34, fontWeight: 800, color: t.text }}>
           {data.title || "Find Your Perfect Schedule"}
         </div>
       </div>
@@ -1508,83 +2326,116 @@ function BatchScheduleComponent({
         {batches.map((b: any, i: number) => (
           <div
             key={i}
+            className="ib-card"
             style={{
               background: t.bg,
               borderRadius: 14,
-              padding: "20px 24px",
+              padding: mobile ? "16px" : "20px 24px",
               display: "flex",
-              alignItems: "center",
-              gap: 24,
+              flexDirection: mobile ? "column" : "row",
+              alignItems: mobile ? "flex-start" : "center",
+              gap: mobile ? 16 : 24,
               border: `1px solid ${t.primary}10`,
             }}
           >
-            <div
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 12,
-                background: `${t.primary}15`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 20,
-                flexShrink: 0,
-              }}
-            >
-              📅
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <span style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{b.name}</span>
-                {b.tag && (
-                  <span
-                    style={{
-                      fontSize: 10,
-                      background: t.accent,
-                      color: "#fff",
-                      borderRadius: 20,
-                      padding: "2px 8px",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {b.tag}
-                  </span>
-                )}
-              </div>
-              <div style={{ fontSize: 13, color: "#666" }}>{b.time}</div>
-            </div>
-            <div style={{ textAlign: "right", flexShrink: 0 }}>
-              <div style={{ fontSize: 12, color: t.primary, fontWeight: 600, marginBottom: 4 }}>
-                {b.seats}
-              </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 16, width: "100%" }}>
               <div
                 style={{
-                  fontSize: 11,
+                  width: mobile ? 40 : 48,
+                  height: mobile ? 40 : 48,
+                  borderRadius: 12,
                   background: `${t.primary}15`,
-                  color: t.primary,
-                  borderRadius: 6,
-                  padding: "2px 8px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: mobile ? 16 : 20,
+                  flexShrink: 0,
                 }}
               >
-                {b.mode}
+                📅
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                  <span style={{ fontSize: mobile ? 14 : 15, fontWeight: 700, color: t.text }}>
+                    {b.name}
+                  </span>
+                  {b.tag && !mobile && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        background: t.accent,
+                        color: "#fff",
+                        borderRadius: 20,
+                        padding: "2px 8px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {b.tag}
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: mobile ? 12 : 13, color: "#666" }}>{b.time}</div>
               </div>
             </div>
-            <button
+
+            <div
               style={{
-                background: t.primary,
-                color: "#fff",
-                border: "none",
-                borderRadius: 8,
-                padding: "10px 18px",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: previewMode ? "pointer" : "default",
-                flexShrink: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                width: "100%",
+                gap: 12,
               }}
-              onClick={previewMode ? (e) => e.stopPropagation() : undefined}
             >
-              Enroll
-            </button>
+              <div style={{ textAlign: "left", flexShrink: 0 }}>
+                <div style={{ fontSize: 12, color: t.primary, fontWeight: 600, marginBottom: 4 }}>
+                  {b.seats}
+                  {mobile && b.tag && (
+                    <span
+                      style={{
+                        marginLeft: 8,
+                        fontSize: 10,
+                        background: t.accent,
+                        color: "#fff",
+                        borderRadius: 4,
+                        padding: "1px 6px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {b.tag}
+                    </span>
+                  )}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    background: `${t.primary}15`,
+                    color: t.primary,
+                    borderRadius: 6,
+                    padding: "2px 8px",
+                    display: "inline-block",
+                  }}
+                >
+                  {b.mode}
+                </div>
+              </div>
+              <button
+                style={{
+                  background: t.primary,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  padding: mobile ? "8px 16px" : "10px 18px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: previewMode ? "pointer" : "default",
+                  flexShrink: 0,
+                }}
+                onClick={previewMode ? (e) => e.stopPropagation() : undefined}
+              >
+                Enroll
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -1622,47 +2473,63 @@ function TrustBadgesComponent({ data, theme: t, selected, onClick }: ComponentPr
           flexWrap: "wrap",
         }}
       >
-        {badges.map((b: any, i: number) => (
-          <div key={i} style={{ textAlign: "center" }}>
-            <div
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: "50%",
-                background: `${t.primary}10`,
-                border: `2px solid ${t.primary}20`,
-                margin: "0 auto 8px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
+        {badges.map((b: any, i: number) => {
+          const IconComp = ICON_MAP[b.icon] || CheckCircle2;
+          return (
+            <div key={i} style={{ textAlign: "center" }}>
               <div
                 style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: 6,
-                  background: t.primary,
-                  opacity: 0.5,
+                  width: 56,
+                  height: 56,
+                  borderRadius: "50%",
+                  background: `${t.secondary}15`,
+                  border: `2px solid ${t.secondary}20`,
+                  margin: "0 auto 12px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
-              ></div>
+              >
+                <IconComp size={24} color={t.secondary} />
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{b.label}</div>
+              <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>{b.sub}</div>
             </div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{b.label}</div>
-            <div style={{ fontSize: 11, color: "#999", marginTop: 2 }}>{b.sub}</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function AppDownloadComponent({ data, theme: t, selected, onClick }: ComponentProps) {
+function AppDownloadComponent({ data, theme: t, selected, onClick, mobile }: ComponentProps) {
+  const storeLinks = [
+    {
+      label: "App Store",
+      url: data.appStoreUrl,
+      icon: (
+        <svg viewBox="0 0 384 512" width="18" fill="currentColor">
+          <path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-31.4-73.7-100.8-21.7-131.9zM281.7 81.9c15-18.4 25-44.1 22.1-69.8-21.8 1.3-48.4 15-64.1 33.7-14 16.4-26.1 43.1-22.1 67.8 24.3 2 49-11.4 64.1-31.7z" />
+        </svg>
+      ),
+    },
+    {
+      label: "Google Play",
+      url: data.playStoreUrl,
+      icon: (
+        <svg viewBox="0 0 512 512" width="18" fill="currentColor">
+          <path d="M325.3 234.3L104.6 13l280.8 161.2-60.1 60.1zM47 0C34 6.8 25.3 19.2 25.3 35.3v441.3c0 16.1 8.7 28.5 21.7 35.3l256.6-256L47 0zm425.2 225.6l-58.9-34.1-65.7 64.5 65.7 64.5 60.1-34.1c18-14.3 18-46.5-1.2-60.8zM104.6 499l280.8-161.2-60.1-60.1L104.6 499z" />
+        </svg>
+      ),
+    },
+  ];
+
   return (
     <div
       onClick={onClick}
       style={{
         background: `linear-gradient(135deg, ${t.text} 0%, ${t.primary} 100%)`,
-        padding: "60px 40px",
+        padding: mobile ? "40px 20px" : "60px 40px",
         cursor: "pointer",
         outline: selected ? `3px solid ${t.accent}` : "none",
         outlineOffset: -3,
@@ -1671,17 +2538,17 @@ function AppDownloadComponent({ data, theme: t, selected, onClick }: ComponentPr
       <div
         style={{
           display: "flex",
+          flexDirection: mobile ? "column" : "row",
           alignItems: "center",
-          flexWrap: "wrap",
-          gap: 40,
-          maxWidth: 900,
+          gap: mobile ? 32 : 48,
+          maxWidth: 1000,
           margin: "0 auto",
         }}
       >
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, textAlign: mobile ? "center" : "left" }}>
           <div
             style={{
-              fontSize: 13,
+              fontSize: mobile ? 12 : 13,
               fontWeight: 700,
               color: t.secondary,
               letterSpacing: 2,
@@ -1693,7 +2560,7 @@ function AppDownloadComponent({ data, theme: t, selected, onClick }: ComponentPr
           </div>
           <div
             style={{
-              fontSize: 36,
+              fontSize: mobile ? 28 : 36,
               fontWeight: 800,
               color: "#fff",
               lineHeight: 1.2,
@@ -1708,73 +2575,92 @@ function AppDownloadComponent({ data, theme: t, selected, onClick }: ComponentPr
               color: "rgba(255,255,255,0.7)",
               marginBottom: 32,
               lineHeight: 1.7,
+              maxWidth: mobile ? "100%" : 500,
             }}
           >
             {data.desc ||
               "Download our app for offline lectures, live classes, test series, and AI doubt solving on the go."}
           </div>
-          <div style={{ display: "flex", gap: 12 }}>
-            {["App Store", "Google Play"].map((store, i) => (
-              <div
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              justifyContent: mobile ? "center" : "flex-start",
+              flexWrap: "wrap",
+            }}
+          >
+            {storeLinks.map((store, i) => (
+              <a
                 key={i}
+                href={store.url || "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
                 style={{
                   background: "rgba(255,255,255,0.12)",
                   border: "1.5px solid rgba(255,255,255,0.25)",
-                  borderRadius: 12,
+                  borderRadius: 14,
                   padding: "10px 20px",
                   display: "flex",
                   alignItems: "center",
-                  gap: 10,
+                  gap: 12,
                   cursor: "pointer",
+                  textDecoration: "none",
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.2)";
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.12)";
+                  e.currentTarget.style.transform = "translateY(0)";
                 }}
               >
-                <div
-                  style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: 6,
-                    background: "rgba(255,255,255,0.2)",
-                  }}
-                ></div>
-                <div>
+                <div style={{ color: "#fff" }}>{store.icon}</div>
+                <div style={{ textAlign: "left" }}>
                   <div
                     style={{
                       fontSize: 9,
                       color: "rgba(255,255,255,0.6)",
                       textTransform: "uppercase",
+                      letterSpacing: 0.5,
                     }}
                   >
                     Download on
                   </div>
-                  <div style={{ fontSize: 14, color: "#fff", fontWeight: 700 }}>{store}</div>
+                  <div style={{ fontSize: 14, color: "#fff", fontWeight: 700 }}>{store.label}</div>
                 </div>
-              </div>
+              </a>
             ))}
           </div>
         </div>
         <div
           style={{
-            width: 160,
-            height: 280,
-            background: "rgba(255,255,255,0.08)",
-            borderRadius: 28,
-            border: "2px dashed rgba(255,255,255,0.2)",
+            width: mobile ? 200 : 240,
+            aspectRatio: "9/16",
+            background: data.image
+              ? `url(${data.image}) center/cover no-repeat`
+              : "rgba(255,255,255,0.08)",
+            borderRadius: 32,
+            border: data.image ? "none" : "2px dashed rgba(255,255,255,0.2)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             flexShrink: 0,
-            fontSize: 10,
+            fontSize: 11,
             color: "rgba(255,255,255,0.3)",
+            boxShadow: "0 20px 40px rgba(0,0,0,0.3)",
           }}
         >
-          app screenshot
+          {!data.image && "app screenshot"}
         </div>
       </div>
     </div>
   );
 }
 
-function AboutComponent({ data, theme: t, selected, onClick }: ComponentProps) {
+function AboutComponent({ data, theme: t, selected, onClick, mobile }: ComponentProps) {
   const milestones = data.milestones || [
     { year: "2009", text: "Founded with 30 students" },
     { year: "2014", text: "Launched online platform" },
@@ -1786,7 +2672,7 @@ function AboutComponent({ data, theme: t, selected, onClick }: ComponentProps) {
       onClick={onClick}
       style={{
         background: t.surface,
-        padding: "60px 40px",
+        padding: mobile ? "40px 20px" : "80px 40px",
         cursor: "pointer",
         outline: selected ? `3px solid ${t.accent}` : "none",
         outlineOffset: -3,
@@ -1794,18 +2680,18 @@ function AboutComponent({ data, theme: t, selected, onClick }: ComponentProps) {
     >
       <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-          gap: 40,
-          maxWidth: 960,
-          margin: "0 auto",
+          display: "flex",
+          flexDirection: mobile ? "column" : "row",
           alignItems: "center",
+          gap: mobile ? 32 : 60,
+          maxWidth: 1100,
+          margin: "0 auto",
         }}
       >
-        <div>
+        <div style={{ flex: 1, textAlign: mobile ? "center" : "left" }}>
           <div
             style={{
-              fontSize: 13,
+              fontSize: mobile ? 12 : 13,
               fontWeight: 700,
               color: t.primary,
               letterSpacing: 2,
@@ -1817,7 +2703,7 @@ function AboutComponent({ data, theme: t, selected, onClick }: ComponentProps) {
           </div>
           <div
             style={{
-              fontSize: 34,
+              fontSize: mobile ? 28 : 36,
               fontWeight: 800,
               color: t.text,
               marginBottom: 20,
@@ -1826,72 +2712,117 @@ function AboutComponent({ data, theme: t, selected, onClick }: ComponentProps) {
           >
             {data.title || "Transforming Lives Through Education"}
           </div>
-          <div style={{ fontSize: 14, color: "#666", lineHeight: 1.8, marginBottom: 28 }}>
+          <div
+            style={{
+              fontSize: 15,
+              color: "#666",
+              lineHeight: 1.8,
+              marginBottom: 32,
+              maxWidth: mobile ? "100%" : 560,
+            }}
+          >
             {data.desc ||
-              "We started with a simple belief: every student deserves world-class education."}
+              "We started with a simple belief: every student deserves world-class education. Join us on our journey to empower the next generation of leaders."}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: mobile ? "1fr" : "1fr 1fr",
+              gap: 20,
+            }}
+          >
             {milestones.map((m: any, i: number) => (
-              <div key={i} style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  gap: 16,
+                  alignItems: "center",
+                  background: mobile ? t.bg : "transparent",
+                  padding: mobile ? "12px 16px" : 0,
+                  borderRadius: 12,
+                }}
+              >
                 <div
                   style={{
                     fontSize: 12,
                     fontWeight: 800,
                     color: t.primary,
                     background: `${t.primary}10`,
-                    padding: "4px 10px",
+                    padding: "4px 12px",
                     borderRadius: 8,
                     whiteSpace: "nowrap",
                   }}
                 >
                   {m.year}
                 </div>
-                <div style={{ fontSize: 14, color: t.text, paddingTop: 4 }}>{m.text}</div>
+                <div style={{ fontSize: 14, color: t.text, fontWeight: 500 }}>{m.text}</div>
               </div>
             ))}
           </div>
         </div>
         <div
           style={{
-            borderRadius: 20,
-            background: `repeating-linear-gradient(45deg, ${t.primary}08, ${t.primary}08 10px, transparent 10px, transparent 20px)`,
-            border: `2px dashed ${t.primary}25`,
-            aspectRatio: "4/3",
+            flex: 1,
+            width: "100%",
+            aspectRatio: mobile ? "16/9" : "4/3",
+            background: data.image
+              ? `url(${data.image}) center/cover no-repeat`
+              : `repeating-linear-gradient(45deg, ${t.primary}08, ${t.primary}08 10px, transparent 10px, transparent 20px)`,
+            borderRadius: 24,
+            border: data.image ? "none" : `2px dashed ${t.primary}20`,
+            boxShadow: data.image ? "0 20px 40px rgba(0,0,0,0.12)" : "none",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: 11,
+            fontSize: 12,
             color: t.primary,
-            opacity: 0.6,
+            opacity: data.image ? 1 : 0.6,
           }}
         >
-          campus photo
+          {!data.image && "Mission Image"}
         </div>
       </div>
     </div>
   );
 }
 
-function LiveClassComponent({ data, theme: t, selected, onClick, previewMode }: ComponentProps) {
+function LiveClassComponent({
+  data,
+  theme: t,
+  selected,
+  onClick,
+  previewMode,
+  mobile,
+}: ComponentProps) {
+  console.log(mobile);
   return (
     <div
       onClick={onClick}
       style={{
         background: t.surface,
-        padding: "32px 40px",
+        padding: mobile ? "16px 20px" : "32px 40px",
         cursor: "pointer",
         outline: selected ? `3px solid ${t.accent}` : "none",
         outlineOffset: -3,
       }}
     >
       <div
+        className="ib-card"
         style={{
           background: "linear-gradient(135deg, #dc2626 0%, #991b1b 100%)",
           borderRadius: 20,
-          padding: "28px 32px",
+          padding: mobile ? "16px" : "28px 32px",
           display: "flex",
-          alignItems: "center",
-          gap: 24,
+          flexDirection: mobile ? "column" : "row",
+          flexWrap: "wrap",
+          alignItems: mobile ? "stretch" : "center",
+          textAlign: mobile ? "center" : "left",
+          gap: mobile ? 12 : 24,
+          overflow: "hidden",
+          width: "100%",
+          maxWidth: "100%",
+          boxSizing: "border-box",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
@@ -1900,11 +2831,19 @@ function LiveClassComponent({ data, theme: t, selected, onClick, previewMode }: 
             LIVE NOW
           </span>
         </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 4 }}>
+        <div style={{ flex: 1, width: mobile ? "100%" : "auto", minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: mobile ? 20 : 18,
+              fontWeight: 700,
+              color: "#fff",
+              marginBottom: 8,
+              lineHeight: 1.3,
+            }}
+          >
             {data.title || "Thermodynamics - JEE Advanced Level | Dr. Rajesh Kumar"}
           </div>
-          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)" }}>
+          <div style={{ fontSize: mobile ? 14 : 13, color: "rgba(255,255,255,0.7)" }}>
             {data.subject || "Physics"} · {data.viewers || "1,247"} students watching
           </div>
         </div>
@@ -1919,6 +2858,8 @@ function LiveClassComponent({ data, theme: t, selected, onClick, previewMode }: 
             fontWeight: 700,
             cursor: previewMode ? "pointer" : "default",
             flexShrink: 0,
+            width: mobile ? "100%" : "auto",
+            marginTop: mobile ? 8 : 0,
           }}
           onClick={previewMode ? (e) => handleCtaClick(e, data.ctaUrl) : undefined}
         >
@@ -1929,7 +2870,7 @@ function LiveClassComponent({ data, theme: t, selected, onClick, previewMode }: 
   );
 }
 
-function StatsComponent({ data, theme: t, selected, onClick }: ComponentProps) {
+function StatsComponent({ data, theme: t, selected, onClick, mobile }: ComponentProps) {
   const stats = data.stats || [
     { num: "50,000+", label: "Students Enrolled", icon: "🎓" },
     { num: "500+", label: "Expert Faculty", icon: "👨‍🏫" },
@@ -1941,17 +2882,34 @@ function StatsComponent({ data, theme: t, selected, onClick }: ComponentProps) {
       onClick={onClick}
       style={{
         background: t.bg,
-        padding: "60px 40px",
+        padding: mobile ? "40px 20px" : "60px 40px",
         cursor: "pointer",
         outline: selected ? `3px solid ${t.accent}` : "none",
         outlineOffset: -3,
       }}
     >
+      <div style={{ textAlign: "center", marginBottom: mobile ? 24 : 40 }}>
+        <div
+          style={{
+            fontSize: mobile ? 12 : 13,
+            fontWeight: 700,
+            color: t.primary,
+            letterSpacing: 2,
+            textTransform: "uppercase",
+            marginBottom: 8,
+          }}
+        >
+          {data.eyebrow || "Our Impact"}
+        </div>
+        <div style={{ fontSize: mobile ? 24 : 34, fontWeight: 800, color: t.text }}>
+          {data.title || "Numbers that Speak for Our Excellence"}
+        </div>
+      </div>
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-          gap: 20,
+          gridTemplateColumns: mobile ? "repeat(2, 1fr)" : "repeat(auto-fit, minmax(150px, 1fr))",
+          gap: mobile ? 12 : 20,
           maxWidth: 900,
           margin: "0 auto",
         }}
@@ -1959,18 +2917,33 @@ function StatsComponent({ data, theme: t, selected, onClick }: ComponentProps) {
         {stats.map((s: any, i: number) => (
           <div
             key={i}
+            className="ib-card"
             style={{
               textAlign: "center",
-              padding: "32px 16px",
+              padding: mobile ? "16px 8px" : "32px 16px",
               background: t.surface,
               borderRadius: 20,
               boxShadow: "0 2px 16px rgba(0,0,0,0.05)",
               border: `1px solid ${t.primary}10`,
             }}
           >
-            <div style={{ fontSize: 32, marginBottom: 12 }}>{s.icon}</div>
-            <div style={{ fontSize: 36, fontWeight: 800, color: t.primary }}>{s.num}</div>
-            <div style={{ fontSize: 13, color: "#666", marginTop: 6 }}>{s.label}</div>
+            {(() => {
+              const IconComp = ICON_MAP[s.icon];
+              if (!IconComp) return null;
+              return (
+                <IconComp
+                  size={mobile ? 28 : 44}
+                  color={t.secondary}
+                  style={{ marginBottom: mobile ? 8 : 16, marginInline: "auto" }}
+                />
+              );
+            })()}
+            <div style={{ fontSize: mobile ? 22 : 36, fontWeight: 800, color: t.secondary }}>
+              {s.num}
+            </div>
+            <div style={{ fontSize: mobile ? 11 : 13, color: "#666", marginTop: mobile ? 4 : 6 }}>
+              {s.label}
+            </div>
           </div>
         ))}
       </div>
@@ -1978,7 +2951,7 @@ function StatsComponent({ data, theme: t, selected, onClick }: ComponentProps) {
   );
 }
 
-function BlogComponent({ data, theme: t, selected, onClick }: ComponentProps) {
+function BlogComponent({ data, theme: t, selected, onClick, mobile }: ComponentProps) {
   const posts = data.posts || [
     { title: "JEE Advanced 2025 Syllabus Changes", date: "Apr 28, 2025", tag: "JEE" },
     { title: "NEET 2025 Cut-off Predictions", date: "Apr 22, 2025", tag: "NEET" },
@@ -1989,16 +2962,16 @@ function BlogComponent({ data, theme: t, selected, onClick }: ComponentProps) {
       onClick={onClick}
       style={{
         background: t.surface,
-        padding: "60px 40px",
+        padding: mobile ? "40px 20px" : "60px 40px",
         cursor: "pointer",
         outline: selected ? `3px solid ${t.accent}` : "none",
         outlineOffset: -3,
       }}
     >
-      <div style={{ textAlign: "center", marginBottom: 40 }}>
+      <div style={{ textAlign: "center", marginBottom: mobile ? 24 : 40 }}>
         <div
           style={{
-            fontSize: 13,
+            fontSize: mobile ? 12 : 13,
             fontWeight: 700,
             color: t.primary,
             letterSpacing: 2,
@@ -2008,20 +2981,21 @@ function BlogComponent({ data, theme: t, selected, onClick }: ComponentProps) {
         >
           {data.eyebrow || "Latest Updates"}
         </div>
-        <div style={{ fontSize: 34, fontWeight: 800, color: t.text }}>
+        <div style={{ fontSize: mobile ? 24 : 34, fontWeight: 800, color: t.text }}>
           {data.title || "News & Study Resources"}
         </div>
       </div>
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-          gap: 24,
+          gridTemplateColumns: mobile ? "1fr" : "repeat(auto-fit, minmax(240px, 1fr))",
+          gap: mobile ? 20 : 24,
         }}
       >
         {posts.map((p: any, i: number) => (
           <div
             key={i}
+            className="ib-card"
             style={{
               borderRadius: 16,
               overflow: "hidden",
@@ -2079,7 +3053,14 @@ function BlogComponent({ data, theme: t, selected, onClick }: ComponentProps) {
   );
 }
 
-function CountdownComponent({ data, theme: t, selected, onClick, previewMode }: ComponentProps) {
+function CountdownComponent({
+  data,
+  theme: t,
+  selected,
+  onClick,
+  previewMode,
+  mobile,
+}: ComponentProps) {
   const [time, setTime] = useState({ d: 12, h: 8, m: 34, s: 56 });
   useEffect(() => {
     const interval = setInterval(() => {
@@ -2109,7 +3090,7 @@ function CountdownComponent({ data, theme: t, selected, onClick, previewMode }: 
       onClick={onClick}
       style={{
         background: `${t.primary}08`,
-        padding: "48px 40px",
+        padding: mobile ? "40px 20px" : "48px 40px",
         cursor: "pointer",
         outline: selected ? `3px solid ${t.accent}` : "none",
         outlineOffset: -3,
@@ -2131,7 +3112,15 @@ function CountdownComponent({ data, theme: t, selected, onClick, previewMode }: 
       <div style={{ fontSize: 28, fontWeight: 800, color: t.text, marginBottom: 28 }}>
         {data.title || "JEE 2026 Batch Registration Ends In"}
       </div>
-      <div style={{ display: "flex", justifyContent: "center", gap: 20, marginBottom: 32 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          gap: mobile ? 12 : 20,
+          marginBottom: 32,
+          flexWrap: "wrap",
+        }}
+      >
         {(
           [
             ["Days", time.d],
@@ -2146,16 +3135,33 @@ function CountdownComponent({ data, theme: t, selected, onClick, previewMode }: 
               textAlign: "center",
               background: t.surface,
               borderRadius: 16,
-              padding: "20px 24px",
-              minWidth: 80,
+              padding: mobile ? "12px 16px" : "20px 24px",
+              minWidth: mobile ? 70 : 80,
               boxShadow: "0 2px 16px rgba(0,0,0,0.08)",
               border: `1px solid ${t.primary}15`,
             }}
           >
-            <div style={{ fontSize: 40, fontWeight: 800, color: t.primary }}>
+            <div
+              style={{
+                fontSize: mobile ? 28 : 40,
+                fontWeight: 800,
+                color: t.primary,
+                lineHeight: 1,
+              }}
+            >
               {String(val).padStart(2, "0")}
             </div>
-            <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>{label}</div>
+            <div
+              style={{
+                fontSize: mobile ? 10 : 12,
+                color: "#6b7280",
+                marginTop: 4,
+                textTransform: "uppercase",
+                letterSpacing: 1,
+              }}
+            >
+              {label}
+            </div>
           </div>
         ))}
       </div>
@@ -2178,13 +3184,58 @@ function CountdownComponent({ data, theme: t, selected, onClick, previewMode }: 
   );
 }
 
-function FooterComponent({ data, theme: t, selected, onClick }: ComponentProps) {
+function FooterComponent({
+  data,
+  theme: t,
+  selected,
+  onClick,
+  instituteName,
+  instituteLogo,
+  sections = [],
+}: ComponentProps) {
+  const { tenant } = useTenant();
+
+  // 1. Social Links
+  const socialLinks = data.socialLinks || [];
+  const validSocials = socialLinks.filter((s: any) => s.platform && s.url).slice(0, 4);
+
+  // 2. Dynamic Courses
+  const courseSection = sections.find((s) => s.type === "courses");
+  const footerCourses = (courseSection?.data?.courses || []).slice(0, 6);
+
+  // 3. Institute Links
+  const SECTION_LABELS: Record<string, string> = {
+    about: "About Us",
+    faculty: "Faculty",
+    results: "Results",
+    blog: "Blog",
+    faq: "FAQ",
+    gallery: "Gallery",
+    testimonials: "Testimonials",
+    contact: "Contact",
+  };
+
+  const instituteLinks = sections
+    .filter((s) => SECTION_LABELS[s.type])
+    .map((s) => ({
+      label: SECTION_LABELS[s.type],
+      id: s.id,
+    }));
+
+  // 4. Contact Sync from Footer Component Data
+  const contact = {
+    phone: data.phone || "",
+    email: data.email || "",
+    whatsapp: data.whatsapp || "",
+  };
+  const hasContact = contact.phone || contact.email || contact.whatsapp;
+
   return (
     <div
       onClick={onClick}
       style={{
-        background: t.text,
-        padding: "48px 40px 24px",
+        background: t.primary,
+        padding: "60px 40px 30px",
         cursor: "pointer",
         outline: selected ? `3px solid ${t.accent}` : "none",
         outlineOffset: -3,
@@ -2193,95 +3244,254 @@ function FooterComponent({ data, theme: t, selected, onClick }: ComponentProps) 
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-          gap: 32,
-          marginBottom: 40,
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+          gap: 48,
+          marginBottom: 60,
         }}
       >
+        {/* Brand Column */}
         <div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", marginBottom: 12 }}>
-            {data.name || "Apex Institute"}
-          </div>
           <div
             style={{
-              fontSize: 13,
-              color: "rgba(255,255,255,0.5)",
-              lineHeight: 1.7,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
               marginBottom: 20,
             }}
           >
-            {data.tagline || "India's leading coaching institute. Trusted by 50,000+ students."}
+            {instituteLogo && (
+              <img
+                src={instituteLogo}
+                alt="logo"
+                style={{ height: 36, width: "auto", objectFit: "contain" }}
+              />
+            )}
+            <div style={{ fontSize: 24, fontWeight: 800, color: "#fff" }}>
+              {instituteName || data.name || "Apex Institute"}
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            {["fb", "tw", "yt", "ig"].map((s) => (
-              <div
-                key={s}
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 8,
-                  background: "rgba(255,255,255,0.1)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 11,
-                  color: "rgba(255,255,255,0.5)",
-                }}
-              >
-                {s}
-              </div>
-            ))}
-          </div>
+          <p
+            style={{
+              fontSize: 14,
+              color: "rgba(255,255,255,0.6)",
+              lineHeight: 1.7,
+              marginBottom: 24,
+              maxWidth: 300,
+            }}
+          >
+            {data.tagline ||
+              "Providing quality education and empowering students for a brighter future."}
+          </p>
+
+          {validSocials.length > 0 && (
+            <div style={{ display: "flex", gap: 12 }}>
+              {validSocials.map((social: any, i: number) => {
+                const Icon = SOCIAL_ICONS[social.platform.toLowerCase()];
+                if (!Icon) return null;
+                const url = social.url.startsWith("http") ? social.url : `https://${social.url}`;
+                return (
+                  <a
+                    key={i}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 12,
+                      background: "rgba(255,255,255,0.1)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#fff",
+                      transition: "all 0.2s",
+                      textDecoration: "none",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "rgba(255,255,255,0.2)";
+                      e.currentTarget.style.transform = "translateY(-2px)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "rgba(255,255,255,0.1)";
+                      e.currentTarget.style.transform = "translateY(0)";
+                    }}
+                  >
+                    <Icon size={20} />
+                  </a>
+                );
+              })}
+            </div>
+          )}
         </div>
-        {[
-          { title: "Courses", links: ["JEE Main", "JEE Advanced", "NEET", "Class 10"] },
-          { title: "Institute", links: ["About Us", "Faculty", "Results", "Blog"] },
-          { title: "Support", links: ["Contact", "FAQ", "Privacy Policy", "Terms"] },
-        ].map((col, i) => (
-          <div key={i}>
-            <div
+
+        {/* Courses Column */}
+        {footerCourses.length > 0 && (
+          <div>
+            <h4
               style={{
-                fontSize: 13,
-                fontWeight: 700,
+                fontSize: 14,
+                fontWeight: 800,
                 color: "#fff",
-                marginBottom: 16,
                 textTransform: "uppercase",
-                letterSpacing: 1,
+                letterSpacing: 1.5,
+                marginBottom: 24,
               }}
             >
-              {col.title}
+              Popular Courses
+            </h4>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {footerCourses.map((course: any, i: number) => (
+                <div
+                  key={i}
+                  style={{
+                    fontSize: 14,
+                    color: "rgba(255,255,255,0.5)",
+                    cursor: "pointer",
+                    transition: "color 0.2s",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.5)")}
+                >
+                  {course.name}
+                </div>
+              ))}
             </div>
-            {col.links.map((link, li) => (
-              <div
-                key={li}
-                style={{
-                  fontSize: 13,
-                  color: "rgba(255,255,255,0.45)",
-                  marginBottom: 10,
-                  cursor: "pointer",
-                }}
-              >
-                {link}
-              </div>
-            ))}
           </div>
-        ))}
+        )}
+
+        {/* Institute Links Column */}
+        {instituteLinks.length > 0 && (
+          <div>
+            <h4
+              style={{
+                fontSize: 14,
+                fontWeight: 800,
+                color: "#fff",
+                textTransform: "uppercase",
+                letterSpacing: 1.5,
+                marginBottom: 24,
+              }}
+            >
+              Quick Links
+            </h4>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {instituteLinks.map((link, i) => (
+                <div
+                  key={i}
+                  onClick={(e) => handleCtaClick(e, `#${link.id}`)}
+                  style={{
+                    fontSize: 14,
+                    color: "rgba(255,255,255,0.5)",
+                    cursor: "pointer",
+                    transition: "color 0.2s",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.5)")}
+                >
+                  {link.label}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Contact Column */}
+        {hasContact && (
+          <div>
+            <h4
+              style={{
+                fontSize: 14,
+                fontWeight: 800,
+                color: "#fff",
+                textTransform: "uppercase",
+                letterSpacing: 1.5,
+                marginBottom: 24,
+              }}
+            >
+              Contact Us
+            </h4>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {contact.phone && (
+                <a
+                  href={`tel:${contact.phone}`}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    color: "rgba(255,255,255,0.5)",
+                    textDecoration: "none",
+                    fontSize: 14,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.5)")}
+                >
+                  <Phone size={16} /> {contact.phone}
+                </a>
+              )}
+              {contact.email && (
+                <a
+                  href={`mailto:${contact.email}`}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    color: "rgba(255,255,255,0.5)",
+                    textDecoration: "none",
+                    fontSize: 14,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.5)")}
+                >
+                  <Globe size={16} /> {contact.email}
+                </a>
+              )}
+              {contact.whatsapp && (
+                <a
+                  href={`https://wa.me/${contact.whatsapp.replace(/\D/g, "")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    color: "rgba(255,255,255,0.5)",
+                    textDecoration: "none",
+                    fontSize: 14,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "rgba(255,255,255,0.5)")}
+                >
+                  <MessageCircle size={16} /> WhatsApp Us
+                </a>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Bottom Bar */}
       <div
         style={{
           borderTop: "1px solid rgba(255,255,255,0.1)",
-          paddingTop: 20,
+          paddingTop: 30,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
+          flexWrap: "wrap",
+          gap: 20,
         }}
       >
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>
-          © 2025 {data.name || "Apex Institute"}. All rights reserved.
-        </div>
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>
+        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)" }}>
+          © {new Date().getFullYear()} {instituteName || data.name || "Apex Institute"}. All rights
+          reserved.
+        </p>
+        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>
           Powered by PREPAREKARO.IN
-        </div>
+        </p>
       </div>
     </div>
   );
@@ -2437,6 +3647,10 @@ function SortableSection({
   onMoveDown,
   theme,
   previewMode,
+  instituteName,
+  instituteLogo,
+  mobile,
+  sections,
 }: {
   section: Section;
   selected: boolean;
@@ -2446,6 +3660,10 @@ function SortableSection({
   onMoveDown: () => void;
   theme: Theme;
   previewMode: boolean;
+  instituteName: string;
+  instituteLogo: string;
+  mobile: boolean;
+  sections: Section[];
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: section.id,
@@ -2557,6 +3775,10 @@ function SortableSection({
         selected={!previewMode && selected}
         onClick={previewMode ? () => {} : onSelect}
         previewMode={previewMode}
+        instituteName={instituteName}
+        instituteLogo={instituteLogo}
+        mobile={mobile}
+        sections={sections}
       />
     </div>
   );
@@ -2591,9 +3813,18 @@ function LeftSidebar({
   setThemeKey,
   instituteName,
   setInstituteName,
+  instituteLogo,
+  setInstituteLogo,
+  uid,
   collapsed,
   onToggleCollapse,
   mobile = false,
+  useGradient,
+  setUseGradient,
+  themeMode,
+  setThemeMode,
+  customColor,
+  setCustomColor,
 }: {
   sections: Section[];
   onAdd: (type: string) => void;
@@ -2604,12 +3835,22 @@ function LeftSidebar({
   setThemeKey: (k: ThemeKey) => void;
   instituteName: string;
   setInstituteName: (n: string) => void;
+  instituteLogo: string;
+  setInstituteLogo: (u: string) => void;
+  uid: string | null;
   collapsed: boolean;
   onToggleCollapse: () => void;
   mobile?: boolean;
+  useGradient: boolean;
+  setUseGradient: (g: boolean) => void;
+  themeMode: "preset" | "custom";
+  setThemeMode: (m: "preset" | "custom") => void;
+  customColor: string;
+  setCustomColor: (c: string) => void;
 }) {
   const [tab, setTab] = useState<"components" | "layers" | "settings">("components");
   const [search, setSearch] = useState("");
+  const [showMoreThemes, setShowMoreThemes] = useState(false);
 
   const filtered = search.trim()
     ? Object.entries(COMPONENT_REGISTRY).filter(([, v]) =>
@@ -2890,6 +4131,81 @@ function LeftSidebar({
                   letterSpacing: 0.5,
                 }}
               >
+                Institute Logo
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div
+                  style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 8,
+                    background: "#f3f4f6",
+                    border: "1px solid rgba(0,0,0,0.1)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    overflow: "hidden",
+                  }}
+                >
+                  {instituteLogo ? (
+                    <img
+                      src={instituteLogo}
+                      style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                    />
+                  ) : (
+                    <span style={{ fontSize: 20 }}>🏫</span>
+                  )}
+                </div>
+                <input
+                  id="global-logo-upload"
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file || !uid) return;
+                    try {
+                      const res = await uploadToImageKit(
+                        file,
+                        `logo-${Date.now()}-${file.name}`,
+                        `/website-assets/${uid}`,
+                        "website"
+                      );
+                      setInstituteLogo(res.url);
+                    } catch (err: any) {
+                      toast.error("Logo upload failed");
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => document.getElementById("global-logo-upload")?.click()}
+                  style={{
+                    flex: 1,
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    border: "1px solid rgba(0,0,0,0.12)",
+                    background: "#fff",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {instituteLogo ? "Change Logo" : "Upload Logo"}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "rgba(0,0,0,0.4)",
+                  marginBottom: 6,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                }}
+              >
                 Institute Name
               </div>
               <input
@@ -2920,33 +4236,228 @@ function LeftSidebar({
                 Color Theme
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                {(Object.keys(THEME_PRESETS) as ThemeKey[]).map((key) => (
-                  <button
-                    key={key}
-                    onClick={() => setThemeKey(key)}
-                    title={key}
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: "50%",
-                      background: THEME_PRESETS[key].primary,
-                      border: themeKey === key ? "3px solid #6366f1" : "3px solid transparent",
-                      outline: themeKey === key ? `2px solid #6366f1` : "none",
-                      outlineOffset: 2,
-                      cursor: "pointer",
-                    }}
-                  />
-                ))}
+                {(Object.keys(THEME_PRESETS) as ThemeKey[])
+                  .slice(0, showMoreThemes ? 25 : 10)
+                  .map((key) => (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        setThemeKey(key);
+                        setThemeMode("preset");
+                        setCustomColor("");
+                      }}
+                      title={key}
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: "50%",
+                        background: THEME_PRESETS[key].primary,
+                        border:
+                          themeMode === "preset" && themeKey === key
+                            ? "3px solid #6366f1"
+                            : "3px solid transparent",
+                        outline:
+                          themeMode === "preset" && themeKey === key ? `2px solid #6366f1` : "none",
+                        outlineOffset: 2,
+                        cursor: "pointer",
+                        transition: "all 0.2s",
+                        opacity: themeMode === "custom" ? 0.5 : 1,
+                      }}
+                    />
+                  ))}
               </div>
-              <div
+              <button
+                onClick={() => setShowMoreThemes(!showMoreThemes)}
                 style={{
-                  marginTop: 8,
+                  marginTop: 12,
+                  background: "none",
+                  border: "none",
+                  color: "#4f46e5",
                   fontSize: 12,
-                  color: "rgba(0,0,0,0.4)",
-                  textTransform: "capitalize",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: 0,
                 }}
               >
-                Selected: {themeKey}
+                {showMoreThemes ? "Show Less" : `Show More`}
+              </button>
+              {themeMode === "preset" && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 12,
+                    color: "rgba(0,0,0,0.4)",
+                    textTransform: "capitalize",
+                  }}
+                >
+                  Selected Preset: {themeKey}
+                </div>
+              )}
+            </div>
+
+            <div
+              style={{
+                marginTop: 24,
+                padding: "16px 12px",
+                background: "rgba(99,102,241,0.04)",
+                borderRadius: 12,
+                border: "1px solid rgba(99,102,241,0.1)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 4,
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#1e1b4b" }}>Use Gradients</div>
+                <button
+                  onClick={() => setUseGradient(!useGradient)}
+                  style={{
+                    width: 38,
+                    height: 20,
+                    borderRadius: 20,
+                    background: useGradient ? "#4f46e5" : "#e5e7eb",
+                    border: "none",
+                    position: "relative",
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: "50%",
+                      background: "#fff",
+                      position: "absolute",
+                      top: 3,
+                      left: useGradient ? 21 : 3,
+                      transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                    }}
+                  />
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: "rgba(0,0,0,0.5)", lineHeight: 1.4 }}>
+                Adds premium glassmorphism gradients to your site sections based on your theme.
+              </div>
+            </div>
+
+            {/* Custom Brand Color */}
+            <div style={{ marginTop: 24 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "rgba(0,0,0,0.45)",
+                  marginBottom: 12,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                }}
+              >
+                Custom Brand Color
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: 6,
+                    }}
+                  >
+                    <label style={{ fontSize: 12, fontWeight: 700, color: "#1e1b4b" }}>
+                      Primary Hex Code
+                    </label>
+                    {themeMode === "custom" && (
+                      <div
+                        style={{
+                          fontSize: 10,
+                          background: "#e0e7ff",
+                          color: "#4338ca",
+                          padding: "2px 6px",
+                          borderRadius: 4,
+                          fontWeight: 700,
+                        }}
+                      >
+                        ACTIVE
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <div
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
+                        background:
+                          themeMode === "custom" ? customColor || "#4f46e5" : "transparent",
+                        border: "1px solid rgba(0,0,0,0.1)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 14,
+                        color: "rgba(0,0,0,0.2)",
+                      }}
+                    >
+                      {!customColor && "🎨"}
+                    </div>
+                    <input
+                      type="text"
+                      value={customColor}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCustomColor(val);
+                        if (val.length >= 4) setThemeMode("custom");
+                      }}
+                      placeholder="#4f46e5"
+                      style={{
+                        flex: 1,
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        border:
+                          themeMode === "custom"
+                            ? "2px solid #6366f1"
+                            : "1px solid rgba(0,0,0,0.12)",
+                        fontSize: 13,
+                        outline: "none",
+                        fontFamily: "monospace",
+                      }}
+                    />
+                  </div>
+                  <div style={{ fontSize: 11, color: "rgba(0,0,0,0.5)", marginTop: 8 }}>
+                    Enter a hex code to dynamically generate a complete theme for your site.
+                  </div>
+                </div>
+
+                {themeMode === "custom" && (
+                  <button
+                    onClick={() => {
+                      setThemeMode("preset");
+                      setCustomColor("");
+                    }}
+                    style={{
+                      marginTop: 8,
+                      background: "none",
+                      border: "none",
+                      color: "#dc2626",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      padding: 0,
+                    }}
+                  >
+                    Switch back to Preset Themes
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -2963,6 +4474,7 @@ function RightPanel({
   onUpdateArrayItem,
   onReplaceData,
   uid,
+  sections = [],
   mobile = false,
 }: {
   section: Section | null;
@@ -2970,6 +4482,7 @@ function RightPanel({
   onUpdateArrayItem: (arrayKey: string, index: number, subKey: string, value: string) => void;
   onReplaceData: (data: Record<string, any>) => void;
   uid: string | null;
+  sections?: Section[];
   mobile?: boolean;
 }) {
   const [uploading, setUploading] = useState<Record<string, boolean>>({});
@@ -3056,10 +4569,66 @@ function RightPanel({
     updateSection({ ...section.data, [arrayKey]: arr });
   }
 
+  function renderField(label: string, key: string, type: "text" | "textarea" = "text") {
+    return (
+      <div style={{ marginBottom: 16 }}>
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: "rgba(0,0,0,0.45)",
+            marginBottom: 6,
+            textTransform: "uppercase",
+            letterSpacing: 0.5,
+          }}
+        >
+          {label}
+        </div>
+        {type === "textarea" ? (
+          <textarea
+            value={section.data[key] || ""}
+            onChange={(e) => onUpdate(key, e.target.value)}
+            rows={3}
+            style={{
+              width: "100%",
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: "1px solid rgba(0,0,0,0.12)",
+              fontSize: 13,
+              outline: "none",
+              resize: "vertical",
+              fontFamily: "inherit",
+            }}
+          />
+        ) : (
+          <input
+            type="text"
+            value={section.data[key] || ""}
+            onChange={(e) => onUpdate(key, e.target.value)}
+            style={{
+              width: "100%",
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: "1px solid rgba(0,0,0,0.12)",
+              fontSize: 13,
+              outline: "none",
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
   function renderArrayEditor(
     title: string,
     arrayKey: string,
-    itemFields: Array<{ key: string; label: string; type?: "text" | "textarea" | "image" }>,
+    itemFields: Array<{
+      key: string;
+      label: string;
+      type?: "text" | "textarea" | "image" | "icon" | "select";
+      options?: string[];
+      subKey?: string;
+    }>,
     emptyItem: Record<string, any>
   ) {
     const items = section.data[arrayKey] || [];
@@ -3198,6 +4767,45 @@ function RightPanel({
                         Upload
                       </button>
                     </div>
+                  ) : f.type === "icon" ? (
+                    <select
+                      value={item[f.key] || ""}
+                      onChange={(e) => updateArrayField(arrayKey, i, f.key, e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "7px 9px",
+                        borderRadius: 6,
+                        border: "1px solid rgba(0,0,0,0.12)",
+                        fontSize: 12,
+                        background: "#fff",
+                      }}
+                    >
+                      <option value="">Select Icon</option>
+                      {ICON_OPTIONS.map((opt) => (
+                        <option key={opt.name} value={opt.name}>
+                          {opt.icon} {opt.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : f.type === "select" ? (
+                    <select
+                      value={item[f.key] || (f.options ? f.options[0] : "")}
+                      onChange={(e) => updateArrayField(arrayKey, i, f.key, e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "7px 9px",
+                        borderRadius: 6,
+                        border: "1px solid rgba(0,0,0,0.12)",
+                        fontSize: 12,
+                        background: "#fff",
+                      }}
+                    >
+                      {f.options?.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
                   ) : (
                     <input
                       type="text"
@@ -3483,6 +5091,107 @@ function RightPanel({
                     );
                   })()
                 )
+              ) : field.type === "cta-link" ? (
+                (() => {
+                  const raw: string = section.data[field.key] || "";
+                  const isSection = raw.startsWith("#");
+                  // Build section options from canvas sections (excluding current)
+                  const sectionOptions = sections
+                    .filter((s) => s.id !== section.id)
+                    .map((s, idx) => ({
+                      value: `#${s.id}`,
+                      label: `${COMPONENT_REGISTRY[s.type]?.label || s.type} ${sections.filter((x) => x.type === s.type).length > 1 ? `(Section ${idx + 1})` : ""}`,
+                    }));
+                  return (
+                    <div>
+                      {/* Toggle */}
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 0,
+                          marginBottom: 8,
+                          borderRadius: 8,
+                          overflow: "hidden",
+                          border: "1px solid rgba(0,0,0,0.12)",
+                        }}
+                      >
+                        {(["section", "external"] as const).map((mode) => {
+                          const active = mode === "section" ? isSection : !isSection;
+                          return (
+                            <button
+                              key={mode}
+                              onClick={() => {
+                                if (mode === "section") {
+                                  const first = sectionOptions[0]?.value || "";
+                                  onUpdate(field.key, first);
+                                } else {
+                                  onUpdate(field.key, "");
+                                }
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: "6px 0",
+                                border: "none",
+                                background: active ? "#6366f1" : "#f9f9f9",
+                                color: active ? "#fff" : "rgba(0,0,0,0.45)",
+                                fontSize: 11,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                letterSpacing: 0.3,
+                              }}
+                            >
+                              {mode === "section" ? "⬇ Scroll to Section" : "🔗 External URL"}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {isSection ? (
+                        sectionOptions.length === 0 ? (
+                          <div
+                            style={{ fontSize: 11, color: "rgba(0,0,0,0.35)", padding: "4px 2px" }}
+                          >
+                            No other sections on canvas yet.
+                          </div>
+                        ) : (
+                          <select
+                            value={raw}
+                            onChange={(e) => onUpdate(field.key, e.target.value)}
+                            style={{
+                              width: "100%",
+                              padding: "8px 10px",
+                              borderRadius: 8,
+                              border: "1px solid rgba(0,0,0,0.12)",
+                              fontSize: 13,
+                              outline: "none",
+                              background: "#fff",
+                            }}
+                          >
+                            {sectionOptions.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        )
+                      ) : (
+                        <input
+                          type="text"
+                          value={raw}
+                          onChange={(e) => onUpdate(field.key, e.target.value)}
+                          placeholder="https://example.com"
+                          style={{
+                            width: "100%",
+                            padding: "8px 10px",
+                            borderRadius: 8,
+                            border: "1px solid rgba(0,0,0,0.12)",
+                            fontSize: 13,
+                            outline: "none",
+                          }}
+                        />
+                      )}
+                    </div>
+                  );
+                })()
               ) : (
                 <input
                   type="text"
@@ -3502,14 +5211,188 @@ function RightPanel({
           ))
         )}
         {section.type === "hero" &&
+          (section.data.variant === "split" || section.data.variant === "carousel") &&
+          (() => {
+            const heroImages: string[] = Array.isArray(section.data.heroImages)
+              ? section.data.heroImages
+              : section.data.heroImage
+                ? [section.data.heroImage]
+                : [];
+            const uploadingKey = (i: number) => `heroImages-${i}`;
+            return (
+              <div
+                style={{ marginTop: 12, paddingTop: 14, borderTop: "1px solid rgba(0,0,0,0.08)" }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "rgba(0,0,0,0.45)",
+                    marginBottom: 8,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  Hero Images{" "}
+                  {heroImages.length > 1 ? `(${heroImages.length} — carousel)` : "(add 1 or more)"}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {heroImages.map((url, i) => {
+                    const isUpl = uploading[uploadingKey(i)] || false;
+                    const inputId = `hero-img-upload-${section.id}-${i}`;
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          border: "1px solid rgba(0,0,0,0.08)",
+                          borderRadius: 8,
+                          padding: 8,
+                        }}
+                      >
+                        <img
+                          src={url}
+                          alt={`Hero ${i + 1}`}
+                          style={{
+                            width: "100%",
+                            height: 72,
+                            objectFit: "cover",
+                            borderRadius: 6,
+                            marginBottom: 6,
+                          }}
+                        />
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <input
+                            id={inputId}
+                            type="file"
+                            accept="image/*"
+                            style={{ display: "none" }}
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              setUploading((prev) => ({ ...prev, [uploadingKey(i)]: true }));
+                              try {
+                                const res = await uploadToImageKit(
+                                  file,
+                                  `builder-${Date.now()}-${file.name}`,
+                                  `/website-assets/${uid}`,
+                                  "website"
+                                );
+                                const next = [...heroImages];
+                                next[i] = res.url;
+                                onReplaceData({ ...section.data, heroImages: next });
+                              } catch (err: any) {
+                                toast.error(err?.message || "Upload failed");
+                              } finally {
+                                setUploading((prev) => ({ ...prev, [uploadingKey(i)]: false }));
+                                e.target.value = "";
+                              }
+                            }}
+                          />
+                          <button
+                            disabled={isUpl}
+                            onClick={() => document.getElementById(inputId)?.click()}
+                            style={{
+                              flex: 1,
+                              padding: "5px 8px",
+                              borderRadius: 6,
+                              border: "1px solid rgba(0,0,0,0.15)",
+                              background: "#f9f9f9",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              cursor: isUpl ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            {isUpl ? "Uploading…" : "Replace"}
+                          </button>
+                          <button
+                            onClick={() => {
+                              const next = heroImages.filter((_, j) => j !== i);
+                              onReplaceData({ ...section.data, heroImages: next });
+                            }}
+                            style={{
+                              padding: "5px 8px",
+                              borderRadius: 6,
+                              border: "none",
+                              background: "#fee2e2",
+                              color: "#b91c1c",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* Add new image */}
+                  {(() => {
+                    const newInputId = `hero-img-new-${section.id}`;
+                    const isUpl = uploading["heroImages-new"] || false;
+                    return (
+                      <>
+                        <input
+                          id={newInputId}
+                          type="file"
+                          accept="image/*"
+                          style={{ display: "none" }}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            setUploading((prev) => ({ ...prev, "heroImages-new": true }));
+                            try {
+                              const res = await uploadToImageKit(
+                                file,
+                                `builder-${Date.now()}-${file.name}`,
+                                `/website-assets/${uid}`,
+                                "website"
+                              );
+                              const next = [...heroImages, res.url];
+                              onReplaceData({ ...section.data, heroImages: next });
+                            } catch (err: any) {
+                              toast.error(err?.message || "Upload failed");
+                            } finally {
+                              setUploading((prev) => ({ ...prev, "heroImages-new": false }));
+                              e.target.value = "";
+                            }
+                          }}
+                        />
+                        <button
+                          disabled={isUpl}
+                          onClick={() => document.getElementById(newInputId)?.click()}
+                          style={{
+                            border: "1px dashed rgba(79,70,229,0.5)",
+                            background: "#eef2ff",
+                            color: "#3730a3",
+                            borderRadius: 8,
+                            padding: "8px 10px",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: isUpl ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          {isUpl
+                            ? "Uploading…"
+                            : `+ Add Image${heroImages.length > 0 ? " (carousel)" : ""}`}
+                        </button>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            );
+          })()}
+        {section.type === "hero" &&
           renderArrayEditor(
             "Hero Stats",
             "stats",
             [
               { key: "num", label: "Value" },
               { key: "label", label: "Label" },
+              { key: "icon", label: "Icon", type: "icon" },
             ],
-            { num: "", label: "" }
+            { num: "", label: "", icon: "" }
           )}
         {section.type === "courses" &&
           renderArrayEditor(
@@ -3547,8 +5430,10 @@ function RightPanel({
                 { key: "rank", label: "Rank" },
                 { key: "exam", label: "Exam" },
                 { key: "tag", label: "Tag" },
+                { key: "photo", label: "Photo", type: "image" },
+                { key: "icon", label: "Icon", type: "icon" },
               ],
-              { name: "", rank: "", exam: "", tag: "" }
+              { name: "", rank: "", exam: "", tag: "", photo: "", icon: "" }
             )}
             {renderArrayEditor(
               "Result Stats",
@@ -3556,22 +5441,35 @@ function RightPanel({
               [
                 { key: "num", label: "Value" },
                 { key: "label", label: "Label" },
+                { key: "icon", label: "Icon", type: "icon" },
               ],
-              { num: "", label: "" }
+              { num: "", label: "", icon: "" }
             )}
           </>
         )}
-        {section.type === "testimonials" &&
-          renderArrayEditor(
-            "Testimonials",
-            "reviews",
-            [
-              { key: "name", label: "Name" },
-              { key: "role", label: "Role" },
-              { key: "text", label: "Review", type: "textarea" },
-            ],
-            { name: "", role: "", text: "" }
-          )}
+        {section.type === "testimonials" && (
+          <>
+            {renderField("Eyebrow", "eyebrow")}
+            {renderField("Title", "title")}
+            {renderArrayEditor(
+              "Testimonials",
+              "reviews",
+              [
+                { key: "name", label: "Name" },
+                { key: "role", label: "Role" },
+                { key: "text", label: "Review", type: "textarea" },
+                { key: "photo", label: "Photo", type: "image" },
+                {
+                  key: "rating",
+                  label: "Rating (1-5)",
+                  type: "select",
+                  options: ["1", "2", "3", "4", "5"],
+                },
+              ],
+              { name: "", role: "", text: "", photo: "", rating: "5" }
+            )}
+          </>
+        )}
         {section.type === "gallery" &&
           renderArrayEditor(
             "Gallery Items",
@@ -3624,8 +5522,9 @@ function RightPanel({
             [
               { key: "label", label: "Label" },
               { key: "sub", label: "Subtext" },
+              { key: "icon", label: "Icon", type: "icon" },
             ],
-            { label: "", sub: "" }
+            { label: "", sub: "", icon: "CheckCircle2" }
           )}
         {section.type === "about" &&
           renderArrayEditor(
@@ -3637,29 +5536,65 @@ function RightPanel({
             ],
             { year: "", text: "" }
           )}
-        {section.type === "stats" &&
-          renderArrayEditor(
-            "Counters",
-            "stats",
-            [
-              { key: "num", label: "Value" },
-              { key: "label", label: "Label" },
-              { key: "icon", label: "Icon Emoji" },
-            ],
-            { num: "", label: "", icon: "" }
-          )}
-        {section.type === "blog" &&
-          renderArrayEditor(
-            "Posts",
-            "posts",
-            [
-              { key: "title", label: "Title" },
-              { key: "date", label: "Date" },
-              { key: "tag", label: "Tag" },
-              { key: "excerpt", label: "Excerpt", type: "textarea" },
-            ],
-            { title: "", date: "", tag: "", excerpt: "" }
-          )}
+        {section.type === "stats" && (
+          <>
+            {renderField("Eyebrow", "eyebrow")}
+            {renderField("Title", "title")}
+            {renderArrayEditor(
+              "Counters",
+              "stats",
+              [
+                { key: "num", label: "Value" },
+                { key: "label", label: "Label" },
+                { key: "icon", label: "Icon", type: "icon" },
+              ],
+              { num: "", label: "", icon: "" }
+            )}
+          </>
+        )}
+        {section.type === "footer" && (
+          <>
+            {renderField("Institute Name", "name")}
+            {renderField("Tagline", "tagline", "textarea")}
+            <div
+              style={{
+                marginTop: 20,
+                padding: 12,
+                background: "rgba(0,0,0,0.02)",
+                borderRadius: 12,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "rgba(0,0,0,0.4)",
+                  marginBottom: 12,
+                  textTransform: "uppercase",
+                }}
+              >
+                Contact Details
+              </div>
+              {renderField("Phone", "phone")}
+              {renderField("Email", "email")}
+              {renderField("WhatsApp", "whatsapp")}
+            </div>
+            {renderArrayEditor(
+              "Social Links",
+              "socialLinks",
+              [
+                {
+                  key: "platform",
+                  label: "Platform",
+                  type: "select",
+                  options: ["Instagram", "YouTube", "Facebook", "Twitter", "LinkedIn", "Website"],
+                },
+                { key: "url", label: "URL" },
+              ],
+              { platform: "Instagram", url: "" }
+            )}
+          </>
+        )}
       </div>
     </div>
   );
@@ -3692,6 +5627,7 @@ export default function InstituteBuilder() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [themeKey, setThemeKey] = useState<ThemeKey>("emerald");
   const [instituteName, setInstituteName] = useState("My Institute");
+  const [instituteLogo, setInstituteLogo] = useState("");
   const [previewMode, setPreviewMode] = useState(false);
   const [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">("desktop");
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
@@ -3702,9 +5638,15 @@ export default function InstituteBuilder() {
   const [showResetModal, setShowResetModal] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"canvas" | "sections" | "editor">("canvas");
+  const [useGradient, setUseGradient] = useState(false);
+  const [themeMode, setThemeMode] = useState<"preset" | "custom">("preset");
+  const [customColor, setCustomColor] = useState("");
   const saveTimeout = useRef<ReturnType<typeof setTimeout>>();
 
-  const theme = THEME_PRESETS[themeKey];
+  const theme: Theme =
+    themeMode === "custom" && customColor
+      ? createCustomTheme(customColor, useGradient)
+      : { ...THEME_PRESETS[themeKey], useGradient };
 
   // Load from Firestore
   useEffect(() => {
@@ -3720,6 +5662,10 @@ export default function InstituteBuilder() {
           setSections(cfg?.sections?.length ? cfg.sections : DEFAULT_SECTIONS);
           if (cfg?.themeKey) setThemeKey(cfg.themeKey as ThemeKey);
           if (cfg?.instituteName) setInstituteName(cfg.instituteName);
+          if (cfg?.instituteLogo) setInstituteLogo(cfg.instituteLogo);
+          if (cfg?.useGradient !== undefined) setUseGradient(cfg.useGradient);
+          if (cfg?.themeMode) setThemeMode(cfg.themeMode);
+          if (cfg?.customColor) setCustomColor(cfg.customColor);
           else
             setInstituteName(
               d.coachingName || d.displayName || profile?.displayName || "My Institute"
@@ -3741,7 +5687,17 @@ export default function InstituteBuilder() {
       try {
         await setDoc(
           doc(db, "educators", uid),
-          { builderConfig: { sections, themeKey, instituteName } },
+          {
+            builderConfig: {
+              sections,
+              themeKey,
+              instituteName,
+              instituteLogo,
+              useGradient,
+              themeMode,
+              customColor,
+            },
+          },
           { merge: true }
         );
       } finally {
@@ -3749,7 +5705,17 @@ export default function InstituteBuilder() {
       }
     }, 1500);
     return () => clearTimeout(saveTimeout.current);
-  }, [sections, themeKey, instituteName, uid, loaded]);
+  }, [
+    sections,
+    themeKey,
+    instituteName,
+    instituteLogo,
+    useGradient,
+    themeMode,
+    customColor,
+    uid,
+    loaded,
+  ]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -3853,6 +5819,8 @@ export default function InstituteBuilder() {
             sections,
             themeKey,
             instituteName,
+            instituteLogo,
+            useGradient,
             publishedAt: Date.now(),
           },
           websiteConfig: {
@@ -3921,17 +5889,22 @@ export default function InstituteBuilder() {
       )}
       <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
         {sections.map((sec) => (
-          <SortableSection
-            key={sec.id}
-            section={sec}
-            selected={selectedId === sec.id}
-            onSelect={() => setSelectedId(sec.id)}
-            onDelete={() => deleteSection(sec.id)}
-            onMoveUp={() => moveSection(sec.id, "up")}
-            onMoveDown={() => moveSection(sec.id, "down")}
-            theme={theme}
-            previewMode={previewMode}
-          />
+          <div key={sec.id} id={sec.id} data-section-type={sec.type}>
+            <SortableSection
+              section={sec}
+              selected={selectedId === sec.id}
+              onSelect={() => setSelectedId(sec.id)}
+              onDelete={() => deleteSection(sec.id)}
+              onMoveUp={() => moveSection(sec.id, "up")}
+              onMoveDown={() => moveSection(sec.id, "down")}
+              theme={theme}
+              previewMode={previewMode}
+              instituteName={instituteName}
+              instituteLogo={instituteLogo}
+              mobile={previewDevice === "mobile"}
+              sections={sections}
+            />
+          </div>
         ))}
       </SortableContext>
       <CanvasDropZone>{sections.length === 0 && <div style={{ height: 120 }} />}</CanvasDropZone>
@@ -3957,6 +5930,17 @@ export default function InstituteBuilder() {
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <style>
+        {`
+          .ib-card {
+            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          }
+          .ib-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 30px rgba(0,0,0,0.12) !important;
+          }
+        `}
+      </style>
       <div
         className="-m-4 lg:-m-6"
         style={{
@@ -3971,23 +5955,31 @@ export default function InstituteBuilder() {
         {/* Top Bar */}
         <div
           style={{
-            minHeight: 52,
+            minHeight: isMobileViewport ? 44 : 52,
             background: "#fff",
             borderBottom: "1px solid rgba(0,0,0,0.08)",
             display: "flex",
             alignItems: "center",
             flexWrap: "wrap",
-            padding: "8px 12px",
-            gap: 8,
+            padding: isMobileViewport ? "4px 8px" : "8px 12px",
+            gap: isMobileViewport ? 4 : 8,
             flexShrink: 0,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 10 }}>🏫</span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "#1a1a2e" }}>{instituteName}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: isMobileViewport ? 4 : 6 }}>
+            <span style={{ fontSize: isMobileViewport ? 11 : 10 }}>🏫</span>
+            <span
+              style={{ fontSize: isMobileViewport ? 11 : 13, fontWeight: 600, color: "#1a1a2e" }}
+            >
+              {instituteName}
+            </span>
           </div>
           <div style={{ flex: 1 }} />
-          {saving && <span style={{ fontSize: 11, color: "rgba(0,0,0,0.3)" }}>Saving…</span>}
+          {saving && (
+            <span style={{ fontSize: isMobileViewport ? 9 : 11, color: "rgba(0,0,0,0.3)" }}>
+              Saving…
+            </span>
+          )}
 
           {/* Edit / Preview toggle */}
           <div
@@ -3995,7 +5987,7 @@ export default function InstituteBuilder() {
               display: "flex",
               background: "rgba(0,0,0,0.06)",
               borderRadius: 8,
-              padding: 3,
+              padding: 2,
               gap: 2,
             }}
           >
@@ -4007,11 +5999,11 @@ export default function InstituteBuilder() {
                   if (mode === "Edit") setSelectedId(null);
                 }}
                 style={{
-                  padding: "5px 14px",
+                  padding: isMobileViewport ? "4px 8px" : "5px 14px",
                   borderRadius: 6,
                   border: "none",
                   cursor: "pointer",
-                  fontSize: 12,
+                  fontSize: isMobileViewport ? 10 : 12,
                   fontWeight: 600,
                   background: (previewMode ? mode === "Preview" : mode === "Edit")
                     ? "rgba(99,102,241,0.85)"
@@ -4034,7 +6026,7 @@ export default function InstituteBuilder() {
                 display: "flex",
                 background: "rgba(0,0,0,0.06)",
                 borderRadius: 8,
-                padding: 3,
+                padding: 2,
                 gap: 2,
               }}
             >
@@ -4042,8 +6034,8 @@ export default function InstituteBuilder() {
                 onClick={() => setPreviewDevice("desktop")}
                 title="Desktop view"
                 style={{
-                  width: 32,
-                  height: 28,
+                  width: isMobileViewport ? 26 : 32,
+                  height: isMobileViewport ? 24 : 28,
                   borderRadius: 6,
                   border: "none",
                   cursor: "pointer",
@@ -4055,7 +6047,7 @@ export default function InstituteBuilder() {
                 }}
               >
                 <Monitor
-                  size={15}
+                  size={isMobileViewport ? 12 : 15}
                   color={previewDevice === "desktop" ? "#4f46e5" : "rgba(0,0,0,0.35)"}
                 />
               </button>
@@ -4063,8 +6055,8 @@ export default function InstituteBuilder() {
                 onClick={() => setPreviewDevice("mobile")}
                 title="Mobile view"
                 style={{
-                  width: 32,
-                  height: 28,
+                  width: isMobileViewport ? 26 : 32,
+                  height: isMobileViewport ? 24 : 28,
                   borderRadius: 6,
                   border: "none",
                   cursor: "pointer",
@@ -4076,7 +6068,7 @@ export default function InstituteBuilder() {
                 }}
               >
                 <Smartphone
-                  size={15}
+                  size={isMobileViewport ? 12 : 15}
                   color={previewDevice === "mobile" ? "#4f46e5" : "rgba(0,0,0,0.35)"}
                 />
               </button>
@@ -4085,8 +6077,8 @@ export default function InstituteBuilder() {
 
           <div
             style={{
-              width: 20,
-              height: 20,
+              width: isMobileViewport ? 14 : 20,
+              height: isMobileViewport ? 14 : 20,
               borderRadius: "50%",
               background: theme.primary,
               border: "2px solid rgba(0,0,0,0.12)",
@@ -4102,8 +6094,8 @@ export default function InstituteBuilder() {
                   color: mobilePanel === "sections" ? "#fff" : "#111827",
                   border: "1px solid rgba(0,0,0,0.12)",
                   borderRadius: 8,
-                  padding: "7px 10px",
-                  fontSize: 12,
+                  padding: "5px 6px",
+                  fontSize: 10,
                   fontWeight: 700,
                   cursor: "pointer",
                 }}
@@ -4117,8 +6109,8 @@ export default function InstituteBuilder() {
                   color: mobilePanel === "editor" ? "#fff" : "#111827",
                   border: "1px solid rgba(0,0,0,0.12)",
                   borderRadius: 8,
-                  padding: "7px 10px",
-                  fontSize: 12,
+                  padding: "5px 6px",
+                  fontSize: 10,
                   fontWeight: 700,
                   cursor: "pointer",
                 }}
@@ -4132,8 +6124,8 @@ export default function InstituteBuilder() {
                   color: mobilePanel === "canvas" ? "#fff" : "#111827",
                   border: "1px solid rgba(0,0,0,0.12)",
                   borderRadius: 8,
-                  padding: "7px 10px",
-                  fontSize: 12,
+                  padding: "5px 6px",
+                  fontSize: 10,
                   fontWeight: 700,
                   cursor: "pointer",
                 }}
@@ -4150,8 +6142,8 @@ export default function InstituteBuilder() {
               color: "#b91c1c",
               border: "1px solid rgba(185,28,28,0.25)",
               borderRadius: 8,
-              padding: "7px 12px",
-              fontSize: 12,
+              padding: isMobileViewport ? "5px 6px" : "7px 12px",
+              fontSize: isMobileViewport ? 10 : 12,
               fontWeight: 700,
               cursor: sections.length === 0 ? "not-allowed" : "pointer",
               opacity: sections.length === 0 ? 0.5 : 1,
@@ -4167,20 +6159,20 @@ export default function InstituteBuilder() {
               color: "#fff",
               border: "none",
               borderRadius: 8,
-              padding: "7px 18px",
-              fontSize: 13,
+              padding: isMobileViewport ? "5px 10px" : "7px 18px",
+              fontSize: isMobileViewport ? 11 : 13,
               fontWeight: 700,
               cursor: "pointer",
               boxShadow: "0 2px 12px rgba(99,102,241,0.4)",
               opacity: publishing ? 0.7 : 1,
               display: "flex",
               alignItems: "center",
-              gap: 6,
+              gap: isMobileViewport ? 3 : 6,
             }}
           >
             {publishing ? (
               <>
-                <Loader2 size={14} className="animate-spin" /> Publishing…
+                <Loader2 size={isMobileViewport ? 12 : 14} className="animate-spin" /> Publishing…
               </>
             ) : (
               "Publish Site →"
@@ -4202,14 +6194,24 @@ export default function InstituteBuilder() {
               setThemeKey={setThemeKey}
               instituteName={instituteName}
               setInstituteName={setInstituteName}
+              instituteLogo={instituteLogo}
+              setInstituteLogo={setInstituteLogo}
+              uid={uid}
               collapsed={leftPanelCollapsed}
               onToggleCollapse={() => setLeftPanelCollapsed((prev) => !prev)}
               mobile={isMobileViewport}
+              useGradient={useGradient}
+              setUseGradient={setUseGradient}
+              themeMode={themeMode}
+              setThemeMode={setThemeMode}
+              customColor={customColor}
+              setCustomColor={setCustomColor}
             />
           )}
 
           {/* Canvas */}
           <div
+            id="builder-preview-scroll"
             style={{
               flex: 1,
               overflowY: "auto",
@@ -4265,6 +6267,7 @@ export default function InstituteBuilder() {
               onUpdateArrayItem={updateSectionArrayItem}
               onReplaceData={replaceSectionData}
               uid={uid}
+              sections={sections}
               mobile={isMobileViewport}
             />
           )}
@@ -4314,7 +6317,16 @@ export default function InstituteBuilder() {
                   pointerEvents: "none",
                 }}
               >
-                <Comp data={sec.data} theme={theme} selected={false} onClick={() => {}} />
+                <Comp
+                  data={sec.data}
+                  theme={theme}
+                  selected={false}
+                  onClick={() => {}}
+                  instituteName={instituteName}
+                  instituteLogo={instituteLogo}
+                  mobile={previewDevice === "mobile"}
+                  sections={sections}
+                />
               </div>
             ) : null;
           })()}

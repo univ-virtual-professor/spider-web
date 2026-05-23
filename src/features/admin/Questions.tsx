@@ -76,6 +76,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@shared/ui/tabs";
 import { toast } from "@shared/hooks/use-toast";
 import ImageTextarea from "@features/educator/components/ImageTextarea";
+import QuestionActionHoverWrapper from "@shared/components/QuestionActionHoverWrapper";
 
 type Difficulty = "easy" | "medium" | "hard";
 
@@ -2021,214 +2022,222 @@ export default function Questions() {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: isDragging ? 0 : Math.min(0.2, idx * 0.02) }}
                           >
-                            <Card
-                              className={cn(
-                                "border-border/50 transition-all duration-300 hover:shadow-sm",
-                                isEditing && "border-primary/40 shadow-md ring-1 ring-primary/20",
-                                isDragging && "opacity-80 shadow-lg"
-                              )}
+                            <QuestionActionHoverWrapper
+                              questionId={q.id}
+                              contextId={selectedTestId}
+                              questionContent={q.question}
                             >
-                              <CardContent className="p-4">
-                                {isEditing ? (
-                                  renderInlineEditor()
-                                ) : (
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0 flex-1">
-                                      <div className="mb-2 flex flex-wrap items-center gap-2">
-                                        <Badge
-                                          variant="secondary"
-                                          className={cn(
-                                            "rounded-full",
-                                            difficultyBadge(q.difficulty)
-                                          )}
-                                        >
-                                          {q.difficulty}
-                                        </Badge>
-                                        {q.subject ? (
-                                          <Badge variant="secondary" className="rounded-full">
-                                            {q.subject}
-                                          </Badge>
-                                        ) : null}
-                                        {q.chapter ? (
-                                          <Badge variant="outline" className="rounded-full">
-                                            {q.chapter}
-                                          </Badge>
-                                        ) : null}
-                                        {q.topic ? (
-                                          <Badge variant="secondary" className="rounded-full">
-                                            {q.topic}
-                                          </Badge>
-                                        ) : null}
-
-                                        {q.isActive !== false ? (
-                                          <Badge
-                                            variant="secondary"
-                                            className="rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                                          >
-                                            <CheckCircle2 className="mr-1 h-3 w-3" />
-                                            published
-                                          </Badge>
-                                        ) : (
-                                          <Badge
-                                            variant="secondary"
-                                            className="rounded-full bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300"
-                                          >
-                                            <XCircle className="mr-1 h-3 w-3" />
-                                            draft
-                                          </Badge>
-                                        )}
-                                      </div>
-
-                                      {isHtml ? (
-                                        <div
-                                          className="prose prose-sm dark:prose-invert line-clamp-3 max-w-none leading-snug"
-                                          dangerouslySetInnerHTML={{ __html: q.question }}
-                                        />
-                                      ) : (
-                                        <p className="line-clamp-3 font-medium leading-snug text-foreground">
-                                          {q.question}
-                                        </p>
-                                      )}
-
-                                      {q.options?.length ? (
-                                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                          {q.options.slice(0, 4).map((opt, i) => (
-                                            <div
-                                              key={i}
-                                              className={cn(
-                                                "rounded-xl border p-2 text-sm",
-                                                i === q.correctOption
-                                                  ? "border-primary/40 bg-primary/5"
-                                                  : "border-border bg-muted/20"
-                                              )}
-                                            >
-                                              <span className="mr-2 text-xs text-muted-foreground">
-                                                {String.fromCharCode(65 + i)}.
-                                              </span>
-                                              {isHtml ? (
-                                                <span
-                                                  className={cn(
-                                                    i === q.correctOption && "font-medium"
-                                                  )}
-                                                  dangerouslySetInnerHTML={{ __html: opt }}
-                                                />
-                                              ) : (
-                                                <span
-                                                  className={cn(
-                                                    i === q.correctOption && "font-medium"
-                                                  )}
-                                                >
-                                                  {opt}
-                                                </span>
-                                              )}
-                                            </div>
-                                          ))}
-                                        </div>
-                                      ) : null}
-
-                                      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                                        <span>
-                                          Correct:{" "}
-                                          <span className="font-medium text-foreground">
-                                            {correctTextPlain || "—"}
-                                          </span>
-                                        </span>
-                                        <span>
-                                          Marks:{" "}
-                                          <span className="font-medium text-foreground">
-                                            {q.marks ?? selectedTest?.positiveMarks ?? "—"}
-                                          </span>
-                                        </span>
-                                        <span>
-                                          Neg:{" "}
-                                          <span className="font-medium text-foreground">
-                                            {q.negativeMarks ?? selectedTest?.negativeMarks ?? "—"}
-                                          </span>
-                                        </span>
-                                        <span>
-                                          Used:{" "}
-                                          <span className="font-medium text-foreground">
-                                            {q.usageCount ?? 0}
-                                          </span>
-                                        </span>
-                                        <span>
-                                          Updated:{" "}
-                                          <span className="font-medium text-foreground">
-                                            {fmtDate(q.updatedAtTs || q.createdAtTs || null)}
-                                          </span>
-                                        </span>
-                                      </div>
-                                    </div>
-
-                                    <div className="flex flex-col items-end gap-2">
-                                      <div className="flex items-center gap-2">
-                                        {dndEnabled && (
-                                          <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="icon"
-                                            className="cursor-grab rounded-xl text-muted-foreground active:cursor-grabbing"
-                                            onClick={(e) => e.stopPropagation()}
-                                            aria-label="Drag to reorder"
-                                            {...dragProps}
-                                          >
-                                            <GripVertical className="h-4 w-4" />
-                                          </Button>
-                                        )}
-                                        <Switch
-                                          checked={q.isActive !== false}
-                                          onCheckedChange={(checked) => toggleActive(q, checked)}
-                                        />
-                                      </div>
-
-                                      <div className="flex items-center gap-2">
-                                        <Button
-                                          variant="outline"
-                                          size="icon"
-                                          className="rounded-xl"
-                                          onClick={() => openEdit(q)}
-                                        >
-                                          <Edit className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                          variant="outline"
-                                          size="icon"
-                                          className="rounded-xl"
-                                          onClick={() => {
-                                            navigator.clipboard.writeText(q.question);
-                                            toast({
-                                              title: "Copied",
-                                              description: "Question text copied.",
-                                            });
-                                          }}
-                                        >
-                                          <Copy className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                          variant="outline"
-                                          size="icon"
-                                          className="rounded-xl text-destructive"
-                                          onClick={() => deleteQuestion(q)}
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  </div>
+                              <Card
+                                className={cn(
+                                  "border-border/50 transition-all duration-300 hover:shadow-sm",
+                                  isEditing && "border-primary/40 shadow-md ring-1 ring-primary/20",
+                                  isDragging && "opacity-80 shadow-lg"
                                 )}
+                              >
+                                <CardContent className="p-4">
+                                  {isEditing ? (
+                                    renderInlineEditor()
+                                  ) : (
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0 flex-1">
+                                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                                          <Badge
+                                            variant="secondary"
+                                            className={cn(
+                                              "rounded-full",
+                                              difficultyBadge(q.difficulty)
+                                            )}
+                                          >
+                                            {q.difficulty}
+                                          </Badge>
+                                          {q.subject ? (
+                                            <Badge variant="secondary" className="rounded-full">
+                                              {q.subject}
+                                            </Badge>
+                                          ) : null}
+                                          {q.chapter ? (
+                                            <Badge variant="outline" className="rounded-full">
+                                              {q.chapter}
+                                            </Badge>
+                                          ) : null}
+                                          {q.topic ? (
+                                            <Badge variant="secondary" className="rounded-full">
+                                              {q.topic}
+                                            </Badge>
+                                          ) : null}
 
-                                {!isEditing && q.explanation ? (
-                                  <div className="mt-4 rounded-xl border border-border bg-muted/30 p-3">
-                                    <p className="mb-1 text-xs text-muted-foreground">
-                                      Explanation
-                                    </p>
-                                    <p className="whitespace-pre-wrap text-sm text-foreground">
-                                      {q.explanation}
-                                    </p>
-                                  </div>
-                                ) : null}
-                              </CardContent>
-                            </Card>
+                                          {q.isActive !== false ? (
+                                            <Badge
+                                              variant="secondary"
+                                              className="rounded-full bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                            >
+                                              <CheckCircle2 className="mr-1 h-3 w-3" />
+                                              published
+                                            </Badge>
+                                          ) : (
+                                            <Badge
+                                              variant="secondary"
+                                              className="rounded-full bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300"
+                                            >
+                                              <XCircle className="mr-1 h-3 w-3" />
+                                              draft
+                                            </Badge>
+                                          )}
+                                        </div>
+
+                                        {isHtml ? (
+                                          <div
+                                            className="prose prose-sm dark:prose-invert line-clamp-3 max-w-none leading-snug"
+                                            dangerouslySetInnerHTML={{ __html: q.question }}
+                                          />
+                                        ) : (
+                                          <p className="line-clamp-3 font-medium leading-snug text-foreground">
+                                            {q.question}
+                                          </p>
+                                        )}
+
+                                        {q.options?.length ? (
+                                          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                            {q.options.slice(0, 4).map((opt, i) => (
+                                              <div
+                                                key={i}
+                                                className={cn(
+                                                  "rounded-xl border p-2 text-sm",
+                                                  i === q.correctOption
+                                                    ? "border-primary/40 bg-primary/5"
+                                                    : "border-border bg-muted/20"
+                                                )}
+                                              >
+                                                <span className="mr-2 text-xs text-muted-foreground">
+                                                  {String.fromCharCode(65 + i)}.
+                                                </span>
+                                                {isHtml ? (
+                                                  <span
+                                                    className={cn(
+                                                      i === q.correctOption && "font-medium"
+                                                    )}
+                                                    dangerouslySetInnerHTML={{ __html: opt }}
+                                                  />
+                                                ) : (
+                                                  <span
+                                                    className={cn(
+                                                      i === q.correctOption && "font-medium"
+                                                    )}
+                                                  >
+                                                    {opt}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : null}
+
+                                        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                                          <span>
+                                            Correct:{" "}
+                                            <span className="font-medium text-foreground">
+                                              {correctTextPlain || "—"}
+                                            </span>
+                                          </span>
+                                          <span>
+                                            Marks:{" "}
+                                            <span className="font-medium text-foreground">
+                                              {q.marks ?? selectedTest?.positiveMarks ?? "—"}
+                                            </span>
+                                          </span>
+                                          <span>
+                                            Neg:{" "}
+                                            <span className="font-medium text-foreground">
+                                              {q.negativeMarks ??
+                                                selectedTest?.negativeMarks ??
+                                                "—"}
+                                            </span>
+                                          </span>
+                                          <span>
+                                            Used:{" "}
+                                            <span className="font-medium text-foreground">
+                                              {q.usageCount ?? 0}
+                                            </span>
+                                          </span>
+                                          <span>
+                                            Updated:{" "}
+                                            <span className="font-medium text-foreground">
+                                              {fmtDate(q.updatedAtTs || q.createdAtTs || null)}
+                                            </span>
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex flex-col items-end gap-2">
+                                        <div className="flex items-center gap-2">
+                                          {dndEnabled && (
+                                            <Button
+                                              type="button"
+                                              variant="ghost"
+                                              size="icon"
+                                              className="cursor-grab rounded-xl text-muted-foreground active:cursor-grabbing"
+                                              onClick={(e) => e.stopPropagation()}
+                                              aria-label="Drag to reorder"
+                                              {...dragProps}
+                                            >
+                                              <GripVertical className="h-4 w-4" />
+                                            </Button>
+                                          )}
+                                          <Switch
+                                            checked={q.isActive !== false}
+                                            onCheckedChange={(checked) => toggleActive(q, checked)}
+                                          />
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                          <Button
+                                            variant="outline"
+                                            size="icon"
+                                            className="rounded-xl"
+                                            onClick={() => openEdit(q)}
+                                          >
+                                            <Edit className="h-4 w-4" />
+                                          </Button>
+                                          <Button
+                                            variant="outline"
+                                            size="icon"
+                                            className="rounded-xl"
+                                            onClick={() => {
+                                              navigator.clipboard.writeText(q.question);
+                                              toast({
+                                                title: "Copied",
+                                                description: "Question text copied.",
+                                              });
+                                            }}
+                                          >
+                                            <Copy className="h-4 w-4" />
+                                          </Button>
+                                          <Button
+                                            variant="outline"
+                                            size="icon"
+                                            className="rounded-xl text-destructive"
+                                            onClick={() => deleteQuestion(q)}
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {!isEditing && q.explanation ? (
+                                    <div className="mt-4 rounded-xl border border-border bg-muted/30 p-3">
+                                      <p className="mb-1 text-xs text-muted-foreground">
+                                        Explanation
+                                      </p>
+                                      <p className="whitespace-pre-wrap text-sm text-foreground">
+                                        {q.explanation}
+                                      </p>
+                                    </div>
+                                  ) : null}
+                                </CardContent>
+                              </Card>
+                            </QuestionActionHoverWrapper>
                           </motion.div>
                         )}
                       </SortableCardShell>

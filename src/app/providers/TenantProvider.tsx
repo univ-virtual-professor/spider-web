@@ -9,6 +9,7 @@ export type TenantProfile = {
   educatorId: string;
   tenantSlug: string;
   coachingName?: string;
+  instituteLogo?: string;
   tagline?: string;
   contact?: { phone?: string; email?: string; address?: string };
   socials?: Record<string, string | null>;
@@ -17,8 +18,12 @@ export type TenantProfile = {
     sections: any[];
     themeKey: string;
     instituteName: string;
+    instituteLogo?: string;
     themeOverrides?: any;
     publishedAt?: number;
+    useGradient?: boolean;
+    themeMode?: "preset" | "custom";
+    customColor?: string;
   };
   testDefaults?: {
     attemptsAllowed?: number;
@@ -48,12 +53,14 @@ async function fetchTenantProfile(tenantSlug: string | null): Promise<TenantProf
   // educators/{id} -> metadata + website config
   const eduSnap = await getDoc(doc(db, "educators", educatorId));
   const data: any = eduSnap.exists() ? eduSnap.data() : {};
+  const builderConfig = data?.builderConfig || null;
   const websiteConfig = data?.websiteConfig || {};
 
   return {
     educatorId,
     tenantSlug,
-    coachingName: websiteConfig?.coachingName || data?.coachingName,
+    coachingName: builderConfig?.instituteName || websiteConfig?.coachingName || data?.coachingName,
+    instituteLogo: builderConfig?.instituteLogo || websiteConfig?.logoUrl,
     tagline: websiteConfig?.tagline || data?.tagline,
     contact: {
       phone:

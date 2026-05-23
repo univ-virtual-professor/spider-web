@@ -38,6 +38,8 @@ type SortableSectionCardProps = {
   inlineEditor: ReactNode;
   inlineEditorAfterQuestionId: string | null;
   inlineEditorAtEnd: boolean;
+  contextId?: string;
+  reportedQuestionIds?: Set<string>;
 };
 
 function SortableSectionCard({
@@ -65,6 +67,8 @@ function SortableSectionCard({
   inlineEditor,
   inlineEditorAfterQuestionId,
   inlineEditorAtEnd,
+  contextId,
+  reportedQuestionIds = new Set(),
 }: SortableSectionCardProps) {
   const [draftName, setDraftName] = useState(section.name);
 
@@ -119,18 +123,6 @@ function SortableSectionCard({
               <div className="flex items-center justify-between gap-2">
                 <Badge variant="secondary"> {section.name} </Badge>
                 <div className="flex items-center gap-2">
-                  {/* {!readOnly ? (
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            className="rounded-xl"
-                                            onClick={() => onAddQuestion(section.id)}
-                                            disabled={isAtCapacity}
-                                        >
-                                            <Plus className="h-3.5 w-3 mr-1.5" /> Add Question
-                                        </Button>
-                                    ) : null} */}
                   <Button
                     type="button"
                     variant="ghost"
@@ -245,6 +237,8 @@ function SortableSectionCard({
                           onDuplicate={onDuplicate}
                           onDelete={onDeleteQuestion}
                           onToggleActive={onToggleActive}
+                          contextId={contextId}
+                          isReported={reportedQuestionIds.has(question.id)}
                         />
                       )}
                       {!(editingId === question.id) && inlineEditorAfterQuestionId === question.id

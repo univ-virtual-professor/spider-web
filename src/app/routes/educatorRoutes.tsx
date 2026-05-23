@@ -24,6 +24,7 @@ import {
   ScheduledDpps,
   SeatAllocation,
   StudentHealthCategoryList,
+  ReportedQuestions,
 } from "@features/educator";
 import DppTemplatePage from "@features/educator/DppTemplatePage";
 import QuestionPaperRequests from "@features/educator/QuestionPaperRequests";
@@ -49,6 +50,7 @@ export function getEducatorRoutes() {
       <Route path="test-series" element={<TestSeries />} />
       <Route path="test-series/:testId/questions" element={<ManageQuestionsPage />} />
       <Route path="question-bank" element={<EducatorQuestionBank />} />
+      <Route path="reported-questions" element={<ReportedQuestions />} />
       <Route path="access-codes" element={<AccessCodes />} />
       <Route path="messages" element={<Messages />} />
       <Route path="billing" element={<Billing />} />

@@ -160,6 +160,7 @@ export default function Login() {
         const isEnrolled =
           enrolledTenants.includes(tenantSlug) ||
           (typeof data?.tenantSlug === "string" && data.tenantSlug === tenantSlug);
+
         if (!isEnrolled) {
           toast.error(
             "You are not enrolled in this coaching. Please signup on this coaching URL first."
@@ -302,7 +303,7 @@ export default function Login() {
             </form>
 
             {role === "student" && (
-              <div className="text-center text-sm text-muted-foreground">
+              <div className="relative z-10 pb-8 pt-4 text-center text-sm text-muted-foreground">
                 Don’t have an account?{" "}
                 <Link
                   className="font-medium text-[#4F46E5] hover:underline"

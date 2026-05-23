@@ -79,8 +79,14 @@ export default function EducatorDashboard() {
       let dpps = 0;
       snap.docs.forEach((d) => {
         const data = d.data();
-        if (!data.startTime) return; // Only count if it has a schedule
-
+        if (!data.startTime) return;
+        const now = Date.now();
+        const startTime = data.startTime.toMillis ? data.startTime.toMillis() : data.startTime;
+        if (startTime <= now) return; // Only count upcoming (not yet started)
+        if (data.endTime) {
+          const endTime = data.endTime.toMillis ? data.endTime.toMillis() : data.endTime;
+          if (now > endTime) return; // Skip completed
+        }
         const title = (data.title || "").toLowerCase();
         if (title.includes("dpp") || title.includes("practice")) {
           dpps++;
@@ -238,12 +244,8 @@ export default function EducatorDashboard() {
 
       {/* Security Activity Feed & Active Tests */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="min-h-[300px]">
-          <CheatActivityFeed />
-        </div>
-        <div className="min-h-[300px]">
-          <ActiveTestsFeed />
-        </div>
+        <CheatActivityFeed />
+        <ActiveTestsFeed />
       </div>
 
       <Card className="border-border/50">

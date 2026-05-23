@@ -15,6 +15,7 @@ export const PERMISSIONS = {
   CODES_MANAGE: "access_codes.manage",
   MESSAGES_VIEW: "messages.view",
   MESSAGES_SEND: "messages.send",
+  WEBSITE_MANAGE: "website.manage",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -48,6 +49,10 @@ export const PERMISSION_LABELS: Record<Permission, { label: string; description:
   },
   "messages.view": { label: "View Messages", description: "See message threads" },
   "messages.send": { label: "Send Messages", description: "Send messages to students" },
+  "website.manage": {
+    label: "Manage Website",
+    description: "Customize and configure the landing page and theme",
+  },
 };
 
 export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] = [
@@ -59,4 +64,5 @@ export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] =
   { label: "Analytics", permissions: ["analytics.view"] },
   { label: "Access Codes", permissions: ["access_codes.view", "access_codes.manage"] },
   { label: "Messages", permissions: ["messages.view", "messages.send"] },
+  { label: "Website", permissions: ["website.manage"] },
 ];

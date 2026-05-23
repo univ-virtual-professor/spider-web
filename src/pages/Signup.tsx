@@ -502,7 +502,7 @@ export default function Signup() {
                   </Button>
                 </form>
 
-                <div className="pt-2 text-center text-sm text-muted-foreground">
+                <div className="relative z-10 pb-8 pt-4 text-center text-sm text-muted-foreground">
                   Already have an account?{" "}
                   <Link
                     className="font-medium text-[#4F46E5] hover:underline"

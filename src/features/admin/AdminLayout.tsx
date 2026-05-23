@@ -23,6 +23,7 @@ import {
   LayoutList,
   ClipboardList,
   ShieldCheck,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@shared/ui/sheet";
@@ -40,6 +41,7 @@ const sidebarGroups = [
       { icon: BarChart3, label: "Analytics", path: "/admin/analytics" },
       { icon: Users, label: "Educators", path: "/admin/educators" },
       { icon: ClipboardList, label: "Question Papers", path: "/admin/question-paper-requests" },
+      { icon: AlertTriangle, label: "Reported Questions", path: "/admin/reported-questions" },
       { icon: BookMarked, label: "Courses", path: "/admin/subjects" },
       { icon: ShieldCheck, label: "Employee Roles", path: "/admin/roles" },
     ],

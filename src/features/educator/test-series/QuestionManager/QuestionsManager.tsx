@@ -94,6 +94,8 @@ import {
   serverTimestamp,
   updateDoc,
   writeBatch,
+  query,
+  where,
 } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 
@@ -137,6 +139,7 @@ const QuestionsManager = ({
   const isPageMode = mode === "page";
   const [questions, setQuestions] = useState<TestQuestion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reportedQuestionIds, setReportedQuestionIds] = useState<Set<string>>(new Set());
   const [reordering, setReordering] = useState(false);
 
   const [searchQ, setSearchQ] = useState("");
@@ -259,6 +262,22 @@ const QuestionsManager = ({
     }
     return collection(db, "educators", educatorUid, "my_tests", testId, "questions");
   }, [questionSource, resolvedQuestionSourceTestId, educatorUid, testId]);
+
+  // Real-time listener for reported questions
+  useEffect(() => {
+    if (!testId) return;
+    const qReports = query(
+      collection(db, "question_reports"),
+      where("contextId", "==", testId),
+      where("status", "==", "Open")
+    );
+    const unsub = onSnapshot(qReports, (snap) => {
+      const reported = new Set<string>();
+      snap.forEach((doc) => reported.add(doc.data().questionId));
+      setReportedQuestionIds(reported);
+    });
+    return () => unsub();
+  }, [testId]);
 
   const selectedTestSections = useMemo(
     () => normalizeSections(testSections, testSubject),
@@ -2863,6 +2882,8 @@ const QuestionsManager = ({
                             inlineEditor={inlineEditor}
                             inlineEditorAfterQuestionId={inlineEditorAfterQuestionId}
                             inlineEditorAtEnd={inlineEditorAtEnd}
+                            contextId={testId}
+                            reportedQuestionIds={reportedQuestionIds}
                           />
                         );
                       })}

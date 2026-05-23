@@ -22,6 +22,8 @@ import {
   Users,
   Building2,
   UserCheck,
+  Palette,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
@@ -69,6 +71,7 @@ function EducatorLayoutInner() {
   const { profile } = useAuth();
   const { isEmployee, hasPermission } = useEmployee();
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [instituteName, setInstituteName] = useState<string | null>(null);
 
   useEffect(() => {
     const uid = profile?.uid;
@@ -78,8 +81,30 @@ function EducatorLayoutInner() {
     getDoc(docRef).then((snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        if (data.builderConfig?.logoUrl) {
-          setLogoUrl(data.builderConfig.logoUrl);
+
+        // Resolve logo url
+        const resolvedLogo = data.builderConfig?.instituteLogo || null;
+
+        // Resolve institute/coaching name
+        const resolvedName = data.builderConfig?.instituteName || null;
+
+        setLogoUrl(resolvedLogo);
+        setInstituteName(resolvedName);
+
+        // Also set favicon dynamically!
+        if (resolvedLogo) {
+          let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+          if (!link) {
+            link = document.createElement("link");
+            link.rel = "icon";
+            document.getElementsByTagName("head")[0].appendChild(link);
+          }
+          link.href = resolvedLogo;
+        }
+
+        // Also set tab title dynamically!
+        if (resolvedName) {
+          document.title = `${resolvedName}`;
         }
       }
     });
@@ -145,6 +170,13 @@ function EducatorLayoutInner() {
       testChildren.push({ icon: Zap, label: "DPP Generator", href: "/educator/dpp" });
     }
 
+    // Reported Questions
+    testChildren.push({
+      icon: AlertTriangle,
+      label: "Reported Questions",
+      href: "/educator/reported-questions",
+    });
+
     const showTests =
       !isEmployee ||
       hasPermission("tests.view") ||
@@ -161,12 +193,6 @@ function EducatorLayoutInner() {
 
     if (!isEmployee || hasPermission("content.view")) {
       items.push({ icon: BookOpen, label: "Content", href: "/educator/content" });
-    }
-
-    // Billing and Organization are org-head only
-    if (!isEmployee) {
-      items.push({ icon: CreditCard, label: "Billing", href: "/educator/billing" });
-      items.push({ icon: Building2, label: "Organization", href: "/educator/organization" });
     }
 
     return items;
@@ -250,17 +276,26 @@ function EducatorLayoutInner() {
           <div className="flex h-full flex-col">
             <div className="flex h-16 items-center justify-between border-b border-border px-4">
               <Link
-                to="/"
+                to="/educator/dashboard"
                 className={cn(
-                  "flex items-center gap-2",
+                  "flex items-center gap-2.5 overflow-hidden",
                   sidebarCollapsed && "lg:w-full lg:justify-center"
                 )}
               >
-                <img
-                  src={logoUrl || (sidebarCollapsed ? "/logo-compact.png" : "/logo.png")}
-                  alt="UNIV.LIVE"
-                  className={sidebarCollapsed ? "h-10 w-10 object-contain" : "h-10 w-auto"}
-                />
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt={instituteName || "Logo"}
+                    className="h-9 w-9 rounded-md object-contain"
+                  />
+                ) : (
+                  <img src="/logo-compact.png" alt="Logo" className="h-9 w-9 object-contain" />
+                )}
+                {!sidebarCollapsed && (
+                  <span className="truncate font-display text-base font-bold text-foreground">
+                    {instituteName || "UNIV.LIVE"}
+                  </span>
+                )}
               </Link>
               <Button
                 variant="ghost"
@@ -423,7 +458,36 @@ function EducatorLayoutInner() {
               })}
             </nav>
 
-            <div className="mt-auto border-t border-border p-4">
+            <div className="mt-auto space-y-2 border-t border-border p-4">
+              <Button
+                variant="ghost"
+                className={cn(
+                  "w-full text-muted-foreground hover:text-white",
+                  sidebarCollapsed ? "justify-center px-0" : "justify-start"
+                )}
+                onClick={() => {
+                  setSidebarOpen(false);
+                  navigate("/educator/messages");
+                }}
+                title={sidebarCollapsed ? "Help & Support" : undefined}
+              >
+                <div className={cn("relative flex items-center", !sidebarCollapsed && "mr-3")}>
+                  <MessageSquare className="h-5 w-5 hover:text-white" />
+                  {sidebarCollapsed && unreadMessages > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-2 w-2 rounded-full bg-primary" />
+                  )}
+                </div>
+                {!sidebarCollapsed && (
+                  <div className="flex flex-1 items-center justify-between">
+                    <span>Help & Support</span>
+                    {unreadMessages > 0 && (
+                      <Badge variant="secondary" className="ml-2 text-xs">
+                        {unreadMessages}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </Button>
               <Button
                 variant="ghost"
                 className={cn(
@@ -459,14 +523,6 @@ function EducatorLayoutInner() {
             </div>
 
             <div className="flex items-center gap-1 sm:gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate("/educator/settings")}
-                title="Settings"
-              >
-                <Settings className="h-5 w-5 text-muted-foreground" />
-              </Button>
               {profile?.uid && (
                 <NotificationBell
                   uid={profile.uid}
@@ -496,14 +552,27 @@ function EducatorLayoutInner() {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/educator/messages")}>
-                    <MessageSquare className="mr-2 h-4 w-4" />
-                    Help &amp; Support
-                    {unreadMessages > 0 && (
-                      <Badge variant="secondary" className="ml-auto text-xs">
-                        {unreadMessages}
-                      </Badge>
-                    )}
+                  {!isEmployee && (
+                    <>
+                      <DropdownMenuItem onClick={() => navigate("/educator/billing")}>
+                        <CreditCard className="mr-2 h-4 w-4" />
+                        Billing
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate("/educator/organization")}>
+                        <Building2 className="mr-2 h-4 w-4" />
+                        Organization
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  {(!isEmployee || hasPermission("website.manage")) && (
+                    <DropdownMenuItem onClick={() => navigate("/educator/settings?builder=true")}>
+                      <Palette className="mr-2 h-4 w-4" />
+                      Customize Website
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={() => navigate("/educator/settings")}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleViewWebsite}>
                     <Globe className="mr-2 h-4 w-4" />

@@ -28,10 +28,10 @@ export default function Theme1Layout({ children }: Theme1LayoutProps) {
   const { tenant } = useTenant();
 
   const config = tenant?.websiteConfig || {};
-  const coachingName = config.coachingName || tenant?.coachingName || "Your Institute";
+  const coachingName = tenant?.coachingName || "Your Institute";
   const tagline = config.tagline || tenant?.tagline || "";
   const socials = (config.socials || {}) as Record<string, string>;
-  const logoUrl: string | undefined = config.logoUrl;
+  const logoUrl = tenant?.instituteLogo;
 
   // Set dynamic favicon + page title for this educator's subdomain
   useFavicon(logoUrl, coachingName);

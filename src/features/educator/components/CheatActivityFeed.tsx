@@ -66,7 +66,7 @@ export default function CheatActivityFeed() {
   };
 
   return (
-    <Card className="flex h-full w-full flex-col border-red-500/20 shadow-sm">
+    <Card className="flex h-[450px] w-full flex-col border-red-500/20 shadow-sm">
       <CardHeader className="border-b border-border/50 bg-red-50/30 pb-4 dark:bg-red-950/10">
         <div className="flex items-center gap-2">
           <div className="rounded-md bg-red-100 p-1.5 text-red-600 dark:bg-red-900/30 dark:text-red-400">
@@ -84,7 +84,7 @@ export default function CheatActivityFeed() {
       </CardHeader>
 
       <CardContent className="flex-1 overflow-hidden p-0">
-        <div className="scrollbar-thin scrollbar-thumb-muted-foreground/20 hover:scrollbar-thumb-red-500/30 h-full max-h-[300px] overflow-y-auto md:max-h-[400px]">
+        <div className="scrollbar-thin scrollbar-thumb-muted-foreground/20 hover:scrollbar-thumb-red-500/30 h-full overflow-y-auto">
           {loading ? (
             <div className="divide-y divide-border/40">
               {Array.from({ length: 4 }).map((_, i) => (
@@ -112,9 +112,9 @@ export default function CheatActivityFeed() {
                 return (
                   <div
                     key={alert.id}
-                    className="p-3 transition-colors hover:bg-red-50/50 dark:hover:bg-red-950/20"
+                    className="p-4 transition-colors hover:bg-red-50/50 dark:hover:bg-red-950/20"
                   >
-                    <div className="mb-1 flex items-start justify-between gap-2">
+                    <div className="mb-2 flex items-start justify-between gap-2">
                       <p className="line-clamp-1 text-sm font-semibold text-foreground">
                         {alert.studentName}
                       </p>
@@ -123,10 +123,10 @@ export default function CheatActivityFeed() {
                       </span>
                     </div>
 
-                    <div className="mb-1.5 flex items-center gap-1.5">
+                    <div className="mb-3 flex items-center gap-1.5">
                       <Badge
                         variant="outline"
-                        className="flex h-5 items-center gap-1 border-red-200 bg-red-100/50 px-1.5 py-0 text-[10px] text-red-600 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-400"
+                        className="flex h-5 items-center gap-1 border-red-200 bg-red-100 px-1.5 py-0 text-[10px] text-red-600 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-400"
                       >
                         {getViolationIcon(alert.violationType)}
                         {alert.violationType}

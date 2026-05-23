@@ -310,3 +310,17 @@
     background-position: -200% 0;
   }
 }
+
+/* ── Institute Builder: Hero mobile responsive ──────────────── */
+@media (max-width: 640px) {
+  .ib-hero-split,
+  .ib-hero-carousel {
+    flex-direction: column !important;
+  }
+
+  .ib-hero-split > *,
+  .ib-hero-carousel > * {
+    width: 100% !important;
+    flex-shrink: unset !important;
+  }
+}

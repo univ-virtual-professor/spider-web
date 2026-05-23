@@ -11,6 +11,7 @@ import {
   query,
   Timestamp,
   where,
+  updateDoc,
 } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
@@ -39,6 +40,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { uploadToImageKit, getContentUploadLimit } from "@shared/lib/imagekitUpload";
 import type { User } from "firebase/auth";
 import { useEducatorFeatures } from "@shared/hooks/useEducatorFeatures";
+import { Switch } from "@shared/ui/switch";
+import { Checkbox } from "@shared/ui/checkbox";
 
 const MONKEY_KING = import.meta.env.VITE_MONKEY_KING_API_URL as string;
 
@@ -73,6 +76,7 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
   note: FileText,
   mindmap: Network,
   formulasheet: ScrollText,
+  others: Library,
 };
 
 function ContentTypeIcon({ slug }: { slug: string }) {
@@ -96,6 +100,12 @@ type ContentItem = {
   adminLibraryId?: string;
   addedBy: string;
   createdAt: Timestamp;
+  isPublished?: boolean;
+  sharingScope?: "branch" | "program" | "batch";
+  targetBatchId?: string;
+  targetBatchName?: string;
+  branchId?: string;
+  courseId?: string;
 };
 type AdminLibraryItem = {
   id: string;
@@ -131,8 +141,14 @@ export default function ContentManagement() {
   const [loading, setLoading] = useState(true);
   const [uploadLimitMB, setUploadLimitMB] = useState(20);
 
-  const [selectedBranchId, setSelectedBranchId] = useState("");
-  const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [selectedBranchId, setSelectedBranchId] = useState("all");
+  const [selectedCourseId, setSelectedCourseId] = useState("all");
+  const [targetBranchId, setTargetBranchId] = useState("");
+  const [batches, setBatches] = useState<
+    { id: string; name: string; courseId: string; branchId: string }[]
+  >([]);
+  const [selectedBatchId, setSelectedBatchId] = useState("all");
+  const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
 
   const [content, setContent] = useState<ContentItem[]>([]);
   const [contentLoading, setContentLoading] = useState(false);
@@ -189,34 +205,93 @@ export default function ContentManagement() {
     return () => unsubs.forEach((u) => u());
   }, [branches, educatorId]);
 
-  // Load content when course selected
+  // Load batches when branches and courses load
   useEffect(() => {
-    if (!educatorId || !selectedBranchId || !selectedCourseId) {
-      setContent([]);
+    if (!educatorId || branches.length === 0 || courses.length === 0) {
+      setBatches([]);
       return;
     }
-    setContentLoading(true);
-    const unsub = onSnapshot(
-      query(
+    const unsubs = courses.map((course) =>
+      onSnapshot(
         collection(
           db,
           "educators",
           educatorId,
           "branches",
-          selectedBranchId,
+          course.branchId,
           "courses",
-          selectedCourseId,
-          "content"
+          course.id,
+          "batches"
         ),
-        orderBy("createdAt", "desc")
-      ),
-      (snap) => {
-        setContent(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ContentItem, "id">) })));
-        setContentLoading(false);
-      }
+        (snap) => {
+          const cb = snap.docs.map((d) => ({
+            id: d.id,
+            courseId: course.id,
+            branchId: course.branchId,
+            name: d.data().name as string,
+          }));
+          setBatches((prev) => [...prev.filter((b) => b.courseId !== course.id), ...cb]);
+        }
+      )
     );
-    return () => unsub();
-  }, [educatorId, selectedBranchId, selectedCourseId]);
+    return () => unsubs.forEach((u) => u());
+  }, [branches, courses, educatorId]);
+
+  // Load content across courses
+  useEffect(() => {
+    if (!educatorId || courses.length === 0) {
+      setContent([]);
+      setContentLoading(false);
+      return;
+    }
+
+    setContentLoading(true);
+    let loadedCount = 0;
+
+    const unsubs = courses.map((course) => {
+      return onSnapshot(
+        query(
+          collection(
+            db,
+            "educators",
+            educatorId,
+            "branches",
+            course.branchId,
+            "courses",
+            course.id,
+            "content"
+          ),
+          orderBy("createdAt", "desc")
+        ),
+        (snap) => {
+          const docs = snap.docs.map((d) => ({
+            id: d.id,
+            branchId: course.branchId,
+            courseId: course.id,
+            ...(d.data() as Omit<ContentItem, "id" | "branchId" | "courseId">),
+          }));
+
+          setContent((prev) => {
+            const filtered = prev.filter((item) => item.courseId !== course.id);
+            const combined = [...filtered, ...docs];
+            return combined.sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis());
+          });
+
+          loadedCount++;
+          if (loadedCount >= courses.length) {
+            setContentLoading(false);
+          }
+        },
+        (error) => {
+          console.error("Failed to fetch content for course", course.id, error);
+          loadedCount++;
+          if (loadedCount >= courses.length) setContentLoading(false);
+        }
+      );
+    });
+
+    return () => unsubs.forEach((u) => u());
+  }, [educatorId, courses]);
 
   if (!featuresLoading && !features.contentLibrary) {
     return (
@@ -251,11 +326,26 @@ export default function ContentManagement() {
       const allowedSubjectIds = subjectSnap.docs.map((d) => d.id);
       setAdminItems(all.filter((i) => allowedSubjectIds.includes(i.subjectId)));
     }
+    setTargetBranchId(selectedBranchId === "all" ? "" : selectedBranchId);
+    setSelectedBatches([]);
     setImportOpen(true);
   }
 
   async function handleImport(item: AdminLibraryItem) {
-    if (!selectedCourseId) return toast.error("Select a course first");
+    const branchIdToUse = selectedBranchId === "all" ? targetBranchId : selectedBranchId;
+    if (!branchIdToUse) return toast.error("Select a branch");
+
+    const courseIdToUse =
+      selectedCourseId && selectedCourseId !== "all"
+        ? selectedCourseId
+        : courses.find((c) => c.branchId === branchIdToUse)?.id;
+
+    if (!courseIdToUse) return toast.error("No program found for this branch");
+
+    const branchBatches = batches.filter((b) => b.branchId === branchIdToUse);
+    const finalSharingScope =
+      branchBatches.length > 1 && selectedBatches.length > 0 ? "batch" : "branch";
+
     setImportBusy(true);
     try {
       await addDoc(
@@ -264,9 +354,9 @@ export default function ContentManagement() {
           "educators",
           educatorId,
           "branches",
-          selectedBranchId,
+          branchIdToUse,
           "courses",
-          selectedCourseId,
+          courseIdToUse,
           "content"
         ),
         {
@@ -283,7 +373,15 @@ export default function ContentManagement() {
           addedBy: educatorId,
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
+          isPublished: true,
           indexed: false,
+          sharingScope: finalSharingScope,
+          targetBatches: finalSharingScope === "batch" ? selectedBatches : [],
+          targetBatchId: finalSharingScope === "batch" ? selectedBatches[0] : null,
+          targetBatchName:
+            finalSharingScope === "batch"
+              ? (batches.find((b) => b.id === selectedBatches[0])?.name ?? "")
+              : null,
         }
       );
       toast.success(`"${item.title}" added to course`);
@@ -295,16 +393,27 @@ export default function ContentManagement() {
   }
 
   function openUpload() {
+    setFile(null);
     setTitle("");
     setDescription("");
-    setType("book");
-    setFile(null);
+    setType("note");
     if (fileRef.current) fileRef.current.value = "";
+    setTargetBranchId(selectedBranchId === "all" ? "" : selectedBranchId);
+    setSelectedBatches([]);
     setUploadOpen(true);
   }
 
   async function handleUpload() {
-    if (!selectedCourseId) return toast.error("Select a course first");
+    const branchIdToUse = selectedBranchId === "all" ? targetBranchId : selectedBranchId;
+    if (!branchIdToUse) return toast.error("Select a branch");
+
+    const courseIdToUse =
+      selectedCourseId && selectedCourseId !== "all"
+        ? selectedCourseId
+        : courses.find((c) => c.branchId === branchIdToUse)?.id;
+
+    if (!courseIdToUse) return toast.error("No program found for this branch");
+
     if (!title.trim()) return toast.error("Title required");
     if (!file) return toast.error("File required");
 
@@ -322,15 +431,19 @@ export default function ContentManagement() {
         "content"
       );
 
+      const branchBatches = batches.filter((b) => b.branchId === branchIdToUse);
+      const finalSharingScope =
+        branchBatches.length > 1 && selectedBatches.length > 0 ? "batch" : "branch";
+
       const ref = await addDoc(
         collection(
           db,
           "educators",
           educatorId,
           "branches",
-          selectedBranchId,
+          branchIdToUse,
           "courses",
-          selectedCourseId,
+          courseIdToUse,
           "content"
         ),
         {
@@ -346,7 +459,15 @@ export default function ContentManagement() {
           addedBy: educatorId,
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
+          isPublished: true,
           indexed: false,
+          sharingScope: finalSharingScope,
+          targetBatches: finalSharingScope === "batch" ? selectedBatches : [],
+          targetBatchId: finalSharingScope === "batch" ? selectedBatches[0] : null,
+          targetBatchName:
+            finalSharingScope === "batch"
+              ? (batches.find((b) => b.id === selectedBatches[0])?.name ?? "")
+              : null,
         }
       );
 
@@ -356,8 +477,8 @@ export default function ContentManagement() {
           file_url: result.url,
           content_id: ref.id,
           educator_id: educatorId,
-          course_id: selectedCourseId,
-          branch_id: selectedBranchId,
+          course_id: courseIdToUse,
+          branch_id: branchIdToUse,
           title: title.trim(),
           content_type: type,
           mime_type: file.type,
@@ -396,6 +517,44 @@ export default function ContentManagement() {
     }
   }
 
+  async function handleTogglePublish(item: ContentItem, published: boolean) {
+    try {
+      await updateDoc(
+        doc(
+          db,
+          "educators",
+          educatorId,
+          "branches",
+          selectedBranchId,
+          "courses",
+          selectedCourseId,
+          "content",
+          item.id
+        ),
+        {
+          isPublished: published,
+          updatedAt: Timestamp.now(),
+        }
+      );
+      toast.success(published ? "Content published" : "Content unpublished");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update status");
+    }
+  }
+
+  const displayedContent = content.filter((item) => {
+    if (selectedBranchId !== "all" && item.branchId !== selectedBranchId) return false;
+    if (selectedCourseId !== "all" && item.courseId !== selectedCourseId) return false;
+
+    if (selectedBatchId === "all") return true;
+    if (item.sharingScope === "branch" || item.sharingScope === "program") return true;
+    if (item.sharingScope === "batch") {
+      if ((item as any).targetBatches?.includes(selectedBatchId)) return true;
+      if (item.targetBatchId === selectedBatchId) return true;
+    }
+    return false;
+  });
+
   const selectedCourse = courses.find((c) => c.id === selectedCourseId);
 
   if (loading) {
@@ -424,12 +583,14 @@ export default function ContentManagement() {
             onValueChange={(v) => {
               setSelectedBranchId(v);
               setSelectedCourseId("");
+              setSelectedBatchId("all");
             }}
           >
             <SelectTrigger className="w-full sm:w-48">
-              <SelectValue placeholder="Branch" />
+              <SelectValue placeholder="All Branches" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">All Branches</SelectItem>
               {branches.map((b) => (
                 <SelectItem key={b.id} value={b.id}>
                   {b.name}
@@ -440,18 +601,46 @@ export default function ContentManagement() {
 
           <Select
             value={selectedCourseId}
-            onValueChange={setSelectedCourseId}
+            onValueChange={(v) => {
+              setSelectedCourseId(v);
+              setSelectedBatchId("all");
+            }}
             disabled={!selectedBranchId}
           >
             <SelectTrigger className="w-full sm:w-48">
-              <SelectValue placeholder="Course" />
+              <SelectValue placeholder="All Programs" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="all">All Programs</SelectItem>
               {courses
-                .filter((c) => c.branchId === selectedBranchId)
+                .filter((c) => selectedBranchId === "all" || c.branchId === selectedBranchId)
                 .map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={selectedBatchId}
+            onValueChange={setSelectedBatchId}
+            disabled={selectedCourseId === "all" && selectedBranchId === "all"}
+          >
+            <SelectTrigger className="w-full sm:w-48">
+              <SelectValue placeholder="All Batches" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Batches</SelectItem>
+              {batches
+                .filter((b) =>
+                  selectedCourseId === "all"
+                    ? selectedBranchId === "all" || b.branchId === selectedBranchId
+                    : b.courseId === selectedCourseId
+                )
+                .map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.name}
                   </SelectItem>
                 ))}
             </SelectContent>
@@ -460,83 +649,118 @@ export default function ContentManagement() {
       </Card>
 
       {/* Content list */}
-      {selectedCourseId && (
-        <Card>
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-base">Content — {selectedCourse?.name}</CardTitle>
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-              <Button variant="outline" size="sm" onClick={openImport}>
-                <Library className="mr-2 h-4 w-4" /> Import from Library
-              </Button>
-              <Button size="sm" onClick={openUpload}>
-                <Plus className="mr-2 h-4 w-4" /> Add Content
-              </Button>
+      <Card>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle className="text-base">
+            Content{" "}
+            {selectedCourseId === "all"
+              ? "— All Programs"
+              : `— ${courses.find((c) => c.id === selectedCourseId)?.name}`}
+          </CardTitle>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <Button variant="outline" size="sm" onClick={openImport}>
+              <Library className="mr-2 h-4 w-4" /> Import from Library
+            </Button>
+            <Button size="sm" onClick={openUpload}>
+              <Plus className="mr-2 h-4 w-4" /> Add Content
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {contentLoading ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {contentLoading ? (
-              <div className="flex justify-center py-10">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
-            ) : content.length === 0 ? (
-              <div className="py-10 text-center text-muted-foreground">No content yet</div>
-            ) : (
-              <div className="w-full overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Title</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Source</TableHead>
-                      <TableHead>Size</TableHead>
-                      <TableHead>Added</TableHead>
-                      <TableHead className="w-20" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {content.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-medium">{item.title}</TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">
-                            <ContentTypeIcon slug={item.type} />
-                            {activeTypes.find((t) => t.slug === item.type)?.name ?? item.type}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
+          ) : displayedContent.length === 0 ? (
+            <div className="py-10 text-center text-muted-foreground">No content yet</div>
+          ) : (
+            <div className="w-full overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead>Scope</TableHead>
+                    <TableHead>Size</TableHead>
+                    <TableHead>Added</TableHead>
+                    <TableHead>Published</TableHead>
+                    <TableHead className="w-20" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {displayedContent.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-medium">{item.title}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">
+                          <ContentTypeIcon slug={item.type} />
+                          {activeTypes.find((t) => t.slug === item.type)?.name ?? item.type}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={item.source === "admin_library" ? "outline" : "secondary"}>
+                          {item.source === "admin_library" ? "Admin Library" : "Own"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {item.sharingScope === "branch" ? (
                           <Badge
-                            variant={item.source === "admin_library" ? "outline" : "secondary"}
+                            variant="outline"
+                            className="border-blue-500 bg-blue-500/10 text-blue-500"
                           >
-                            {item.source === "admin_library" ? "Admin Library" : "Own"}
+                            Branch
                           </Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatBytes(item.fileSize)}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {item.createdAt?.toDate().toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            <Button size="icon" variant="ghost" asChild>
-                              <a href={item.fileUrl} target="_blank" rel="noreferrer">
-                                <ExternalLink className="h-4 w-4" />
-                              </a>
-                            </Button>
-                            <Button size="icon" variant="ghost" onClick={() => handleDelete(item)}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+                        ) : item.sharingScope === "batch" ? (
+                          <Badge
+                            variant="outline"
+                            className="border-purple-500 bg-purple-500/10 text-purple-500"
+                          >
+                            {(item as any).targetBatches?.length > 1
+                              ? `Batches (${(item as any).targetBatches.length})`
+                              : `Batch: ${item.targetBatchName || "Specific"}`}
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="border-emerald-500 bg-emerald-500/10 text-emerald-500"
+                          >
+                            Program
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {formatBytes(item.fileSize)}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {item.createdAt?.toDate().toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        <Switch
+                          checked={item.isPublished !== false}
+                          onCheckedChange={(val) => handleTogglePublish(item, val)}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button size="icon" variant="ghost" asChild>
+                            <a href={item.fileUrl} target="_blank" rel="noreferrer">
+                              <ExternalLink className="h-4 w-4" />
+                            </a>
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => handleDelete(item)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Upload dialog */}
       <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
@@ -545,6 +769,52 @@ export default function ContentManagement() {
             <DialogTitle>Add Content</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {branches.length > 1 && selectedBranchId === "all" && (
+              <div className="space-y-1">
+                <Label>Choose Branch</Label>
+                <Select value={targetBranchId} onValueChange={setTargetBranchId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a branch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {(() => {
+              const branchIdToUse = selectedBranchId === "all" ? targetBranchId : selectedBranchId;
+              const branchBatches = batches.filter((b) => b.branchId === branchIdToUse);
+
+              if (branchBatches.length > 1) {
+                return (
+                  <div className="space-y-2">
+                    <Label>Choose Batch</Label>
+                    <div className="flex flex-col gap-2 rounded-md border p-3">
+                      {branchBatches.map((b) => (
+                        <label key={b.id} className="flex items-center gap-2">
+                          <Checkbox
+                            checked={selectedBatches.includes(b.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) setSelectedBatches((prev) => [...prev, b.id]);
+                              else setSelectedBatches((prev) => prev.filter((id) => id !== b.id));
+                            }}
+                          />
+                          <span className="text-sm font-medium">{b.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
             <div className="space-y-1">
               <Label>Title</Label>
               <Input
@@ -553,10 +823,7 @@ export default function ContentManagement() {
                 placeholder="e.g. Chapter 1 Notes"
               />
             </div>
-            <div className="space-y-1">
-              <Label>Description (optional)</Label>
-              <Input value={description} onChange={(e) => setDescription(e.target.value)} />
-            </div>
+
             <div className="space-y-1">
               <Label>Type</Label>
               <Select value={type} onValueChange={setType}>
@@ -572,6 +839,7 @@ export default function ContentManagement() {
                 </SelectContent>
               </Select>
             </div>
+
             <div className="space-y-1">
               <Label>
                 File <span className="text-xs text-muted-foreground">(max {uploadLimitMB} MB)</span>
@@ -597,6 +865,55 @@ export default function ContentManagement() {
           <DialogHeader>
             <DialogTitle>Import from Admin Library</DialogTitle>
           </DialogHeader>
+
+          {branches.length > 1 && selectedBranchId === "all" && (
+            <div className="mb-4 space-y-1">
+              <Label>Choose Branch</Label>
+              <Select value={targetBranchId} onValueChange={setTargetBranchId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a branch" />
+                </SelectTrigger>
+                <SelectContent>
+                  {branches.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div className="mb-4 space-y-3 border-b pb-4">
+            {(() => {
+              const branchIdToUse = selectedBranchId === "all" ? targetBranchId : selectedBranchId;
+              const branchBatches = batches.filter((b) => b.branchId === branchIdToUse);
+
+              if (branchBatches.length > 1) {
+                return (
+                  <div className="space-y-2">
+                    <Label>Choose Batch</Label>
+                    <div className="flex flex-col gap-2 rounded-md border p-3">
+                      {branchBatches.map((b) => (
+                        <label key={b.id} className="flex items-center gap-2">
+                          <Checkbox
+                            checked={selectedBatches.includes(b.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked) setSelectedBatches((prev) => [...prev, b.id]);
+                              else setSelectedBatches((prev) => prev.filter((id) => id !== b.id));
+                            }}
+                          />
+                          <span className="text-sm font-medium">{b.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+          </div>
+
           {adminItems.length === 0 ? (
             <p className="py-4 text-center text-sm text-muted-foreground">
               No admin content available for your assigned courses

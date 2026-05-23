@@ -8,23 +8,15 @@ import React from "react";
 import { useTenant } from "@app/providers/TenantProvider";
 import { useFavicon } from "@shared/hooks/useFavicon";
 import { Link } from "react-router-dom";
-import { Loader2 } from "lucide-react";
 
-// ── Re-export the component registry from InstituteBuilder ───────────────────
-// The builder stores section data as { id, type, data }[]. We need the same
-// component registry to render them on the public page.
-//
-// Because InstituteBuilder.tsx is a single large file with all components
-// defined inline (not exported), we duplicate the minimal rendering logic here.
-// The section components are pure presentational — they only need `data`,
-// `theme`, `selected=false`, and `onClick=noop`.
-//
-// We import the full InstituteBuilder module and use a thin wrapper that
-// strips the editor chrome and just renders the canvas sections.
-// Since the components aren't exported, we inline a lightweight renderer
-// that mirrors the same visual output.
+import {
+  THEME_PRESETS,
+  createCustomTheme,
+  type ThemeKey,
+} from "@features/educator/InstituteBuilder";
 
 import BuilderCanvas from "./BuilderCanvas";
+import { Loader2, Phone } from "lucide-react";
 
 export default function BuilderThemeHome() {
   const [isMobile, setIsMobile] = React.useState(false);
@@ -37,11 +29,38 @@ export default function BuilderThemeHome() {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  const websiteConfig = tenant?.websiteConfig || {};
-  const logoUrl: string | undefined = websiteConfig.logoUrl;
-  const coachingName = websiteConfig.coachingName || tenant?.coachingName || "Institute";
+  const coachingName = tenant?.coachingName || "Institute";
+  const logoUrl = tenant?.instituteLogo;
 
   useFavicon(logoUrl, coachingName);
+  const handleSectionScroll = React.useCallback((e: React.MouseEvent, target: string) => {
+    if (!target.startsWith("#")) return;
+    e.preventDefault();
+    const id = target.substring(1);
+    const element = document.getElementById(id);
+    if (element) {
+      const yOffset = -52;
+      const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+      window.scrollTo({ top: y, behavior: "smooth" });
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const handleHashClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const anchor = target.closest("a");
+      if (
+        anchor &&
+        anchor.hash &&
+        anchor.origin === window.location.origin &&
+        anchor.pathname === window.location.pathname
+      ) {
+        handleSectionScroll(e as any, anchor.hash);
+      }
+    };
+    window.addEventListener("click", handleHashClick);
+    return () => window.removeEventListener("click", handleHashClick);
+  }, [handleSectionScroll]);
 
   if (loading) {
     return (
@@ -54,18 +73,29 @@ export default function BuilderThemeHome() {
 
   if (!tenant) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold">Coaching not found</h2>
-          <p className="mt-2 text-muted-foreground">
-            This coaching website does not exist. Check the URL or contact support.
-          </p>
-        </div>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
+        <div style={{ fontSize: 48 }}>🔍</div>
+        <h2 className="text-2xl font-bold">Coaching not found</h2>
+        <p className="max-w-md text-muted-foreground">
+          This coaching website does not exist. Check the URL or contact support.
+        </p>
       </div>
     );
   }
 
   const builderConfig = tenant.builderConfig;
+  const contactSection = builderConfig?.sections?.find((s: any) => s.type === "contact");
+  const navbarPhone = contactSection?.data?.phone || tenant.contact?.phone;
+
+  const themeKey = (builderConfig?.themeKey || "indigo") as ThemeKey;
+  const useGradient = builderConfig?.useGradient || false;
+  const themeMode = builderConfig?.themeMode || "preset";
+  const customColor = builderConfig?.customColor || "";
+
+  const theme =
+    themeMode === "custom" && customColor
+      ? createCustomTheme(customColor, useGradient)
+      : { ...(THEME_PRESETS[themeKey] || THEME_PRESETS.indigo), useGradient };
 
   if (!builderConfig || !builderConfig.sections || builderConfig.sections.length === 0) {
     return (
@@ -77,9 +107,17 @@ export default function BuilderThemeHome() {
         </p>
         <Link
           to="/login"
-          className="mt-4 inline-flex items-center gap-2 rounded-full bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
+          style={{
+            background: theme.primary,
+            color: "#fff",
+            borderRadius: 8,
+            padding: "8px 20px",
+            fontSize: 14,
+            fontWeight: 600,
+            textDecoration: "none",
+          }}
         >
-          Login
+          Go to Dashboard
         </Link>
       </div>
     );
@@ -93,9 +131,11 @@ export default function BuilderThemeHome() {
           position: "sticky",
           top: 0,
           zIndex: 50,
-          background: "rgba(255,255,255,0.92)",
-          backdropFilter: "blur(12px)",
-          borderBottom: "1px solid rgba(0,0,0,0.07)",
+          background: theme.useGradient
+            ? `linear-gradient(to right, ${theme.surface}, ${theme.bg})`
+            : theme.surface,
+          backdropFilter: "blur(10px)",
+          borderBottom: `1px solid ${theme.primary}15`,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
@@ -116,7 +156,7 @@ export default function BuilderThemeHome() {
                 height: 32,
                 width: 32,
                 borderRadius: 8,
-                background: "#4f46e5",
+                background: theme.primary,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -129,30 +169,66 @@ export default function BuilderThemeHome() {
             </div>
           )}
           {!isMobile && (
-            <span style={{ fontWeight: 700, fontSize: 15, color: "#1a1a2e" }}>{coachingName}</span>
+            <span style={{ fontWeight: 700, fontSize: 15, color: theme.text || "#1a1a2e" }}>
+              {coachingName}
+            </span>
           )}
         </div>
-        <Link
-          to="/login"
-          style={{
-            background: "#4f46e5",
-            color: "#fff",
-            borderRadius: 8,
-            padding: "6px 16px",
-            fontSize: 13,
-            fontWeight: 600,
-            textDecoration: "none",
-          }}
-        >
-          {isMobile ? "Login" : "Student Login"}
-        </Link>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          {navbarPhone && (
+            <a
+              href={`tel:${navbarPhone}`}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                color: theme.text || "#1a1a2e",
+                fontSize: 14,
+                fontWeight: 600,
+                textDecoration: "none",
+                marginRight: 4,
+              }}
+            >
+              <div
+                style={{
+                  width: isMobile ? 24 : 32,
+                  height: isMobile ? 24 : 32,
+                  borderRadius: "50%",
+                  background: `${theme.primary}15`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Phone size={isMobile ? 12 : 14} color={theme.primary} />
+              </div>
+              <span style={{ fontSize: isMobile ? 12 : 14 }}>{navbarPhone}</span>
+            </a>
+          )}
+          <Link
+            to="/login"
+            style={{
+              background: theme.primary,
+              color: "#fff",
+              borderRadius: 8,
+              padding: isMobile ? "4px 8px" : "6px 16px",
+              fontSize: isMobile ? 11 : 13,
+              fontWeight: 600,
+              textDecoration: "none",
+            }}
+          >
+            {isMobile ? "Login" : "Student Login"}
+          </Link>
+        </div>
       </nav>
 
       {/* Render the builder sections */}
       <BuilderCanvas
         sections={builderConfig.sections}
-        themeKey={builderConfig.themeKey || "indigo"}
-        themeOverrides={builderConfig.themeOverrides || {}}
+        themeKey={themeKey}
+        useGradient={useGradient}
+        themeMode={themeMode}
+        customColor={customColor}
       />
     </div>
   );

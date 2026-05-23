@@ -2,6 +2,7 @@ import React from "react";
 import {
   COMPONENT_REGISTRY,
   THEME_PRESETS,
+  createCustomTheme,
   type ThemeKey,
   type Section,
   type Theme,
@@ -10,13 +11,17 @@ import {
 type BuilderCanvasProps = {
   sections: Section[];
   themeKey?: ThemeKey | string;
-  themeOverrides?: Partial<Theme>;
+  themeMode?: "preset" | "custom";
+  customColor?: string;
+  useGradient?: boolean;
 };
 
 export default function BuilderCanvas({
   sections,
   themeKey = "indigo",
-  themeOverrides = {},
+  themeMode = "preset",
+  customColor = "",
+  useGradient = false,
 }: BuilderCanvasProps) {
   const [isMobile, setIsMobile] = React.useState(false);
 
@@ -30,25 +35,40 @@ export default function BuilderCanvas({
   }, []);
 
   const safeThemeKey = (themeKey in THEME_PRESETS ? themeKey : "indigo") as ThemeKey;
-  const baseTheme = THEME_PRESETS[safeThemeKey];
-  const theme: Theme = { ...baseTheme, ...themeOverrides };
+  const theme: Theme =
+    themeMode === "custom" && customColor
+      ? createCustomTheme(customColor, useGradient)
+      : { ...THEME_PRESETS[safeThemeKey], useGradient };
 
   return (
     <div style={{ background: theme.bg }}>
+      <style>
+        {`
+          .ib-card {
+            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+          }
+          .ib-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 12px 30px rgba(0,0,0,0.12) !important;
+          }
+        `}
+      </style>
       {sections.map((section) => {
         const reg = COMPONENT_REGISTRY[section.type];
         if (!reg) return null;
         const Comp = reg.component;
         return (
-          <Comp
-            key={section.id}
-            data={section.data || {}}
-            theme={theme}
-            selected={false}
-            onClick={() => {}}
-            previewMode
-            isMobile={isMobile}
-          />
+          <div key={section.id} id={section.id || section.type?.toLowerCase().replace(/\s+/g, "-")}>
+            <Comp
+              data={section.data || {}}
+              theme={theme}
+              selected={false}
+              onClick={() => {}}
+              previewMode
+              mobile={isMobile}
+              sections={sections}
+            />
+          </div>
         );
       })}
     </div>

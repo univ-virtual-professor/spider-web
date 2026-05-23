@@ -6,7 +6,8 @@ import {
   signInWithEmailAndPassword,
   updateProfile,
 } from "firebase/auth";
-import { auth } from "@shared/lib/firebase";
+import { doc, setDoc, arrayUnion } from "firebase/firestore";
+import { auth, db } from "@shared/lib/firebase";
 import { buildTenantUrl } from "@shared/lib/tenant";
 import { toast } from "sonner";
 import { Loader2, GraduationCap } from "lucide-react";
@@ -86,6 +87,15 @@ export default function Join() {
           throw new Error(err.detail || "Enrollment failed");
         }
         const result = await res.json().catch(() => ({}));
+
+        if (result.tenant_slug) {
+          await setDoc(
+            doc(db, "users", user.uid),
+            { enrolledTenants: arrayUnion(result.tenant_slug) },
+            { merge: true }
+          );
+        }
+
         toast.success("You've been enrolled successfully.");
         window.location.href = buildTenantUrl(result.tenant_slug || "", "/student/dashboard");
       } catch (e: any) {
@@ -127,6 +137,15 @@ export default function Join() {
       }
 
       const result = await res.json().catch(() => ({}));
+
+      if (result.tenant_slug && auth.currentUser) {
+        await setDoc(
+          doc(db, "users", auth.currentUser.uid),
+          { enrolledTenants: arrayUnion(result.tenant_slug) },
+          { merge: true }
+        );
+      }
+
       toast.success("Welcome! You've been enrolled successfully.");
       window.location.href = buildTenantUrl(result.tenant_slug || "", "/student/dashboard");
     } catch (e: any) {
