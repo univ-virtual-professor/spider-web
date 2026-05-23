@@ -161,7 +161,7 @@ export default function DppGenerator() {
     branchName: string;
   };
   const [coursesList, setCoursesList] = useState<CourseOption[]>([]);
-  const [selectedCourseIdx, setSelectedCourseIdx] = useState<string>("0");
+  const [selectedCourseId, setSelectedCourseId] = useState<string>("");
 
   // Load content & branches
   useEffect(() => {
@@ -235,14 +235,26 @@ export default function DppGenerator() {
       });
   }, [educatorUid]);
 
+  // Auto-select the first program when the branch or coursesList changes
+  useEffect(() => {
+    if (selectedBranchId) {
+      const firstCourse = coursesList.find((c) => c.branchId === selectedBranchId);
+      if (firstCourse) {
+        setSelectedCourseId(firstCourse.courseId);
+      } else {
+        setSelectedCourseId("");
+      }
+    } else {
+      setSelectedCourseId("");
+    }
+  }, [selectedBranchId, coursesList]);
+
   // Load batches when a branch/course is selected
   useEffect(() => {
-    if (!educatorUid || !selectedBranchId) {
+    if (!educatorUid || !selectedBranchId || !selectedCourseId) {
       setBatches([]);
       return;
     }
-    const courseObj = coursesList.find((c) => c.branchId === selectedBranchId);
-    if (!courseObj) return;
 
     getDocs(
       collection(
@@ -252,7 +264,7 @@ export default function DppGenerator() {
         "branches",
         selectedBranchId,
         "courses",
-        courseObj.courseId,
+        selectedCourseId,
         "batches"
       )
     )
@@ -264,10 +276,12 @@ export default function DppGenerator() {
         setBatches(loadedBatches);
         if (loadedBatches.length === 1) {
           setSelectedBatchIds(new Set([loadedBatches[0].id]));
+        } else {
+          setSelectedBatchIds(new Set());
         }
       })
       .catch(() => {});
-  }, [educatorUid, selectedBranchId, coursesList]);
+  }, [educatorUid, selectedBranchId, selectedCourseId]);
 
   // ── Realtime DPP listener ──────────────────────────────────────────────────
   useEffect(() => {
@@ -310,8 +324,10 @@ export default function DppGenerator() {
 
   // ── Generate helpers ───────────────────────────────────────────────────
   const genSelectedContent = content.filter((c) => genSelectedIds.has(c.id));
-  const courseObj = coursesList[parseInt(selectedCourseIdx)] || coursesList[0];
-  const genCourseId = courseObj?.courseId || "";
+  const courseObj = coursesList.find(
+    (c) => c.courseId === selectedCourseId && c.branchId === selectedBranchId
+  );
+  const genCourseId = selectedCourseId;
 
   // BUG 4 FIX: require courseObj to be defined before enabling the generate button
   const canGenerate =
@@ -582,6 +598,26 @@ export default function DppGenerator() {
                     </select>
                   </div>
                 )}
+
+                {selectedBranchId && (
+                  <div className={`w-full space-y-1.5 ${branches.length <= 1 ? "col-span-2" : ""}`}>
+                    <Label>Choose Program</Label>
+                    <select
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                      value={selectedCourseId}
+                      onChange={(e) => setSelectedCourseId(e.target.value)}
+                    >
+                      <option value="">Select program...</option>
+                      {coursesList
+                        .filter((c) => c.branchId === selectedBranchId)
+                        .map((c) => (
+                          <option key={c.courseId} value={c.courseId}>
+                            {c.courseName}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                )}
                 {batches.length > 1 && (
                   <div className="col-span-2 space-y-1.5">
                     <Label>Choose Batch</Label>
@@ -630,20 +666,6 @@ export default function DppGenerator() {
               {/* Source-specific inputs */}
               {genSource === "upload" && (
                 <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
-                  <div className="space-y-1">
-                    <Label>Target Course</Label>
-                    <select
-                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={selectedCourseIdx}
-                      onChange={(e) => setSelectedCourseIdx(e.target.value)}
-                    >
-                      {coursesList.map((c, idx) => (
-                        <option key={`${c.branchId}::${c.courseId}`} value={idx.toString()}>
-                          {c.branchName} / {c.courseName}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                   <div className="space-y-1">
                     <Label>File Title</Label>
                     <Input
