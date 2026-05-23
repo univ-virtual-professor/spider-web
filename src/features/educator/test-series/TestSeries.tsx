@@ -702,7 +702,7 @@ export default function TestSeries() {
                 topic_filters: constraint?.topics ?? [],
                 chapter_filter: constraint?.chapter ?? "",
                 subject: constraint?.subject ?? test.subject ?? "",
-                question_type: constraint?.format ?? test.questionFormat ?? "MCQ_SINGLE",
+                question_type: constraint?.format || test.questionFormat || "MCQ_SINGLE",
                 tags: constraint?.tags ?? [],
                 section_name: c.sectionName,
                 current_question_count: order,
