@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertTriangle, LayoutGrid, Upload } from "lucide-react";
+import { AlertTriangle, Camera, LayoutGrid, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { normalizeQuestionType } from "@shared/lib/questionTypes";
@@ -1236,6 +1236,7 @@ export default function StudentCBTAttempt() {
     submitDialogOpen,
     violationModalOpen,
     instructionsOpen,
+    isSubjectiveTest: questions.some((q) => q.type === "short_answer"),
   });
   useEffect(() => {
     proctorStateRef.current = {
@@ -1244,8 +1245,9 @@ export default function StudentCBTAttempt() {
       submitDialogOpen,
       violationModalOpen,
       instructionsOpen,
+      isSubjectiveTest: questions.some((q) => q.type === "short_answer"),
     };
-  }, [isStarted, exitCount, submitDialogOpen, violationModalOpen, instructionsOpen]);
+  }, [isStarted, exitCount, submitDialogOpen, violationModalOpen, instructionsOpen, questions]);
 
   const handleViolation = useCallback(
     async (violationType = "Proctoring Violation") => {
@@ -1298,8 +1300,10 @@ export default function StudentCBTAttempt() {
         submitDialogOpen: subOpen,
         violationModalOpen: violOpen,
         instructionsOpen: instOpen,
+        isSubjectiveTest,
       } = proctorStateRef.current;
-      if (!document.fullscreenElement && started && !subOpen && !violOpen && !instOpen) {
+      // Subjective tests: photo upload closes fullscreen — don't penalise
+      if (!document.fullscreenElement && started && !subOpen && !violOpen && !instOpen && !isSubjectiveTest) {
         handleViolation("Exited Fullscreen");
       }
     };
@@ -2393,94 +2397,169 @@ export default function StudentCBTAttempt() {
                               Clear the image to type a text answer instead.
                             </div>
                           </div>
-                        ) : (
-                          <label
+                        ) : isUploading ? (
+                          <div
                             style={{
                               display: "flex",
                               flexDirection: "column",
                               alignItems: "center",
                               justifyContent: "center",
                               padding: "20px 16px",
-                              border: isUploading ? "2px solid #6366f1" : "2px dashed #d1d5db",
+                              border: "2px solid #6366f1",
                               borderRadius: 12,
-                              cursor: isStarted && !isUploading ? "pointer" : "not-allowed",
-                              background: isUploading ? "#eef2ff" : "#f9fafb",
-                              transition: "all 0.2s",
-                              opacity: isUploading ? 0.8 : 1,
-                            }}
-                            onClick={() => {
-                              if (!isStarted || isUploading) return;
-                              resumeFullscreenRef.current = Boolean(document.fullscreenElement);
-                              ignoreProctoringRef.current = true;
+                              background: "#eef2ff",
+                              opacity: 0.8,
                             }}
                           >
-                            {isUploading ? (
-                              <>
-                                <div
-                                  style={{
-                                    width: 36,
-                                    height: 36,
-                                    borderRadius: "50%",
-                                    border: "3px solid #c7d2fe",
-                                    borderTopColor: "#6366f1",
-                                    animation: "cbt-eval-spin 0.8s linear infinite",
-                                    marginBottom: 8,
-                                  }}
-                                />
-                                <span style={{ fontSize: 13, color: "#6366f1", fontWeight: 600 }}>
-                                  Uploading your answer...
-                                </span>
-                              </>
-                            ) : (
-                              <>
-                                <Upload size={28} style={{ color: "#9ca3af", marginBottom: 6 }} />
-                                <span style={{ fontSize: 13, color: "#6b7280", fontWeight: 600 }}>
-                                  Click to upload image
-                                </span>
-                                <span style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
-                                  JPG, PNG up to 10MB
-                                </span>
-                              </>
-                            )}
-                            <input
-                              type="file"
-                              accept="image/jpeg,image/png,image/webp"
-                              disabled={!isStarted || isUploading}
-                              style={{ display: "none" }}
-                              onChange={async (e) => {
-                                ignoreProctoringRef.current = false;
-                                const file = e.target.files?.[0];
-                                e.target.value = "";
-                                if (!file) return;
-                                if (file.size > 10 * 1024 * 1024) {
-                                  toast.error("File too large. Max 10MB.");
-                                  return;
-                                }
-                                if (!file.type.startsWith("image/")) {
-                                  toast.error("Only image files are allowed.");
-                                  return;
-                                }
-                                try {
-                                  handleSelectOption("__uploading__");
-                                  setSaving(true);
-                                  const { url } = await uploadToImageKit(
-                                    file,
-                                    `student_ans_${currentQuestion.id}_${Date.now()}.${file.name.split(".").pop() || "jpg"}`,
-                                    "/student-answers",
-                                    "student"
-                                  );
-                                  handleSelectOption(url);
-                                  toast.success("Image uploaded successfully");
-                                } catch (err: any) {
-                                  console.error("[StudentCBT] Upload failed:", err);
-                                  handleSelectOption("");
-                                  toast.error(err?.message || "Upload failed. Please try again.");
-                                } finally {
-                                  setSaving(false);
-                                }
+                            <div
+                              style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: "50%",
+                                border: "3px solid #c7d2fe",
+                                borderTopColor: "#6366f1",
+                                animation: "cbt-eval-spin 0.8s linear infinite",
+                                marginBottom: 8,
                               }}
                             />
-                          </label>
+                            <span style={{ fontSize: 13, color: "#6366f1", fontWeight: 600 }}>
+                              Uploading your answer...
+                            </span>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", gap: 8 }}>
+                            {/* Option A: Camera capture (opens camera directly on mobile) */}
+                            <label
+                              style={{
+                                flex: 1,
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                padding: "16px 8px",
+                                border: "2px dashed #d1d5db",
+                                borderRadius: 10,
+                                cursor: isStarted ? "pointer" : "not-allowed",
+                                background: "#f9fafb",
+                                gap: 4,
+                              }}
+                              onClick={() => {
+                                if (!isStarted) return;
+                                resumeFullscreenRef.current = Boolean(document.fullscreenElement);
+                                ignoreProctoringRef.current = true;
+                              }}
+                            >
+                              <Camera size={22} style={{ color: "#6b7280" }} />
+                              <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 600 }}>
+                                Take Photo
+                              </span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                disabled={!isStarted}
+                                style={{ display: "none" }}
+                                onChange={async (e) => {
+                                  ignoreProctoringRef.current = false;
+                                  const file = e.target.files?.[0];
+                                  e.target.value = "";
+                                  if (!file) return;
+                                  if (file.size > 10 * 1024 * 1024) {
+                                    toast.error("File too large. Max 10MB.");
+                                    return;
+                                  }
+                                  if (!file.type.startsWith("image/")) {
+                                    toast.error("Only image files are allowed.");
+                                    return;
+                                  }
+                                  try {
+                                    handleSelectOption("__uploading__");
+                                    setSaving(true);
+                                    const { url } = await uploadToImageKit(
+                                      file,
+                                      `student_ans_${currentQuestion.id}_${Date.now()}.${file.name.split(".").pop() || "jpg"}`,
+                                      "/student-answers",
+                                      "student"
+                                    );
+                                    handleSelectOption(url);
+                                    toast.success("Image uploaded successfully");
+                                  } catch (err: any) {
+                                    console.error("[StudentCBT] Upload failed:", err);
+                                    handleSelectOption("");
+                                    toast.error(err?.message || "Upload failed. Please try again.");
+                                  } finally {
+                                    setSaving(false);
+                                  }
+                                }}
+                              />
+                            </label>
+
+                            {/* Option B: File picker (gallery on mobile, file browser on desktop) */}
+                            <label
+                              style={{
+                                flex: 1,
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                padding: "16px 8px",
+                                border: "2px dashed #d1d5db",
+                                borderRadius: 10,
+                                cursor: isStarted ? "pointer" : "not-allowed",
+                                background: "#f9fafb",
+                                gap: 4,
+                              }}
+                              onClick={() => {
+                                if (!isStarted) return;
+                                resumeFullscreenRef.current = Boolean(document.fullscreenElement);
+                                ignoreProctoringRef.current = true;
+                              }}
+                            >
+                              <Upload size={22} style={{ color: "#9ca3af" }} />
+                              <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 600 }}>
+                                Upload Image
+                              </span>
+                              <span style={{ fontSize: 10, color: "#9ca3af" }}>JPG, PNG, up to 10MB</span>
+                              <input
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                disabled={!isStarted}
+                                style={{ display: "none" }}
+                                onChange={async (e) => {
+                                  ignoreProctoringRef.current = false;
+                                  const file = e.target.files?.[0];
+                                  e.target.value = "";
+                                  if (!file) return;
+                                  if (file.size > 10 * 1024 * 1024) {
+                                    toast.error("File too large. Max 10MB.");
+                                    return;
+                                  }
+                                  if (!file.type.startsWith("image/")) {
+                                    toast.error("Only image files are allowed.");
+                                    return;
+                                  }
+                                  try {
+                                    handleSelectOption("__uploading__");
+                                    setSaving(true);
+                                    const { url } = await uploadToImageKit(
+                                      file,
+                                      `student_ans_${currentQuestion.id}_${Date.now()}.${file.name.split(".").pop() || "jpg"}`,
+                                      "/student-answers",
+                                      "student"
+                                    );
+                                    handleSelectOption(url);
+                                    toast.success("Image uploaded successfully");
+                                  } catch (err: any) {
+                                    console.error("[StudentCBT] Upload failed:", err);
+                                    handleSelectOption("");
+                                    toast.error(err?.message || "Upload failed. Please try again.");
+                                  } finally {
+                                    setSaving(false);
+                                  }
+                                }}
+                              />
+                            </label>
+                          </div>
                         )}
                       </div>
                     </div>

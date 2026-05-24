@@ -68,7 +68,7 @@ type EducatorDoc = {
   maxBranches?: number;
   allowedSubjectIds?: string[];
   trialSeats?: number;
-  trialExpiryAt?: Ts;
+  trialExpiryAt?: Ts | string;
   trialStatus?: string;
   displayName?: string;
   email?: string;
@@ -135,9 +135,10 @@ function fmtTs(ts: Ts) {
   }
 }
 
-function fmtDate(ts: Ts) {
+function fmtDate(ts: Ts | string) {
   if (!ts) return "-";
   try {
+    if (typeof ts === "string") return new Date(ts).toLocaleDateString();
     return new Date((ts as Timestamp).seconds * 1000).toLocaleDateString();
   } catch {
     return "-";

@@ -8,6 +8,7 @@ export type TestSection = {
   attemptsLimit?: number | null;
   timeLimit?: number | null;
   topics?: string[];
+  format?: string;
   difficultyLevel?: number;
   markingScheme?: {
     correct: number | null;
@@ -74,6 +75,10 @@ export type QuestionBankQuestion = {
   topic?: string;
   marks?: number;
   negativeMarks?: number;
+  questionType?: string;
+  referenceAnswer?: string;
+  referenceKeywords?: string[];
+  evaluationInstructions?: string;
   updatedAt?: any;
 };
 

@@ -162,6 +162,7 @@ const CreateCustomTest = ({
   const [formCourseId, setFormCourseId] = useState("");
   const [formCourseName, setFormCourseName] = useState("");
   const [formSubject, setFormSubject] = useState("");
+  const [subjectMode, setSubjectMode] = useState<"single" | "section_wise">("single");
   const [formDuration, setFormDuration] = useState("60");
   const [formSections, setFormSections] = useState<any[]>([]);
   const [formMarkingScheme, setFormMarkingScheme] = useState<any>({
@@ -177,6 +178,7 @@ const CreateCustomTest = ({
   const [newSectionDifficulty, setNewSectionDifficulty] = useState(0.5);
   const [newSectionTopics, setNewSectionTopics] = useState<string[]>([]);
   const [newSectionChapter, setNewSectionChapter] = useState("");
+  const [newSectionSubject, setNewSectionSubject] = useState("");
   const [newSectionTags, setNewSectionTags] = useState<string[]>([]);
   const [newSectionAttemptLimit, setNewSectionAttemptLimit] = useState("");
   const [newSectionFormat, setNewSectionFormat] = useState("MCQ_SINGLE");
@@ -201,6 +203,7 @@ const CreateCustomTest = ({
       setFormCourseId("");
       setFormCourseName("");
       setFormSubject("");
+      setSubjectMode("single");
       setFormDuration("60");
       setFormSections([]);
       setFormMarkingScheme({ correct: 4, incorrect: -1, unanswered: 0 });
@@ -229,6 +232,7 @@ const CreateCustomTest = ({
       if (selectedTemplateId === "none" || !selectedTemplateId) {
         setFormDescription("");
         setFormSubject("");
+        setSubjectMode("single");
         setFormDuration("60");
         setFormSections([]);
         setFormMarkingScheme({ correct: 4, incorrect: -1, unanswered: 0 });
@@ -244,6 +248,7 @@ const CreateCustomTest = ({
       setFormCourseName(String((resolvedTemplate as any).courseName || ""));
     }
     setFormSubject(String(resolvedTemplate.subject || ""));
+    setSubjectMode((resolvedTemplate as any).subjectMode || "single");
     setFormDuration(
       String(safeNum(resolvedTemplate.durationMinutes ?? resolvedTemplate.duration, 60))
     );
@@ -284,7 +289,7 @@ const CreateCustomTest = ({
       return;
     }
 
-    if (!formSubject.trim()) {
+    if (!(useSections && subjectMode === "section_wise") && !formSubject.trim()) {
       toast.error("Subject is required");
       return;
     }
@@ -307,7 +312,8 @@ const CreateCustomTest = ({
       description: formDescription.trim(),
       courseId: formCourseId,
       courseName: formCourseName,
-      subject: formSubject.trim(),
+      subject: useSections && subjectMode === "section_wise" ? "" : formSubject.trim(),
+      subjectMode: useSections ? subjectMode : "single",
       level: getDifficultyLabel(averagedDifficultyLevel),
       difficultyLevel: averagedDifficultyLevel,
       durationMinutes: Number(formDuration) || 60,
@@ -380,6 +386,7 @@ const CreateCustomTest = ({
     setNewSectionDifficulty(computedDifficultyLevel);
     setNewSectionTopics([]);
     setNewSectionChapter("");
+    setNewSectionSubject("");
     setNewSectionTags([]);
     setNewSectionFormat("MCQ_SINGLE");
     setAddSectionAdvancedOpen(false);
@@ -408,6 +415,7 @@ const CreateCustomTest = ({
         difficultyLevel: clampDifficulty(newSectionDifficulty),
         topics: newSectionTopics,
         chapter: newSectionChapter || "",
+        subject: newSectionSubject || "",
         tags: newSectionTags,
         format: newSectionFormat || "",
       },
@@ -593,33 +601,35 @@ const CreateCustomTest = ({
               </Select>
             </div>
           )}
-          <div className="space-y-2">
-            <Label>Subject *</Label>
-            {formCourseId &&
-            accessibleSubjects.filter((s) => s.courseId === formCourseId).length > 0 ? (
-              <Select value={formSubject} onValueChange={setFormSubject}>
-                <SelectTrigger className="rounded-xl">
-                  <SelectValue placeholder="Select subject" />
-                </SelectTrigger>
-                <SelectContent>
-                  {accessibleSubjects
-                    .filter((s) => s.courseId === formCourseId)
-                    .map((s) => (
-                      <SelectItem key={s.id} value={s.name}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <Input
-                value={formSubject}
-                onChange={(e) => setFormSubject(e.target.value)}
-                className="rounded-xl"
-                placeholder="e.g. Maths"
-              />
-            )}
-          </div>
+          {!(useSections && subjectMode === "section_wise") && (
+            <div className="space-y-2">
+              <Label>Subject *</Label>
+              {formCourseId &&
+              accessibleSubjects.filter((s) => s.courseId === formCourseId).length > 0 ? (
+                <Select value={formSubject} onValueChange={setFormSubject}>
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue placeholder="Select subject" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {accessibleSubjects
+                      .filter((s) => s.courseId === formCourseId)
+                      .map((s) => (
+                        <SelectItem key={s.id} value={s.name}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={formSubject}
+                  onChange={(e) => setFormSubject(e.target.value)}
+                  className="rounded-xl"
+                  placeholder="e.g. Maths"
+                />
+              )}
+            </div>
+          )}
           <div className="space-y-2">
             <Label>Test Difficulty (avg of sections)</Label>
             <span
@@ -698,7 +708,7 @@ const CreateCustomTest = ({
 
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <h3 className="text-sm font-semibold">Sections</h3>
               <div className="flex items-center gap-2">
                 <Switch checked={useSections} onCheckedChange={setUseSections} />
@@ -706,6 +716,32 @@ const CreateCustomTest = ({
                   {useSections ? "Enabled" : "Disabled"}
                 </span>
               </div>
+              {useSections && (
+                <div className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setSubjectMode("single")}
+                    className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                      subjectMode === "single"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Single Subject
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSubjectMode("section_wise")}
+                    className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                      subjectMode === "section_wise"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Section-wise
+                  </button>
+                </div>
+              )}
             </div>
             {useSections && (
               <Button type="button" size="sm" variant="outline" onClick={openAddSectionDialog}>
@@ -809,6 +845,7 @@ const CreateCustomTest = ({
                 sectionDifficulty={sec.difficultyLevel}
                 sectionChapter={sec.chapter}
                 sectionTopics={sec.topics}
+                sectionSubject={sec.subject}
                 sectionTags={sec.tags}
                 availableChapters={qbOptions.chapters}
                 availableTopics={qbOptions.topics}
@@ -816,6 +853,10 @@ const CreateCustomTest = ({
                 sectionFormat={sec.format}
                 markingScheme={sec.markingScheme}
                 defaultMarkingScheme={formMarkingScheme}
+                showSubjectPicker={subjectMode === "section_wise"}
+                courseSubjects={accessibleSubjects.filter((s) =>
+                  formCourseId ? s.courseId === formCourseId : true
+                )}
                 onEdit={(payload) => {
                   const updated = [...formSections];
                   updated[index] = {
@@ -904,20 +945,51 @@ const CreateCustomTest = ({
                   <span>Hard</span>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label>Question Format</Label>
-                <Select value={newSectionFormat} onValueChange={setNewSectionFormat}>
-                  <SelectTrigger className="rounded-xl">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="MCQ_SINGLE">MCQ (Single Correct)</SelectItem>
-                    <SelectItem value="MCQ_MULTI">MCQ (Multiple Correct)</SelectItem>
-                    <SelectItem value="MCQ_CASE_STUDY">MCQ (Case Study)</SelectItem>
-                    <SelectItem value="SUBJECTIVE_SHORT">Subjective (Short)</SelectItem>
-                    <SelectItem value="SUBJECTIVE_LONG">Subjective (Long)</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Question Format</Label>
+                  <Select value={newSectionFormat} onValueChange={setNewSectionFormat}>
+                    <SelectTrigger className="rounded-xl">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="MCQ_SINGLE">MCQ (Single Correct)</SelectItem>
+                      <SelectItem value="MCQ_MULTI">MCQ (Multiple Correct)</SelectItem>
+                      <SelectItem value="MCQ_CASE_STUDY">MCQ (Case Study)</SelectItem>
+                      <SelectItem value="SUBJECTIVE_SHORT">Subjective (Short)</SelectItem>
+                      <SelectItem value="SUBJECTIVE_LONG">Subjective (Long)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {subjectMode === "section_wise" && (
+                  <div className="space-y-2">
+                    <Label>Subject</Label>
+                    {formCourseId &&
+                    accessibleSubjects.filter((s) => s.courseId === formCourseId).length > 0 ? (
+                      <Select value={newSectionSubject} onValueChange={setNewSectionSubject}>
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue placeholder="Select subject" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {accessibleSubjects
+                            .filter((s) => s.courseId === formCourseId)
+                            .map((s) => (
+                              <SelectItem key={s.id} value={s.name}>
+                                {s.name}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        value={newSectionSubject}
+                        onChange={(e) => setNewSectionSubject(e.target.value)}
+                        placeholder="e.g. Physics"
+                        className="rounded-xl"
+                      />
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Advanced: QB filter fields */}

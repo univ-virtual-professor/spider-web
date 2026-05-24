@@ -19,11 +19,11 @@ import { toast } from "sonner";
 import { useAuth } from "@app/providers/AuthProvider";
 import { db } from "@shared/lib/firebase";
 import { collection, getCountFromServer, query, where } from "firebase/firestore";
+import { cn } from "@shared/lib/utils";
 
 const API = import.meta.env.VITE_MONKEY_KING_API_URL;
 const ADMIN_KEY = import.meta.env.VITE_MONKEY_KING_ADMIN_KEY;
 
-const IN_PROGRESS_STATUSES = ["in-progress", "inprogress", "running", "started"];
 
 type Stats = {
   totalEducators: number;
@@ -61,8 +61,8 @@ export default function AdminDashboard() {
       const studentsQ = query(collection(db, "users"), where("role", "==", "STUDENT"));
       const attemptsQ = query(collection(db, "attempts"));
       const activeTrialsQ = query(
-        collection(db, "attempts"),
-        where("status", "in", IN_PROGRESS_STATUSES)
+        collection(db, "educators"),
+        where("trialSeats", ">", 0)
       );
 
       const [educatorsCnt, studentsCnt, attemptsCnt, trialsCnt] = await Promise.all([
@@ -166,10 +166,11 @@ export default function AdminDashboard() {
     {
       title: "Active Trials",
       value: loading ? "—" : stats.activeTrials.toLocaleString(),
-      subtitle: "In-progress right now",
+      subtitle: "Educators with trial seats",
       icon: Activity,
       color: "text-orange-500",
       bgColor: "bg-orange-500/10",
+      href: "/admin/trials",
     },
   ];
 
@@ -209,8 +210,8 @@ export default function AdminDashboard() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {statCards.map((stat) => (
-          <Card key={stat.title} className="border-border/50">
+        {statCards.map((stat) => {
+          const cardContent = (
             <CardContent className="p-6">
               <div
                 className={`h-10 w-10 rounded-xl ${stat.bgColor} mb-4 flex items-center justify-center`}
@@ -223,8 +224,19 @@ export default function AdminDashboard() {
                 <p className="mt-1 text-xs text-muted-foreground/70">{stat.subtitle}</p>
               )}
             </CardContent>
-          </Card>
-        ))}
+          );
+          return stat.href ? (
+            <Link key={stat.title} to={stat.href}>
+              <Card className={cn("border-border/50 transition-colors hover:border-orange-500/50 hover:bg-orange-500/5 cursor-pointer")}>
+                {cardContent}
+              </Card>
+            </Link>
+          ) : (
+            <Card key={stat.title} className="border-border/50">
+              {cardContent}
+            </Card>
+          );
+        })}
       </div>
 
       <Card className="border-border/50">

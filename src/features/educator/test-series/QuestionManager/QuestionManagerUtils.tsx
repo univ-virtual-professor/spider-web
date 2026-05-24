@@ -149,6 +149,8 @@ export function normalizeSections(rawSections: any, subjectFallback?: string): T
             ? Number(section.questionsCount)
             : null,
           topics: Array.isArray(section?.topics) ? section.topics.map(String).filter(Boolean) : [],
+          format: section?.format ? String(section.format) : undefined,
+          markingScheme: section?.markingScheme ?? undefined,
           difficultyLevel: clampDifficulty(section?.difficultyLevel),
         }))
         .filter((section) => section.id)
@@ -162,6 +164,8 @@ export function normalizeSections(rawSections: any, subjectFallback?: string): T
       name: String(subjectFallback || "General").trim() || "General",
       questionsCount: null,
       topics: [],
+      format: undefined,
+      markingScheme: undefined,
       difficultyLevel: 0.5,
     },
   ];

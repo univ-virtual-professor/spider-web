@@ -32,7 +32,7 @@ import { Label } from "@shared/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { Switch } from "@shared/ui/switch";
 import { Slider } from "@shared/ui/slider";
-import { TopicMultiSelect } from "@shared/ui/topic-multi-select";
+import { MultiSelect } from "@shared/ui/MultiSelect";
 import { toast } from "sonner";
 import ReactCrop, { type Crop, type PercentCrop, type PixelCrop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
@@ -90,6 +90,7 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  getDocsFromCache,
   onSnapshot,
   serverTimestamp,
   updateDoc,
@@ -103,8 +104,13 @@ type AutoImportSection = {
   id: string;
   name: string;
   topics: string[];
+  subjects: string[];
+  chapters: string[];
+  tags: string[];
   questionCount: number;
   difficulty: number;
+  format?: string;
+  markingScheme?: { correct?: number; incorrect?: number } | null;
 };
 
 // ------------------------------
@@ -289,7 +295,9 @@ const QuestionsManager = ({
   async function syncTestQuestionCount() {
     if (readOnly || questionSource === "admin") return;
     try {
-      const snap = await getDocs(qCol);
+      // Use local cache so recently-written docs (addDoc/updateDoc) are included
+      // without racing against the Firestore server confirming those writes.
+      const snap = await getDocsFromCache(qCol).catch(() => getDocs(qCol));
       let activeCount = 0;
       snap.forEach((item) => {
         if (isQuestionPublished(item.data()?.isActive)) activeCount += 1;
@@ -575,6 +583,33 @@ const QuestionsManager = ({
     return Array.from(topics).sort((a, b) => a.localeCompare(b));
   }, [questionBankRows, adminQuestionBankRows]);
 
+  const allAvailableSubjects = useMemo(() => {
+    const set = new Set<string>();
+    [...questionBankRows, ...adminQuestionBankRows].forEach((q) => {
+      const s = (q as any).subjectName || q.subject;
+      if (s?.trim()) set.add(s.trim());
+    });
+    return Array.from(set).sort();
+  }, [questionBankRows, adminQuestionBankRows]);
+
+  const allAvailableChapters = useMemo(() => {
+    const set = new Set<string>();
+    [...questionBankRows, ...adminQuestionBankRows].forEach((q) => {
+      if ((q as any).chapter?.trim()) set.add((q as any).chapter.trim());
+    });
+    return Array.from(set).sort();
+  }, [questionBankRows, adminQuestionBankRows]);
+
+  const allAvailableTags = useMemo(() => {
+    const set = new Set<string>();
+    [...questionBankRows, ...adminQuestionBankRows].forEach((q) => {
+      if (Array.isArray((q as any).tags)) {
+        (q as any).tags.forEach((t: string) => { if (t?.trim()) set.add(t.trim()); });
+      }
+    });
+    return Array.from(set).sort();
+  }, [questionBankRows, adminQuestionBankRows]);
+
   const autoFillSubjects = useMemo(() => {
     const subjects = new Set<string>();
     questionBankRows.forEach((question) => {
@@ -725,6 +760,12 @@ const QuestionsManager = ({
       topic: data?.topic ? String(data.topic) : "",
       marks: data?.marks != null ? Number(data.marks) : undefined,
       negativeMarks: data?.negativeMarks != null ? Number(data.negativeMarks) : undefined,
+      questionType: data?.format ? String(data.format) : data?.questionType ? String(data.questionType) : undefined,
+      referenceAnswer: data?.referenceAnswer ? String(data.referenceAnswer) : undefined,
+      referenceKeywords: Array.isArray(data?.referenceKeywords)
+        ? data.referenceKeywords.map(String).filter(Boolean)
+        : undefined,
+      evaluationInstructions: data?.evaluationInstructions ? String(data.evaluationInstructions) : undefined,
       updatedAt: data?.updatedAt,
     };
   }
@@ -1324,13 +1365,38 @@ const QuestionsManager = ({
       return;
     }
 
-    const draftSections: AutoImportSection[] = managedSections.map((section) => ({
-      id: section.id,
-      name: section.name,
-      topics: Array.isArray(section.topics) ? section.topics : [],
-      questionCount: Number(section.questionsCount) || 0,
-      difficulty: clampDifficulty(section.difficultyLevel ?? 0.5),
-    }));
+    const draftSections: AutoImportSection[] = managedSections.map((section) => {
+      const currentCount = getSectionQuestionCount(section.id, questions);
+      const remaining =
+        section.questionsCount != null
+          ? Math.max(0, Number(section.questionsCount) - currentCount)
+          : null; // null = no hard limit
+      return {
+        id: section.id,
+        name: section.name,
+        topics: Array.isArray(section.topics) ? section.topics : [],
+        subjects: [],
+        chapters: [],
+        tags: [],
+        questionCount: remaining !== null ? remaining : 20,
+        difficulty: clampDifficulty(section.difficultyLevel ?? 0.5),
+        format: section.format ?? undefined,
+        markingScheme: section.markingScheme ?? null,
+      };
+    });
+
+    // If every section with a hard limit is already full, show a message and bail
+    const sectionsWithLimit = managedSections.filter((s) => s.questionsCount != null);
+    const allFull =
+      sectionsWithLimit.length > 0 &&
+      sectionsWithLimit.every(
+        (s) => getSectionQuestionCount(s.id, questions) >= Number(s.questionsCount)
+      );
+    if (allFull) {
+      toast.info("All sections are already at their question limit.");
+      return;
+    }
+
     setAutoImportSections(draftSections);
     setAutoImportIncludeAdmin(false);
 
@@ -1460,10 +1526,12 @@ const QuestionsManager = ({
       );
 
       // Single virtual section representing this fill target
+      const targetSection = managedSections.find((s) => s.id === targetSectionId);
       const sectionConstraint = {
         id: targetSectionId,
-        name: managedSections.find((s) => s.id === targetSectionId)?.name || "Section",
+        name: targetSection?.name || "Section",
         questionsCount: totalQuestions,
+        ...(targetSection?.format ? { format: targetSection.format } : {}),
       };
 
       const { chosen, coverage } = buildAutoFillSelection(
@@ -1545,6 +1613,7 @@ const QuestionsManager = ({
     try {
       const baseOrder = getNextQuestionOrder();
       const importedRows: TestQuestion[] = [];
+      const targetSection = managedSections.find((s) => s.id === targetSectionId);
 
       for (let index = 0; index < selectedRows.length; index += 1) {
         const question = selectedRows[index];
@@ -1563,12 +1632,20 @@ const QuestionsManager = ({
           subject: question.subject || "",
           chapter: question.chapter || "",
           topic: question.topic || "",
-          marks: question.marks != null ? Number(question.marks) : null,
-          negativeMarks: question.negativeMarks != null ? Number(question.negativeMarks) : null,
+          marks: targetSection?.markingScheme?.correct != null
+            ? Number(targetSection.markingScheme.correct)
+            : (question.marks ?? null),
+          negativeMarks: targetSection?.markingScheme?.incorrect != null
+            ? Number(targetSection.markingScheme.incorrect)
+            : (question.negativeMarks ?? null),
           isActive: false,
           source: "question_bank_auto",
           bankQuestionId: question.id,
           questionOrder,
+          questionType: normalizeQuestionType(qAny.questionType || targetSection?.format || "MCQ_SINGLE"),
+          ...(qAny.referenceAnswer ? { referenceAnswer: qAny.referenceAnswer } : {}),
+          ...(qAny.referenceKeywords?.length ? { referenceKeywords: qAny.referenceKeywords } : {}),
+          ...(qAny.evaluationInstructions ? { evaluationInstructions: qAny.evaluationInstructions } : {}),
           // Preserve group linkage so CBT can load passage
           ...(qAny.groupId ? { groupId: qAny.groupId, groupOrder: qAny.groupOrder ?? null } : {}),
           createdAt: serverTimestamp(),
@@ -1592,6 +1669,7 @@ const QuestionsManager = ({
           source: "question_bank_auto",
           bankQuestionId: question.id,
           sectionId: targetSectionId,
+          questionType: payload.questionType,
         });
       }
 
@@ -1637,22 +1715,66 @@ const QuestionsManager = ({
 
       const allImportedRows: TestQuestion[] = [];
       const baseOrder = getNextQuestionOrder();
+      let skippedFullCount = 0;
 
       for (const section of sections) {
         const sectionTopics = section.topics.map(normalizeTopicValue).filter(Boolean);
-        if (!sectionTopics.length) continue; // skip sections with no topics
-
-        const needed = Math.max(0, section.questionCount);
-        if (needed === 0) continue;
-
         const topicSet = new Set(sectionTopics);
 
-        // Filter by topic (STRICT)
+        const sectionSubjects = section.subjects.map((s) => s.trim().toLowerCase()).filter(Boolean);
+        const subjectSet = new Set(sectionSubjects);
+
+        const sectionChapters = section.chapters.map((c) => c.trim().toLowerCase()).filter(Boolean);
+        const chapterSet = new Set(sectionChapters);
+
+        const sectionTags = section.tags.map((t) => t.trim().toLowerCase()).filter(Boolean);
+        const tagSet = new Set(sectionTags);
+
+        const matchesFilters = (q: QuestionBankQuestion): boolean => {
+          if (topicSet.size > 0 && !topicSet.has(normalizeTopicValue(q.topic))) return false;
+          if (subjectSet.size > 0) {
+            const qs = ((q as any).subjectName || q.subject || "").trim().toLowerCase();
+            if (!subjectSet.has(qs)) return false;
+          }
+          if (chapterSet.size > 0) {
+            const qc = ((q as any).chapter || "").trim().toLowerCase();
+            if (!chapterSet.has(qc)) return false;
+          }
+          if (tagSet.size > 0) {
+            const qTags: string[] = Array.isArray((q as any).tags)
+              ? (q as any).tags.map((t: string) => t.trim().toLowerCase())
+              : [];
+            if (!qTags.some((t) => tagSet.has(t))) return false;
+          }
+          return true;
+        };
+
+        const matchesFormat = (q: QuestionBankQuestion) => {
+          if (!section.format) return true;
+          // Default typeless bank questions to MCQ_SINGLE — don't bypass
+          const qType = normalizeQuestionType((q as any).questionType || "MCQ_SINGLE");
+          return qType === normalizeQuestionType(section.format);
+        };
+
+        // Enforce remaining capacity so re-running the dialog never overfills
+        const sectionMeta = managedSections.find((s) => s.id === section.id);
+        const currentInSection = getSectionQuestionCount(section.id, questions);
+        const cap =
+          sectionMeta?.questionsCount != null
+            ? Math.max(0, sectionMeta.questionsCount - currentInSection)
+            : section.questionCount;
+        const needed = Math.max(0, Math.min(section.questionCount, cap));
+        if (needed === 0) {
+          skippedFullCount += 1;
+          continue;
+        }
+
+        // Filter by all active filters and question format
         const educatorMatches = educatorPool.filter(
-          (q) => topicSet.has(normalizeTopicValue(q.topic)) && !globalUsedIds.has(q.id)
+          (q) => !globalUsedIds.has(q.id) && matchesFormat(q) && matchesFilters(q)
         );
         const adminMatches = adminPool.filter(
-          (q) => topicSet.has(normalizeTopicValue(q.topic)) && !globalUsedIds.has(q.id)
+          (q) => !globalUsedIds.has(q.id) && matchesFormat(q) && matchesFilters(q)
         );
 
         // Score by difficulty proximity
@@ -1726,12 +1848,20 @@ const QuestionsManager = ({
             subject: question.subject || "",
             chapter: question.chapter || "",
             topic: question.topic || "",
-            marks: question.marks != null ? Number(question.marks) : null,
-            negativeMarks: question.negativeMarks != null ? Number(question.negativeMarks) : null,
+            marks: section.markingScheme?.correct != null
+              ? Number(section.markingScheme.correct)
+              : (question.marks ?? null),
+            negativeMarks: section.markingScheme?.incorrect != null
+              ? Number(section.markingScheme.incorrect)
+              : (question.negativeMarks ?? null),
             isActive: true,
             source: "auto_import",
             bankQuestionId: question.id,
             questionOrder,
+            questionType: normalizeQuestionType((question as any).questionType || section.format || "MCQ_SINGLE"),
+            ...((question as any).referenceAnswer ? { referenceAnswer: (question as any).referenceAnswer } : {}),
+            ...((question as any).referenceKeywords?.length ? { referenceKeywords: (question as any).referenceKeywords } : {}),
+            ...((question as any).evaluationInstructions ? { evaluationInstructions: (question as any).evaluationInstructions } : {}),
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           };
@@ -1753,12 +1883,17 @@ const QuestionsManager = ({
             source: "auto_import",
             bankQuestionId: question.id,
             sectionId: section.id,
+            questionType: payload.questionType,
           });
         }
       }
 
       if (!allImportedRows.length) {
-        toast.error("No matching questions found for any section. Check topics.");
+        if (skippedFullCount > 0 && skippedFullCount === sections.filter((s) => s.topics.length > 0).length) {
+          toast.info("All sections are already at their question limit.");
+        } else {
+          toast.error("No matching questions found for any section. Check topics.");
+        }
         return;
       }
 
@@ -2536,9 +2671,8 @@ const QuestionsManager = ({
       data?.correctOption ?? data?.correctOptionIndex ?? data?.correctOptionIndex ?? 0
     );
 
-    // Always normalize to +5 marks and -1 negative marks
-    const marks = 5;
-    const negativeMarks = -1;
+    const marks = data?.marks != null ? Number(data.marks) : null;
+    const negativeMarks = data?.negativeMarks != null ? Number(data.negativeMarks) : null;
 
     const difficulty = (data?.difficulty as Difficulty) || "medium";
 
@@ -2556,8 +2690,15 @@ const QuestionsManager = ({
       chapter: data?.chapter ? String(data.chapter) : "",
       topic: data?.topic ? String(data.topic) : "",
       sectionId: data?.sectionId ? String(data.sectionId) : "",
-      marks: marks,
-      negativeMarks: negativeMarks,
+      marks,
+      negativeMarks,
+      questionType: data?.questionType ? String(data.questionType) : undefined,
+      referenceAnswer: data?.referenceAnswer ? String(data.referenceAnswer) : undefined,
+      referenceKeywords: Array.isArray(data?.referenceKeywords)
+        ? data.referenceKeywords.map(String).filter(Boolean)
+        : undefined,
+      referenceAnswerFileUrl: data?.referenceAnswerFileUrl ? String(data.referenceAnswerFileUrl) : undefined,
+      evaluationInstructions: data?.evaluationInstructions ? String(data.evaluationInstructions) : undefined,
       isActive: isQuestionPublished(data?.isActive),
       createdAt: data?.createdAt,
       updatedAt: data?.updatedAt,
@@ -2946,22 +3087,60 @@ const QuestionsManager = ({
                           </span>
                         </div>
 
-                        {/* Topics */}
-                        <div>
-                          <Label className="mb-1 block text-xs text-muted-foreground">Topics</Label>
-                          <TopicMultiSelect
-                            placeholder="Search and select topics..."
-                            selectedTopics={section.topics}
-                            setSelectedTopics={(nextTopics) => {
-                              setAutoImportSections((prev) =>
-                                prev.map((s) =>
-                                  s.id === section.id ? { ...s, topics: nextTopics } : s
+                        {/* Filters grid */}
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <Label className="mb-1 block text-xs text-muted-foreground">Subject</Label>
+                            <MultiSelect
+                              options={allAvailableSubjects}
+                              selected={section.subjects}
+                              onChange={(vals) =>
+                                setAutoImportSections((prev) =>
+                                  prev.map((s) => (s.id === section.id ? { ...s, subjects: vals } : s))
                                 )
-                              );
-                            }}
-                            availableTopics={allAvailableTopics}
-                            className="rounded-xl"
-                          />
+                              }
+                              placeholder="Any subject"
+                            />
+                          </div>
+                          <div>
+                            <Label className="mb-1 block text-xs text-muted-foreground">Chapter</Label>
+                            <MultiSelect
+                              options={allAvailableChapters}
+                              selected={section.chapters}
+                              onChange={(vals) =>
+                                setAutoImportSections((prev) =>
+                                  prev.map((s) => (s.id === section.id ? { ...s, chapters: vals } : s))
+                                )
+                              }
+                              placeholder="Any chapter"
+                            />
+                          </div>
+                          <div>
+                            <Label className="mb-1 block text-xs text-muted-foreground">Topic</Label>
+                            <MultiSelect
+                              options={allAvailableTopics}
+                              selected={section.topics}
+                              onChange={(vals) =>
+                                setAutoImportSections((prev) =>
+                                  prev.map((s) => (s.id === section.id ? { ...s, topics: vals } : s))
+                                )
+                              }
+                              placeholder="Any topic"
+                            />
+                          </div>
+                          <div>
+                            <Label className="mb-1 block text-xs text-muted-foreground">Tags</Label>
+                            <MultiSelect
+                              options={allAvailableTags}
+                              selected={section.tags}
+                              onChange={(vals) =>
+                                setAutoImportSections((prev) =>
+                                  prev.map((s) => (s.id === section.id ? { ...s, tags: vals } : s))
+                                )
+                              }
+                              placeholder="Any tag"
+                            />
+                          </div>
                         </div>
 
                         {/* Question count + Difficulty row */}
@@ -3091,7 +3270,7 @@ const QuestionsManager = ({
                   autoImportApplying ||
                   questionBankLoading ||
                   (autoImportIncludeAdmin && adminQuestionBankLoading) ||
-                  autoImportSections.every((s) => s.questionCount === 0 || s.topics.length === 0)
+                  autoImportSections.every((s) => s.questionCount === 0)
                 }
               >
                 {autoImportApplying ? (

@@ -100,6 +100,11 @@ type QBQuestion = {
   // Question format
   format?: "MCQ_SINGLE" | "MCQ_MULTI" | "MCQ_CASE_STUDY" | "SUBJECTIVE_SHORT" | "SUBJECTIVE_LONG";
 
+  // Subjective evaluation fields
+  referenceAnswer?: string;
+  referenceKeywords?: string[];
+  evaluationInstructions?: string;
+
   // Multi-correct (CSV only)
   correctOptions?: number[]; // 0-based indices
 
@@ -550,6 +555,9 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
 
   // Extended editor fields
   const [qFormat, setQFormat] = useState<NonNullable<QBQuestion["format"]>>("MCQ_SINGLE");
+  const [referenceAnswer, setReferenceAnswer] = useState("");
+  const [referenceKeywords, setReferenceKeywords] = useState("");
+  const [evaluationInstructions, setEvaluationInstructions] = useState("");
   const [qSubjectId, setQSubjectId] = useState("");
   const [topicsInput, setTopicsInput] = useState(""); // comma-separated
   const [multiCorrects, setMultiCorrects] = useState<number[]>([0]);
@@ -894,6 +902,9 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
     setPassageContent("");
     setPassageFormat("html");
     setExistingGroupsList([]);
+    setReferenceAnswer("");
+    setReferenceKeywords("");
+    setEvaluationInstructions("");
   };
 
   const openCreate = () => {
@@ -935,6 +946,9 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
       x.optionImages?.length ? [...x.optionImages, "", "", "", ""].slice(0, 4) : ["", "", "", ""]
     );
     setEImgUrl(x.explanationImage || "");
+    setReferenceAnswer(x.referenceAnswer || "");
+    setReferenceKeywords((x.referenceKeywords || []).join(", "));
+    setEvaluationInstructions(x.evaluationInstructions || "");
     // Load group/passage state
     const xAny = x as any;
     if (xAny.groupId) {
@@ -1044,6 +1058,11 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
         base.subjectName = matchedSubject.name;
       }
       if (qFormat === "MCQ_MULTI") base.correctOptions = multiCorrects;
+      if (qFormat === "SUBJECTIVE_SHORT" || qFormat === "SUBJECTIVE_LONG") {
+        base.referenceAnswer = referenceAnswer.trim();
+        base.referenceKeywords = referenceKeywords.split(",").map((k) => k.trim()).filter(Boolean);
+        base.evaluationInstructions = evaluationInstructions.trim();
+      }
       if (qImgUrl.trim()) base.questionImage = qImgUrl.trim();
       if (oImgUrls.some(Boolean)) base.optionImages = oImgUrls;
       if (eImgUrl.trim()) base.explanationImage = eImgUrl.trim();
@@ -2533,6 +2552,40 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
               <img src={eImgUrl} alt="" className="h-16 w-auto rounded border object-contain" />
             )}
           </div>
+
+          {/* Subjective evaluation fields */}
+          {(qFormat === "SUBJECTIVE_SHORT" || qFormat === "SUBJECTIVE_LONG") && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label>Reference Answer</Label>
+                  <textarea
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                    value={referenceAnswer}
+                    onChange={(e) => setReferenceAnswer(e.target.value)}
+                    placeholder="Model answer used for AI evaluation..."
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Keywords <span className="text-xs text-muted-foreground">(comma-separated)</span></Label>
+                  <Input
+                    value={referenceKeywords}
+                    onChange={(e) => setReferenceKeywords(e.target.value)}
+                    placeholder="e.g. osmosis, concentration gradient, semi-permeable"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Evaluation Instructions <span className="text-xs text-muted-foreground">(optional)</span></Label>
+                  <Input
+                    value={evaluationInstructions}
+                    onChange={(e) => setEvaluationInstructions(e.target.value)}
+                    placeholder="e.g. Award 2 marks for each correct concept mentioned"
+                  />
+                </div>
+              </div>
+            </>
+          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <Button

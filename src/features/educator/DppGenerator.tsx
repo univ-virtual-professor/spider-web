@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import {
   collection,
   getDocs,
@@ -14,6 +14,9 @@ import { ArrowLeft } from "lucide-react";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { useEducatorFeatures } from "@shared/hooks/useEducatorFeatures";
+import { useAccessibleCourses } from "@shared/hooks/useAccessibleCourses";
+import { useQBOptions } from "@shared/hooks/useQBOptions";
+import { MultiSelect } from "@shared/ui/MultiSelect";
 import { toast } from "sonner";
 import { Button } from "@shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
@@ -71,6 +74,11 @@ type Batch = { id: string; name: string };
 
 type SourceMode = "upload" | "content" | "qb";
 
+function toApiSourceMode(mode: SourceMode): string {
+  if (mode === "qb") return "qb_only";
+  return "ai_only"; // "upload" and "content" both use AI
+}
+
 const MONKEY_KING = import.meta.env.VITE_MONKEY_KING_API_URL || "";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -120,6 +128,9 @@ export default function DppGenerator() {
   const navigate = useNavigate();
   const educatorUid = firebaseUser?.uid || "";
   const { features, loading: featuresLoading } = useEducatorFeatures(educatorUid);
+  const { subjects, allowedSubjectIds } = useAccessibleCourses(educatorUid);
+  const { chapters, topics } = useQBOptions(allowedSubjectIds.length ? allowedSubjectIds : undefined);
+  const subjectOptions = useMemo(() => subjects.map((s) => s.name), [subjects]);
 
   const [content, setContent] = useState<ContentItem[]>([]);
   const [loadingContent, setLoadingContent] = useState(true);
@@ -138,9 +149,8 @@ export default function DppGenerator() {
   const [genSource, setGenSource] = useState<SourceMode>("upload");
   const [genSelectedIds, setGenSelectedIds] = useState<Set<string>>(new Set());
   const [genTopicFilters, setGenTopicFilters] = useState<string[]>([]);
-  const [genSubject, setGenSubject] = useState("");
-  const [genChapter, setGenChapter] = useState("");
-  const [genTopicInput, setGenTopicInput] = useState("");
+  const [genSubjects, setGenSubjects] = useState<string[]>([]);
+  const [genChapters, setGenChapters] = useState<string[]>([]);
   const [genDifficulty, setGenDifficulty] = useState("medium");
   const [genTopicName, setGenTopicName] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -340,7 +350,7 @@ export default function DppGenerator() {
     usageToday < dailyLimit &&
     ((genSource === "upload" && !!uploadFile) ||
       (genSource === "content" && genSelectedIds.size > 0) ||
-      (genSource === "qb" && (genTopicFilters.length > 0 || !!genSubject || !!genTopicName)));
+      (genSource === "qb" && (genTopicFilters.length > 0 || genSubjects.length > 0 || !!genTopicName)));
 
   const performGeneration = async (finalContentIds: string[], finalContentTitles: string[]) => {
     if (!firebaseUser) return;
@@ -365,10 +375,10 @@ export default function DppGenerator() {
           content_titles: finalContentTitles,
           course_id: genCourseId,
           course_name: courseObj?.courseName || "",
-          source_mode: genSource,
+          source_mode: toApiSourceMode(genSource),
           topic_filters: genTopicFilters,
-          subject_filter: genSubject,
-          chapter_filter: genChapter,
+          subject_filter: genSubjects,
+          chapter_filter: genChapters,
           difficulty: genDifficulty,
           target_batches: [...selectedBatchIds],
           start_date: startDate.toISOString().split("T")[0],
@@ -424,10 +434,10 @@ export default function DppGenerator() {
           course_id: genCourseId,
           course_name: courseObj?.courseName || "",
           topic_hint: genTopicName.trim(),
-          source_mode: genSource,
+          source_mode: toApiSourceMode(genSource),
           topic_filters: genTopicFilters,
-          subject_filter: genSubject,
-          chapter_filter: genChapter,
+          subject_filter: genSubjects,
+          chapter_filter: genChapters,
           target_batches: [...selectedBatchIds],
           num_questions: genNumQuestions,
           title: customTitle,
@@ -745,63 +755,30 @@ export default function DppGenerator() {
                 <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
                   <div className="space-y-1">
                     <Label>Subject filter (optional)</Label>
-                    <Input
-                      placeholder="e.g. Physics"
-                      value={genSubject}
-                      onChange={(e) => setGenSubject(e.target.value)}
+                    <MultiSelect
+                      options={subjectOptions}
+                      selected={genSubjects}
+                      onChange={setGenSubjects}
+                      placeholder="Select subjects…"
                     />
                   </div>
                   <div className="space-y-1">
                     <Label>Chapter filter (optional)</Label>
-                    <Input
-                      placeholder="e.g. Optics"
-                      value={genChapter}
-                      onChange={(e) => setGenChapter(e.target.value)}
+                    <MultiSelect
+                      options={chapters}
+                      selected={genChapters}
+                      onChange={setGenChapters}
+                      placeholder="Select chapters…"
                     />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Topic filters</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="e.g. Thermodynamics"
-                        value={genTopicInput}
-                        onChange={(e) => setGenTopicInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && genTopicInput.trim()) {
-                            setGenTopicFilters((p) => [...p, genTopicInput.trim()]);
-                            setGenTopicInput("");
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          if (genTopicInput.trim()) {
-                            setGenTopicFilters((p) => [...p, genTopicInput.trim()]);
-                            setGenTopicInput("");
-                          }
-                        }}
-                      >
-                        Add
-                      </Button>
-                    </div>
-                    {genTopicFilters.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {genTopicFilters.map((t) => (
-                          <Badge key={t} variant="secondary" className="gap-1 text-xs">
-                            {t}
-                            <button
-                              onClick={() => setGenTopicFilters((p) => p.filter((x) => x !== t))}
-                              className="hover:text-destructive"
-                            >
-                              ×
-                            </button>
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
+                    <MultiSelect
+                      options={topics}
+                      selected={genTopicFilters}
+                      onChange={setGenTopicFilters}
+                      placeholder="Select topics…"
+                    />
                   </div>
                 </div>
               )}

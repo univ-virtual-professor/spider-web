@@ -22,6 +22,12 @@ import {
   Building2,
   ArrowLeft,
   FileUp,
+  ChevronDown,
+  ArrowUpDown,
+  Pencil,
+  LayoutList,
+  LayoutGrid,
+  Download,
 } from "lucide-react";
 
 import { Input } from "@shared/ui/input";
@@ -49,6 +55,7 @@ import { buildAutoFillSelection } from "@shared/lib/autoFillEngine";
 // Component
 import CreateCustomTest from "./CreateCustomTest";
 import CreateEducatorTemplate from "./CreateEducatorTemplate";
+import ImportAdminTestDialog from "./ImportAdminTestDialog";
 import NewFolderButton from "./NewFolder";
 import ScheduleTest from "./ScheduleTest";
 import { useAccessibleCourses } from "@shared/hooks/useAccessibleCourses";
@@ -291,6 +298,10 @@ export default function TestSeries() {
   const [newFolderName, setNewFolderName] = useState("");
   const [folderCreating, setFolderCreating] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "az">("newest");
+  const [flatView, setFlatView] = useState(false);
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
+  const [renameFolderName, setRenameFolderName] = useState("");
   const [moveTestOpen, setMoveTestOpen] = useState(false);
   const [testToMove, setTestToMove] = useState<any>(null);
 
@@ -327,6 +338,9 @@ export default function TestSeries() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("none");
   const [educatorTemplates, setEducatorTemplates] = useState<any[]>([]);
   const [createTemplateOpen, setCreateTemplateOpen] = useState(false);
+
+  // Import admin test dialog
+  const [importAdminOpen, setImportAdminOpen] = useState(false);
 
   // Auto-import state
   const [autoFillTestId, setAutoFillTestId] = useState<string | null>(null);
@@ -432,7 +446,7 @@ export default function TestSeries() {
     );
 
     // MY tests: educators/{uid}/my_tests
-    const myTestsQ = query(collection(db, "educators", uid, "my_tests"));
+    const myTestsQ = query(collection(db, "educators", uid, "my_tests"), orderBy("createdAt", "desc"));
     const unsubMy = onSnapshot(
       myTestsQ,
       async (snap) => {
@@ -511,6 +525,7 @@ export default function TestSeries() {
     try {
       const folderRef = await addDoc(collection(db, "educators", currentUser.uid, "folders"), {
         name,
+        order: folders.length,
         createdAt: serverTimestamp(),
       });
       setExpandedFolders((prev) => ({ ...prev, [folderRef.id]: true }));
@@ -544,18 +559,30 @@ export default function TestSeries() {
   const handleAutoFill = async (test: any) => {
     if (!currentUser) return;
     const rawSections: any[] = test.sections || [];
+    // questionsTarget is the immutable user-set limit; questionsCount gets overwritten with actual count.
+    // Fall back to questionsCount only if questionsTarget is absent (old tests).
+    const noSectionsTarget = test.questionsTarget ?? test.questionsCount;
+    console.log("[autoFill] test fields:", {
+      id: test.id,
+      questionsTarget: test.questionsTarget,
+      questionsCount: test.questionsCount,
+      noSectionsTarget,
+      rawSectionsCount: rawSections.length,
+      markingScheme: test.markingScheme,
+    });
     const sections: any[] = rawSections.length
       ? rawSections
-      : test.questionsCount
+      : noSectionsTarget
         ? [
             {
               id: "main",
               name: test.subject || "General",
-              questionsCount: test.questionsCount,
+              questionsCount: noSectionsTarget,
               format: test.questionFormat || "",
               chapter: test.chapter || "",
               topics: Array.isArray(test.topics) ? test.topics : [],
               tags: Array.isArray(test.tags) ? test.tags : [],
+              markingScheme: test.markingScheme || null,
             },
           ]
         : [];
@@ -613,21 +640,46 @@ export default function TestSeries() {
         })
       );
       let order = existingSnap.docs.length;
+      console.log("[autoFill] existing questions in subcollection:", order);
+
+      // Count existing questions per section so we only fill the actual gap.
+      const existingBySectionId: Record<string, number> = {};
+      existingSnap.docs.forEach((d) => {
+        const sId = String((d.data() as any).sectionId || "main");
+        existingBySectionId[sId] = (existingBySectionId[sId] || 0) + 1;
+      });
+      console.log("[autoFill] existingBySectionId:", existingBySectionId);
 
       // Build section constraints from template sections
-      const sectionConstraints = sections.map((s: any) => ({
-        id: s.id || s.name,
-        name: s.name,
-        questionsCount: Number(s.questionsCount) || 0,
-        subject: s.subject,
-        chapter: s.chapter || undefined,
-        topics: s.topics,
-        tags: s.tags,
-        format: s.format,
-        difficultyLevel: s.difficultyLevel,
-        difficultyTolerance: s.difficultyTolerance ?? 0.25,
-        groupTypes: s.groupTypes,
-      }));
+      const sectionConstraints = sections.map((s: any) => {
+        const target = Number(s.questionsCount) || 0;
+        const existingInSection = existingBySectionId[s.id || s.name] || 0;
+        const remaining = Math.max(0, target - existingInSection);
+        return {
+          id: s.id || s.name,
+          name: s.name,
+          questionsCount: remaining,
+          subject: s.subject,
+          chapter: s.chapter || undefined,
+          topics: s.topics,
+          tags: s.tags,
+          format: s.format,
+          difficultyLevel: s.difficultyLevel,
+          difficultyTolerance: s.difficultyTolerance ?? 0.25,
+          groupTypes: s.groupTypes,
+          markingScheme: s.markingScheme || null,
+        };
+      });
+
+      console.log("[autoFill] sectionConstraints:", sectionConstraints.map((s) => ({
+        id: s.id, name: s.name, questionsCount: s.questionsCount, markingScheme: s.markingScheme,
+      })));
+
+      if (sectionConstraints.every((s) => s.questionsCount === 0)) {
+        console.log("[autoFill] all sections at limit — aborting");
+        toast.info("Test is already at its question limit.");
+        return;
+      }
 
       // Run group-aware selection
       const { chosen, coverage } = buildAutoFillSelection(
@@ -680,6 +732,8 @@ export default function TestSeries() {
 
       // AI gap-fill for shortfall sections
       const shortfallSections = coverage.filter((c) => c.shortfall > 0);
+      console.log("[autoFill] QB coverage:", coverage);
+      console.log("[autoFill] shortfallSections:", shortfallSections);
       let aiGenerated = 0;
       if (shortfallSections.length > 0 && MONKEY_KING) {
         const token = await currentUser.getIdToken();
@@ -687,6 +741,24 @@ export default function TestSeries() {
           const constraint = sectionConstraints.find((sc) => sc.id === c.sectionId);
           const dl = constraint?.difficultyLevel ?? 0.5;
           const diffStr = dl <= 0.33 ? "easy" : dl >= 0.67 ? "hard" : "medium";
+          const gapFillBody = {
+            test_id: test.id,
+            section_id: c.sectionId,
+            needed: c.shortfall,
+            difficulty: diffStr,
+            topic_filters: constraint?.topics ?? [],
+            chapter_filter: constraint?.chapter ?? "",
+            subject: constraint?.subject ?? test.subject ?? "",
+            question_type: constraint?.format || test.questionFormat || "MCQ_SINGLE",
+            tags: constraint?.tags ?? [],
+            section_name: c.sectionName,
+            current_question_count: order,
+            positive_marks: Number((constraint?.markingScheme || test.markingScheme)?.correct ?? 4),
+            negative_marks: Number((constraint?.markingScheme || test.markingScheme)?.incorrect ?? -1),
+            course_id: test.courseId ?? "",
+            course_name: test.courseName ?? "",
+          };
+          console.log("[autoFill] gap-fill request body:", gapFillBody);
           try {
             const res = await fetch(`${MONKEY_KING}/api/test/gap-fill`, {
               method: "POST",
@@ -694,31 +766,16 @@ export default function TestSeries() {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${token}`,
               },
-              body: JSON.stringify({
-                test_id: test.id,
-                section_id: c.sectionId,
-                needed: c.shortfall,
-                difficulty: diffStr,
-                topic_filters: constraint?.topics ?? [],
-                chapter_filter: constraint?.chapter ?? "",
-                subject: constraint?.subject ?? test.subject ?? "",
-                question_type: constraint?.format || test.questionFormat || "MCQ_SINGLE",
-                tags: constraint?.tags ?? [],
-                section_name: c.sectionName,
-                current_question_count: order,
-                positive_marks: Number(test.markingScheme?.correct ?? 4),
-                negative_marks: Number(test.markingScheme?.incorrect ?? -1),
-                course_id: test.courseId ?? "",
-                course_name: test.courseName ?? "",
-              }),
+              body: JSON.stringify(gapFillBody),
             });
+            const result = await res.json();
+            console.log("[autoFill] gap-fill response:", { status: res.status, ok: res.ok, result });
             if (res.ok) {
-              const result = await res.json();
               aiGenerated += result.generated ?? 0;
               order += result.generated ?? 0;
             }
           } catch (gapErr) {
-            console.error("AI gap-fill failed for section", c.sectionId, gapErr);
+            console.error("[autoFill] gap-fill fetch error for section", c.sectionId, gapErr);
           }
         }
         if (aiGenerated > 0) {
@@ -773,8 +830,42 @@ export default function TestSeries() {
     }
   };
 
-  const toggleFolder = (folderId: string) => {
-    setExpandedFolders((prev) => ({ ...prev, [folderId]: !prev[folderId] }));
+  const toggleFolder = (key: string) => {
+    setExpandedFolders((prev) => ({ ...prev, [key]: prev[key] !== false ? false : true }));
+  };
+
+  const handleRenameFolder = async () => {
+    if (!currentUser || !renamingFolderId) return;
+    const name = renameFolderName.trim();
+    setRenamingFolderId(null);
+    if (!name) return;
+    try {
+      await updateDoc(doc(db, "educators", currentUser.uid, "folders", renamingFolderId), { name });
+      toast.success("Folder renamed");
+    } catch {
+      toast.error("Failed to rename folder");
+    }
+  };
+
+  const handleReorderFolder = async (folderId: string, direction: -1 | 1) => {
+    if (!currentUser) return;
+    const sorted = [...folders].sort((a: any, b: any) => {
+      const ao = a.order ?? Infinity;
+      const bo = b.order ?? Infinity;
+      if (ao !== bo) return ao - bo;
+      return (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0);
+    });
+    const idx = sorted.findIndex((f: any) => f.id === folderId);
+    const swapIdx = idx + direction;
+    if (idx < 0 || swapIdx < 0 || swapIdx >= sorted.length) return;
+    try {
+      const batch = writeBatch(db);
+      batch.update(doc(db, "educators", currentUser.uid, "folders", (sorted[idx] as any).id), { order: swapIdx });
+      batch.update(doc(db, "educators", currentUser.uid, "folders", (sorted[swapIdx] as any).id), { order: idx });
+      await batch.commit();
+    } catch {
+      toast.error("Failed to reorder folder");
+    }
   };
 
   const normalizeSubjectName = (sub: string) => {
@@ -906,6 +997,52 @@ export default function TestSeries() {
     activeTab,
     batchMap,
   ]);
+
+  const sortedTests = useMemo(() => {
+    const arr = [...filteredTests];
+    if (sortBy === "az") {
+      arr.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+    } else if (sortBy === "oldest") {
+      arr.sort((a, b) => (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0));
+    } else {
+      arr.sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
+    }
+    return arr;
+  }, [filteredTests, sortBy]);
+
+  const groupedTests = useMemo(() => {
+    const folderMap = new Map<string, { folder: any; tests: any[] }>();
+    const subjectMap = new Map<string, any[]>();
+
+    for (const test of sortedTests) {
+      if (test.folderId) {
+        const folder = folders.find((f: any) => f.id === test.folderId);
+        if (folder) {
+          if (!folderMap.has(test.folderId)) folderMap.set(test.folderId, { folder, tests: [] });
+          folderMap.get(test.folderId)!.tests.push(test);
+          continue;
+        }
+      }
+      const subject = test.subject || "Other";
+      if (!subjectMap.has(subject)) subjectMap.set(subject, []);
+      subjectMap.get(subject)!.push(test);
+    }
+
+    const folderGroups = [...folderMap.values()]
+      .sort((a, b) => {
+        const ao = a.folder.order ?? Infinity;
+        const bo = b.folder.order ?? Infinity;
+        if (ao !== bo) return ao - bo;
+        return (a.folder.createdAt?.toMillis?.() ?? 0) - (b.folder.createdAt?.toMillis?.() ?? 0);
+      })
+      .map(({ folder, tests }) => ({ type: "folder" as const, key: folder.id, label: folder.name, tests }));
+
+    const subjectGroups = [...subjectMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([subject, tests]) => ({ type: "subject" as const, key: "subject__" + subject, label: subject, tests }));
+
+    return [...folderGroups, ...subjectGroups];
+  }, [sortedTests, folders]);
 
   // Subjects available for current course filter (for filter dropdowns)
   const filterSubjectOptions = useMemo(() => {
@@ -1117,9 +1254,11 @@ export default function TestSeries() {
         (acc: number, s: any) => acc + (Number(s.questionsCount) || 0),
         0
       );
+      payload.questionsTarget = payload.questionsCount;
     } else {
       payload.sections = [];
       payload.questionsCount = Number(values.questionsCount) || 0;
+      payload.questionsTarget = payload.questionsCount;
       if (values.questionFormat) payload.questionFormat = values.questionFormat;
       if (values.chapter) payload.chapter = values.chapter;
       if (Array.isArray(values.topics) && values.topics.length) payload.topics = values.topics;
@@ -1351,6 +1490,13 @@ export default function TestSeries() {
               if (!open) setCreateOpen(true);
             }}
           />
+          <Button
+            variant="outline"
+            className="rounded-xl"
+            onClick={() => setImportAdminOpen(true)}
+          >
+            <Download className="mr-2 h-4 w-4" /> Import Test
+          </Button>
           <Button className="gradient-bg text-white shadow-lg" onClick={() => setCreateOpen(true)}>
             <Plus className="mr-2 h-4 w-4" /> Create Custom Test
           </Button>
@@ -1359,6 +1505,15 @@ export default function TestSeries() {
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <CreateCustomTest {...creatCustomTestState} />
         </Dialog>
+
+        <ImportAdminTestDialog
+          open={importAdminOpen}
+          onOpenChange={setImportAdminOpen}
+          accessibleSubjectNames={accessibleSubjects.map((s) => s.name)}
+          currentUserUid={currentUser?.uid ?? ""}
+          getIdToken={() => currentUser!.getIdToken()}
+          onImported={() => setActiveTab("overall")}
+        />
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
@@ -1377,7 +1532,29 @@ export default function TestSeries() {
             </TabsList>
           </div>
 
-          <NewFolderButton {...folderState} />
+          <div className="flex items-center gap-2">
+            <Select value={sortBy} onValueChange={(v) => setSortBy(v as "newest" | "oldest" | "az")}>
+              <SelectTrigger className="h-8 w-[140px] rounded-xl text-xs">
+                <ArrowUpDown className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest first</SelectItem>
+                <SelectItem value="oldest">Oldest first</SelectItem>
+                <SelectItem value="az">A–Z</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              className={cn("h-8 w-8 rounded-xl p-0", flatView && "bg-muted")}
+              onClick={() => setFlatView((v) => !v)}
+              title={flatView ? "Switch to grouped view" : "Switch to flat view"}
+            >
+              {flatView ? <LayoutGrid className="h-3.5 w-3.5" /> : <LayoutList className="h-3.5 w-3.5" />}
+            </Button>
+            <NewFolderButton {...folderState} />
+          </div>
         </div>
 
         <div className="mt-6">
@@ -1472,8 +1649,87 @@ export default function TestSeries() {
               description="Create a custom test or generate a DPP."
             />
           ) : (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {filteredTests.map((test) => (
+            <div className="space-y-4">
+              {(flatView
+                ? [{ type: "flat" as const, key: "__flat__", label: "", tests: sortedTests }]
+                : groupedTests
+              ).map((group) => {
+                const isExpanded = flatView || expandedFolders[group.key] !== false;
+                return (
+                  <div key={group.key}>
+                    {!flatView && (
+                      <div className="mb-2 flex items-center gap-1 rounded-xl pr-1 transition-colors hover:bg-muted/50">
+                        <button
+                          onClick={() => toggleFolder(group.key)}
+                          className="flex flex-1 items-center gap-2 px-3 py-2 text-sm font-semibold"
+                        >
+                          {group.type === "folder" ? (
+                            <Folder className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <BookOpen className="h-4 w-4 text-muted-foreground" />
+                          )}
+                          {renamingFolderId === group.key ? (
+                            <Input
+                              value={renameFolderName}
+                              onChange={(e) => setRenameFolderName(e.target.value)}
+                              onBlur={() => void handleRenameFolder()}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") void handleRenameFolder();
+                                if (e.key === "Escape") setRenamingFolderId(null);
+                              }}
+                              autoFocus
+                              className="h-7 w-36 rounded-lg text-sm font-semibold"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          ) : (
+                            <span>{group.label}</span>
+                          )}
+                          <Badge variant="secondary" className="ml-1 rounded-full px-2 text-xs">
+                            {group.tests.length}
+                          </Badge>
+                          <ChevronDown
+                            className={cn(
+                              "ml-auto h-4 w-4 text-muted-foreground transition-transform duration-200",
+                              !isExpanded && "-rotate-90"
+                            )}
+                          />
+                        </button>
+                        {group.type === "folder" && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
+                                <MoreVertical className="h-3.5 w-3.5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setRenamingFolderId(group.key);
+                                  setRenameFolderName(group.label);
+                                }}
+                              >
+                                <Pencil className="mr-2 h-3.5 w-3.5" /> Rename
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => void handleReorderFolder(group.key, -1)}>
+                                Move Up
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => void handleReorderFolder(group.key, 1)}>
+                                Move Down
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => void handleDeleteFolder(group.key)}
+                                className="text-destructive focus:text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
+                      </div>
+                    )}
+                    {isExpanded && (
+                      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        {group.tests.map((test) => (
                 <motion.div key={test.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                   {(() => {
                     const isAdminLinked =
@@ -1736,7 +1992,12 @@ export default function TestSeries() {
                     );
                   })()}
                 </motion.div>
-              ))}
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 

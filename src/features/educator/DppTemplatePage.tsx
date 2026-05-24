@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@app/providers/AuthProvider";
+import { useAccessibleCourses } from "@shared/hooks/useAccessibleCourses";
+import { useQBOptions } from "@shared/hooks/useQBOptions";
+import { MultiSelect } from "@shared/ui/MultiSelect";
 import { toast } from "sonner";
 import { Button } from "@shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
-import { Input } from "@shared/ui/input";
 import { Label } from "@shared/ui/label";
 import { ArrowLeft, Loader2, Plus, RotateCcw, Save, Trash2 } from "lucide-react";
 
@@ -15,7 +17,7 @@ type Section = {
   questionCount: number;
   format: string;
   topicFilters: string[];
-  subjectFilter: string;
+  subjectFilters: string[];
 };
 
 type Template = {
@@ -32,7 +34,7 @@ const DEFAULT_SECTION: Section = {
   questionCount: 10,
   format: "single_correct_mcq",
   topicFilters: [],
-  subjectFilter: "",
+  subjectFilters: [],
 };
 
 const FORMATS = [
@@ -45,6 +47,10 @@ const FORMATS = [
 export default function DppTemplatePage() {
   const { firebaseUser } = useAuth();
   const navigate = useNavigate();
+  const educatorUid = firebaseUser?.uid || "";
+  const { subjects, allowedSubjectIds } = useAccessibleCourses(educatorUid);
+  const { topics } = useQBOptions(allowedSubjectIds.length ? allowedSubjectIds : undefined);
+  const subjectOptions = useMemo(() => subjects.map((s) => s.name), [subjects]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -87,7 +93,7 @@ export default function DppTemplatePage() {
             questionCount: s.questionCount || 10,
             format: s.format || "single_correct_mcq",
             topicFilters: s.topicFilters || [],
-            subjectFilter: s.subjectFilter || "",
+            subjectFilters: s.subjectFilters || (s.subjectFilter ? [s.subjectFilter] : []),
           }))
         );
         setPositiveMarks(tmpl.positiveMarks ?? 4);
@@ -176,7 +182,7 @@ export default function DppTemplatePage() {
           questionCount: s.questionCount || 10,
           format: s.format || "single_correct_mcq",
           topicFilters: s.topicFilters || [],
-          subjectFilter: s.subjectFilter || "",
+          subjectFilters: s.subjectFilters || (s.subjectFilter ? [s.subjectFilter] : []),
         }))
       );
       setPositiveMarks(tmpl.positiveMarks ?? 4);
@@ -350,10 +356,11 @@ export default function DppTemplatePage() {
                     Subject filter{" "}
                     <span className="font-normal text-muted-foreground">(optional)</span>
                   </Label>
-                  <Input
-                    placeholder="e.g. Physics"
-                    value={sec.subjectFilter}
-                    onChange={(e) => updateSection(i, { subjectFilter: e.target.value })}
+                  <MultiSelect
+                    options={subjectOptions}
+                    selected={sec.subjectFilters}
+                    onChange={(vals) => updateSection(i, { subjectFilters: vals })}
+                    placeholder="Select subjects…"
                   />
                 </div>
                 <div className="space-y-1">
@@ -361,19 +368,12 @@ export default function DppTemplatePage() {
                     Topic filter{" "}
                     <span className="font-normal text-muted-foreground">(optional)</span>
                   </Label>
-                  <Input
-                    placeholder="e.g. Thermodynamics"
-                    value={sec.topicFilters.join(", ")}
-                    onChange={(e) =>
-                      updateSection(i, {
-                        topicFilters: e.target.value
-                          .split(",")
-                          .map((t) => t.trim())
-                          .filter(Boolean),
-                      })
-                    }
+                  <MultiSelect
+                    options={topics}
+                    selected={sec.topicFilters}
+                    onChange={(vals) => updateSection(i, { topicFilters: vals })}
+                    placeholder="Select topics…"
                   />
-                  <p className="text-xs text-muted-foreground">Comma-separated</p>
                 </div>
               </div>
             </div>

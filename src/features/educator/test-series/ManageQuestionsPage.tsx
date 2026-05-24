@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { doc, onSnapshot } from "firebase/firestore";
@@ -21,6 +21,7 @@ type TestMeta = {
   chapter?: string;
   topics?: string[];
   tags?: string[];
+  markingScheme?: { correct?: number; incorrect?: number; unanswered?: number };
   sections?: {
     id: string;
     name: string;
@@ -35,6 +36,7 @@ type TestMeta = {
   linkedAdminTestId?: string;
   originalTestId?: string;
   isQuestionSourceShared?: boolean;
+  questionsTarget?: number | null;
 };
 
 export default function ManageQuestionsPage() {
@@ -44,6 +46,37 @@ export default function ManageQuestionsPage() {
 
   const [testMeta, setTestMeta] = useState<TestMeta | null>(null);
   const [testLoading, setTestLoading] = useState(true);
+
+  // Must be before early returns — hooks cannot be called conditionally
+  const testSections = useMemo(() => {
+    if (!testMeta) return [];
+    if (testMeta.sections?.length) {
+      return testMeta.sections.map((section) => ({
+        ...section,
+        questionsCount:
+          section.questionsCount != null
+            ? section.questionsCount
+            : testMeta.sections!.length === 1
+              ? (testMeta.questionsCount ?? null)
+              : null,
+      }));
+    }
+    if (testMeta.questionsCount != null) {
+      return [
+        {
+          id: "main",
+          name: testMeta.subject || "General",
+          questionsCount: testMeta.questionsTarget ?? null,
+          format: testMeta.questionFormat || "",
+          chapter: testMeta.chapter || "",
+          topics: testMeta.topics || [],
+          tags: testMeta.tags || [],
+          markingScheme: testMeta.markingScheme || null,
+        },
+      ];
+    }
+    return [];
+  }, [testMeta]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -106,9 +139,19 @@ export default function ManageQuestionsPage() {
             chapter: String(data?.chapter || ""),
             topics: Array.isArray(data?.topics) ? data.topics.map(String) : [],
             tags: Array.isArray(data?.tags) ? data.tags.map(String) : [],
+            markingScheme: data?.markingScheme
+              ? {
+                  correct: Number(data.markingScheme.correct ?? 4),
+                  incorrect: Number(data.markingScheme.incorrect ?? -1),
+                  unanswered: Number(data.markingScheme.unanswered ?? 0),
+                }
+              : undefined,
             linkedAdminTestId: String(data?.linkedAdminTestId || ""),
             originalTestId: String(data?.originalTestId || ""),
             isQuestionSourceShared: data?.isQuestionSourceShared === true,
+            questionsTarget: Number.isFinite(Number(data?.questionsTarget))
+              ? Number(data.questionsTarget)
+              : null,
           });
         }
         setTestLoading(false);
@@ -171,23 +214,7 @@ export default function ManageQuestionsPage() {
       testTitle={testMeta.title}
       testSubject={testMeta.subject}
       useSections={testMeta.useSections}
-      testSections={
-        testMeta.sections?.length
-          ? testMeta.sections
-          : testMeta.questionsCount
-            ? [
-                {
-                  id: "main",
-                  name: testMeta.subject || "General",
-                  questionsCount: testMeta.questionsCount,
-                  format: testMeta.questionFormat || "",
-                  chapter: testMeta.chapter || "",
-                  topics: testMeta.topics || [],
-                  tags: testMeta.tags || [],
-                },
-              ]
-            : []
-      }
+      testSections={testSections}
       educatorUid={firebaseUser.uid}
       readOnly={isAdminLinked}
       questionSource={isAdminLinked ? "admin" : "educator"}
