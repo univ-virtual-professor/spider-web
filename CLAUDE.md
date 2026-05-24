@@ -123,12 +123,14 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
 
 ## AI Chatbot (RAG)
 
-- **Route**: `/student/chatbot` — AI Tutor page; 2-step flow: (1) content + topic selection, (2) chat
+- **Route**: `/student/chatbot` — AI Tutor page; 2-step flow: (1) mode + content selection, (2) chat
 - **Component**: `src/features/student/StudentChatbot.tsx`
-  - Setup screen: student picks indexed content items + optional topic/chapter hint
-  - Chat screen: markdown rendering (react-markdown + remark-gfm/math + rehype-katex), source citations, animated typing indicator
+  - Setup screen: mode toggle ("Course content" | "Upload file"), then content checkboxes + topic hint (course mode) OR file upload drop zone (upload mode)
+  - Upload mode: student uploads PDF (≤10MB) or image (≤5MB); backend extracts text/describes image; extracted text stored in state and sent as `uploaded_context` per message
+  - Chat screen: markdown rendering (react-markdown + remark-gfm/math + rehype-katex), source citations, animated typing indicator, internet toggle in both modes
 - **Backend**: `monkey-king /api/chat/*` endpoints (FastAPI)
-  - `POST /api/chat/message` — `content_ids[]` filters Pinecone to selected content; `topic_context` injected into system prompt; returns `contextSources[]`
+  - `POST /api/chat/extract-upload` — multipart file upload (STUDENT auth); extracts text from PDF or describes image via Gemini Vision; returns `{ context: str }`
+  - `POST /api/chat/message` — `content_ids[]` filters Pinecone (course mode); `uploaded_context` bypasses Pinecone entirely (upload mode); `topic_context` injected into system prompt; returns `contextSources[]`
   - `GET /api/chat/usage` — tokens used today vs. limit
 - **Token limit**: `educators/{uid}.chatDailyTokenLimit` (default 100,000)
 

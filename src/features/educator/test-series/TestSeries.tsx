@@ -708,6 +708,8 @@ export default function TestSeries() {
                 current_question_count: order,
                 positive_marks: Number(test.markingScheme?.correct ?? 4),
                 negative_marks: Number(test.markingScheme?.incorrect ?? -1),
+                course_id: test.courseId ?? "",
+                course_name: test.courseName ?? "",
               }),
             });
             if (res.ok) {
