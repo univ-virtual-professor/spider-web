@@ -177,22 +177,10 @@ export default function SeatManagement() {
   const [loadingSeats, setLoadingSeats] = useState(false);
   const [tx, setTx] = useState<TxRow[]>([]);
 
-  // Update seats dialog
-  const [updateOpen, setUpdateOpen] = useState(false);
-  const [newSeatLimit, setNewSeatLimit] = useState(0);
-  const [transactionId, setTransactionId] = useState("");
-  const [updateNote, setUpdateNote] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Trial (unified) seats dialog
+  // Trial seats dialog
   const [trialOpen, setTrialOpen] = useState(false);
-  const [trialBranchId, setTrialBranchId] = useState("");
-  const [trialCourseId, setTrialCourseId] = useState("");
-  const [trialBatchId, setTrialBatchId] = useState("");
-  const [trialCourses, setTrialCourses] = useState<{ id: string; name: string }[]>([]);
-  const [trialBatches, setTrialBatches] = useState<{ id: string; name: string; planId?: string }[]>(
-    []
-  );
   const [trialPlanId, setTrialPlanId] = useState("");
   const [trialSeats, setTrialSeats] = useState(5);
   const [trialExpiry, setTrialExpiry] = useState("");
@@ -229,8 +217,6 @@ export default function SeatManagement() {
     { id: string; name: string; pricePerSeat: number; featureDefaults?: any }[]
   >([]);
 
-  // Plan selector for update-seats dialog
-  const [updatePlanId, setUpdatePlanId] = useState("");
 
   // Hierarchy tab
   const [hierarchy, setHierarchy] = useState<BranchNode[]>([]);
@@ -255,9 +241,7 @@ export default function SeatManagement() {
   const [maxQpRequests, setMaxQpRequests] = useState(5);
   const [savingAiConfig, setSavingAiConfig] = useState(false);
 
-  const trialSeatLimit = Math.max(0, Number(educator?.seatLimit || 0));
-  const purchasedSeatLimit = Math.max(0, Number((educator as any)?.purchasedSeatLimit || 0));
-  const seatLimit = trialSeatLimit + purchasedSeatLimit;
+  const seatLimit = pools.reduce((sum, p) => sum + p.totalSeats, 0);
   const available = Math.max(0, seatLimit - usedSeats);
 
   const selectedInstitute = allInstitutes.find((i) => i.uid === targetId) || null;
@@ -487,59 +471,6 @@ export default function SeatManagement() {
     });
   }, [targetId]);
 
-  // Load courses for trial dialog
-  useEffect(() => {
-    if (!trialBranchId || !targetId) {
-      setTrialCourses([]);
-      setTrialCourseId("");
-      return;
-    }
-    getDocs(collection(db, "educators", targetId, "branches", trialBranchId, "courses")).then(
-      (snap) => {
-        setTrialCourses(snap.docs.map((d) => ({ id: d.id, name: (d.data() as any).name || d.id })));
-      }
-    );
-    setTrialCourseId("");
-    setTrialBatchId("");
-  }, [trialBranchId, targetId]);
-
-  // Load batches for trial dialog
-  useEffect(() => {
-    if (!trialCourseId || !trialBranchId || !targetId) {
-      setTrialBatches([]);
-      setTrialBatchId("");
-      return;
-    }
-    getDocs(
-      collection(
-        db,
-        "educators",
-        targetId,
-        "branches",
-        trialBranchId,
-        "courses",
-        trialCourseId,
-        "batches"
-      )
-    ).then((snap) => {
-      setTrialBatches(
-        snap.docs.map((d) => {
-          const data = d.data() as any;
-          return { id: d.id, name: data.name || d.id, planId: data.planId || "" };
-        })
-      );
-    });
-    setTrialBatchId("");
-  }, [trialCourseId, trialBranchId, targetId]);
-
-  // Auto-lock plan when a batch with an existing plan is selected
-  const trialSelectedBatch = trialBatches.find((b) => b.id === trialBatchId);
-  const trialBatchLockedPlanId = trialSelectedBatch?.planId || null;
-
-  useEffect(() => {
-    if (trialBatchLockedPlanId) setTrialPlanId(trialBatchLockedPlanId);
-  }, [trialBatchLockedPlanId]);
-
   // Load payment link branches/courses
   useEffect(() => {
     if (!payLinkOpen || !targetId) return;
@@ -569,64 +500,26 @@ export default function SeatManagement() {
 
   // ---------- actions ----------
 
-  const submitUpdate = async () => {
-    if (!targetId || !firebaseUser) return;
-    setBusy(true);
-    try {
-      await postWithToken(firebaseUser, "/api/admin/update-seats", {
-        educatorId: targetId,
-        newSeatLimit: Math.max(0, Math.floor(newSeatLimit || 0)),
-        transactionId: transactionId.trim(),
-        note: updateNote.trim(),
-        ...(updatePlanId && updatePlanId !== "none" ? { planId: updatePlanId } : {}),
-      });
-      toast.success(
-        updatePlanId && updatePlanId !== "none"
-          ? "Seats updated and plan features applied"
-          : "Seats updated"
-      );
-      setUpdateOpen(false);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to update seats");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const submitTrial = async () => {
-    if (
-      !targetId ||
-      !trialBranchId ||
-      !trialCourseId ||
-      !trialBatchId ||
-      !trialPlanId ||
-      !trialExpiry ||
-      !firebaseUser
-    )
-      return;
+    if (!targetId || !trialPlanId || !trialExpiry || !firebaseUser) return;
     setTrialBusy(true);
     try {
-      await postWithToken(firebaseUser, "/api/payment/admin/allocate-seats", {
+      await postWithToken(firebaseUser, "/api/payment/admin/add-to-pool", {
         educator_id: targetId,
-        branch_id: trialBranchId,
-        course_id: trialCourseId,
-        batch_id: trialBatchId,
         plan_id: trialPlanId,
         seats: trialSeats,
         valid_until: trialExpiry,
+        is_trial: true,
         note: trialNote.trim() || null,
       });
-      toast.success(`${trialSeats} trial seats allocated`);
+      toast.success(`${trialSeats} trial seats added to pool (expires ${trialExpiry})`);
       setTrialOpen(false);
-      setTrialBranchId("");
-      setTrialCourseId("");
-      setTrialBatchId("");
       setTrialPlanId("");
       setTrialSeats(5);
       setTrialExpiry("");
       setTrialNote("");
     } catch (e: any) {
-      toast.error(e.message || "Failed to allocate trial seats");
+      toast.error(e.message || "Failed to allot trial seats");
     } finally {
       setTrialBusy(false);
     }
@@ -645,7 +538,7 @@ export default function SeatManagement() {
         educator_phone: plPhone,
         educator_name: institute?.displayName || "",
         educator_email: institute?.email || "",
-        note: updateNote,
+        note: addPoolNote,
       });
       setPlResult({ url: result.cf_link_url, id: result.cf_link_id });
     } catch (e: any) {
@@ -928,18 +821,6 @@ export default function SeatManagement() {
                 </div>
 
                 <div className="space-y-2 pt-1">
-                  <Button
-                    onClick={() => {
-                      setNewSeatLimit(seatLimit);
-                      setTransactionId("");
-                      setUpdateNote("");
-                      setUpdatePlanId("");
-                      setUpdateOpen(true);
-                    }}
-                    className="w-full"
-                  >
-                    Update Seats
-                  </Button>
                   <Button variant="outline" onClick={() => setTrialOpen(true)} className="w-full">
                     Allot Trial Seats
                   </Button>
@@ -969,10 +850,6 @@ export default function SeatManagement() {
                     Send Payment Link
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Cannot reduce below {usedSeats} active seats.
-                </p>
-
                 {pools.length > 0 && (
                   <div className="border-t pt-3">
                     <p className="mb-1.5 text-xs font-medium text-muted-foreground">Seat Pools</p>
@@ -1510,54 +1387,24 @@ export default function SeatManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Update seats dialog */}
-      <Dialog open={updateOpen} onOpenChange={setUpdateOpen}>
-        <DialogContent className="sm:max-w-lg">
+      {/* Trial seats dialog */}
+      <Dialog open={trialOpen} onOpenChange={setTrialOpen}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Update Assigned Seats</DialogTitle>
+            <DialogTitle>Allot Trial Seats</DialogTitle>
           </DialogHeader>
+          <p className="text-sm text-muted-foreground -mt-1">
+            Seats go into the educator's pool. They can allocate to any batch. Seats are
+            automatically removed when the expiry date passes.
+          </p>
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Current: <b>{seatLimit}</b> · Used: <b>{usedSeats}</b>
-            </p>
             <div>
-              <Label>New Total Seats</Label>
-              <Input
-                type="number"
-                value={newSeatLimit}
-                onChange={(e) => setNewSeatLimit(Number(e.target.value))}
-                min={0}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label>
-                Transaction ID <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                value={transactionId}
-                onChange={(e) => setTransactionId(e.target.value)}
-                placeholder="e.g. TXN-2026-00021"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label>Note (optional)</Label>
-              <Input
-                value={updateNote}
-                onChange={(e) => setUpdateNote(e.target.value)}
-                placeholder="e.g. Paid via UPI, 10 seats added"
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label>Apply Plan Features (optional)</Label>
-              <Select value={updatePlanId} onValueChange={setUpdatePlanId}>
+              <Label>Plan</Label>
+              <Select value={trialPlanId} onValueChange={setTrialPlanId}>
                 <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="No plan — keep existing features" />
+                  <SelectValue placeholder="Select plan" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No plan — keep existing features</SelectItem>
                   {allPlans.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.name}
@@ -1565,131 +1412,6 @@ export default function SeatManagement() {
                   ))}
                 </SelectContent>
               </Select>
-              {updatePlanId &&
-                updatePlanId !== "none" &&
-                (() => {
-                  const plan = allPlans.find((p) => p.id === updatePlanId);
-                  const fd = plan?.featureDefaults;
-                  if (!fd) return null;
-                  return (
-                    <div className="mt-2 space-y-1 rounded-md bg-muted/50 p-2 text-xs">
-                      <p className="font-medium text-muted-foreground">
-                        Will apply from "{plan?.name}":
-                      </p>
-                      <div className="flex flex-wrap gap-1">
-                        <PlanFeatureChip label="Content Library" enabled={fd.contentLibrary} />
-                        <PlanFeatureChip
-                          label={`Chatbot (${(fd.chatDailyTokenLimit / 1000).toFixed(0)}k/day)`}
-                          enabled={fd.chatbot}
-                        />
-                        <PlanFeatureChip label={`DPP (${fd.dppDailyLimit}/day)`} enabled={fd.dpp} />
-                      </div>
-                    </div>
-                  );
-                })()}
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setUpdateOpen(false)} disabled={busy}>
-                Cancel
-              </Button>
-              <Button onClick={submitUpdate} disabled={busy || !transactionId.trim()}>
-                {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Trial seats dialog */}
-      <Dialog open={trialOpen} onOpenChange={setTrialOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Allot Trial Seats</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Branch</Label>
-                <Select value={trialBranchId} onValueChange={setTrialBranchId}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select branch" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sharedBranches.map((b) => (
-                      <SelectItem key={b.id} value={b.id}>
-                        {b.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Program</Label>
-                <Select
-                  value={trialCourseId}
-                  onValueChange={setTrialCourseId}
-                  disabled={!trialBranchId}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select program" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {trialCourses.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Batch</Label>
-                <Select
-                  value={trialBatchId}
-                  onValueChange={setTrialBatchId}
-                  disabled={!trialCourseId}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select batch" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {trialBatches.map((b) => (
-                      <SelectItem key={b.id} value={b.id}>
-                        {b.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Plan</Label>
-                <Select
-                  value={trialPlanId}
-                  onValueChange={setTrialPlanId}
-                  disabled={!!trialBatchLockedPlanId}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select plan" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {allPlans.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {trialBatchLockedPlanId && (
-                  <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                    Batch is on{" "}
-                    {allPlans.find((p) => p.id === trialBatchLockedPlanId)?.name ||
-                      trialBatchLockedPlanId}{" "}
-                    — locked.
-                  </p>
-                )}
-              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -1730,7 +1452,7 @@ export default function SeatManagement() {
               </Button>
               <Button
                 onClick={submitTrial}
-                disabled={trialBusy || !trialBatchId || !trialPlanId || !trialExpiry}
+                disabled={trialBusy || !trialPlanId || !trialExpiry}
               >
                 {trialBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Allot
               </Button>
