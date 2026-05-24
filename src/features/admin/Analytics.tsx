@@ -60,8 +60,14 @@ function sinceTs(mode: PeriodMode): Timestamp {
   d.setHours(0, 0, 0, 0);
   if (mode === "week") d.setDate(d.getDate() - 6);
   else if (mode === "daily") d.setDate(d.getDate() - 29);
-  else if (mode === "monthly") { d.setMonth(d.getMonth() - 12); d.setDate(1); }
-  else { d.setFullYear(d.getFullYear() - 5); d.setMonth(0); d.setDate(1); }
+  else if (mode === "monthly") {
+    d.setMonth(d.getMonth() - 12);
+    d.setDate(1);
+  } else {
+    d.setFullYear(d.getFullYear() - 5);
+    d.setMonth(0);
+    d.setDate(1);
+  }
   return Timestamp.fromDate(d);
 }
 
@@ -76,18 +82,31 @@ function generateBuckets(mode: PeriodMode): { key: string; label: string }[] {
   const out: { key: string; label: string }[] = [];
   if (mode === "week") {
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate() - i);
-      out.push({ key: d.toISOString().slice(0, 10), label: d.toLocaleDateString(undefined, { weekday: "short", day: "numeric" }) });
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      out.push({
+        key: d.toISOString().slice(0, 10),
+        label: d.toLocaleDateString(undefined, { weekday: "short", day: "numeric" }),
+      });
     }
   } else if (mode === "daily") {
     for (let i = 29; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate() - i);
-      out.push({ key: d.toISOString().slice(0, 10), label: d.toLocaleDateString(undefined, { day: "2-digit", month: "short" }) });
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      out.push({
+        key: d.toISOString().slice(0, 10),
+        label: d.toLocaleDateString(undefined, { day: "2-digit", month: "short" }),
+      });
     }
   } else if (mode === "monthly") {
     for (let i = 11; i >= 0; i--) {
-      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - i);
-      out.push({ key: d.toISOString().slice(0, 7), label: d.toLocaleDateString(undefined, { month: "short", year: "2-digit" }) });
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - i);
+      out.push({
+        key: d.toISOString().slice(0, 7),
+        label: d.toLocaleDateString(undefined, { month: "short", year: "2-digit" }),
+      });
     }
   } else {
     for (let i = 4; i >= 0; i--) {
@@ -109,7 +128,9 @@ export default function AdminAnalytics() {
   const [totalStudents, setTotalStudents] = useState(0);
   const [chartData, setChartData] = useState<BucketRow[]>([]);
   const [periodSummary, setPeriodSummary] = useState({
-    totalAttempts: 0, uniqueStudents: 0, uniqueEducators: 0,
+    totalAttempts: 0,
+    uniqueStudents: 0,
+    uniqueEducators: 0,
   });
 
   const canView = useMemo(
@@ -131,9 +152,17 @@ export default function AdminAnalytics() {
     const buckets = generateBuckets(mode);
 
     const [attemptsSnap, usersSnap] = await Promise.all([
-      getDocs(query(collection(db, "attempts"), where("createdAt", ">=", from), orderBy("createdAt", "asc"))),
+      getDocs(
+        query(
+          collection(db, "attempts"),
+          where("createdAt", ">=", from),
+          orderBy("createdAt", "asc")
+        )
+      ),
       // query without role filter to avoid composite index requirement; filter in JS
-      getDocs(query(collection(db, "users"), where("createdAt", ">=", from), orderBy("createdAt", "asc"))),
+      getDocs(
+        query(collection(db, "users"), where("createdAt", ">=", from), orderBy("createdAt", "asc"))
+      ),
     ]);
 
     // --- bucket maps ---
@@ -220,11 +249,6 @@ export default function AdminAnalytics() {
     ]).catch(() => toast.error("Failed to refresh."));
   }
 
-  if (authLoading)
-    return <div className="py-12 text-center text-muted-foreground">Loading…</div>;
-  if (role !== "ADMIN")
-    return <div className="py-12 text-center text-muted-foreground">Access denied.</div>;
-
   // Compute cumulative totals from the bucket-level new-registration counts.
   // baseline = (platform total) – (all new in the fetched window) so the last bucket lands on the current total.
   const cumulativeData = useMemo(() => {
@@ -239,12 +263,61 @@ export default function AdminAnalytics() {
     });
   }, [chartData, totalStudents, totalInstitutes]);
 
+  if (authLoading) return <div className="py-12 text-center text-muted-foreground">Loading…</div>;
+  if (role !== "ADMIN")
+    return <div className="py-12 text-center text-muted-foreground">Access denied.</div>;
+
   const cards = [
-    { title: "Total Institutes", value: totalInstitutes, sub: "registered", loading: staticLoading, icon: Users, color: "text-blue-500", bg: "bg-blue-500/10", border: "border-blue-500/20" },
-    { title: "Total Students", value: totalStudents, sub: "registered", loading: staticLoading, icon: GraduationCap, color: "text-green-500", bg: "bg-green-500/10", border: "border-green-500/20" },
-    { title: "Tests Taken", value: periodSummary.totalAttempts, sub: PERIOD_LABELS[period].toLowerCase(), loading: periodLoading, icon: BookOpen, color: "text-orange-500", bg: "bg-orange-500/10", border: "border-orange-500/20" },
-    { title: "Active Students", value: periodSummary.uniqueStudents, sub: `of ${totalStudents} total`, loading: periodLoading || staticLoading, icon: GraduationCap, color: "text-rose-500", bg: "bg-rose-500/10", border: "border-rose-500/20" },
-    { title: "Active Educators", value: periodSummary.uniqueEducators, sub: `of ${totalInstitutes} total`, loading: periodLoading || staticLoading, icon: Activity, color: "text-cyan-500", bg: "bg-cyan-500/10", border: "border-cyan-500/20" },
+    {
+      title: "Total Institutes",
+      value: totalInstitutes,
+      sub: "registered",
+      loading: staticLoading,
+      icon: Users,
+      color: "text-blue-500",
+      bg: "bg-blue-500/10",
+      border: "border-blue-500/20",
+    },
+    {
+      title: "Total Students",
+      value: totalStudents,
+      sub: "registered",
+      loading: staticLoading,
+      icon: GraduationCap,
+      color: "text-green-500",
+      bg: "bg-green-500/10",
+      border: "border-green-500/20",
+    },
+    {
+      title: "Tests Taken",
+      value: periodSummary.totalAttempts,
+      sub: PERIOD_LABELS[period].toLowerCase(),
+      loading: periodLoading,
+      icon: BookOpen,
+      color: "text-orange-500",
+      bg: "bg-orange-500/10",
+      border: "border-orange-500/20",
+    },
+    {
+      title: "Active Students",
+      value: periodSummary.uniqueStudents,
+      sub: `of ${totalStudents} total`,
+      loading: periodLoading || staticLoading,
+      icon: GraduationCap,
+      color: "text-rose-500",
+      bg: "bg-rose-500/10",
+      border: "border-rose-500/20",
+    },
+    {
+      title: "Active Educators",
+      value: periodSummary.uniqueEducators,
+      sub: `of ${totalInstitutes} total`,
+      loading: periodLoading || staticLoading,
+      icon: Activity,
+      color: "text-cyan-500",
+      bg: "bg-cyan-500/10",
+      border: "border-cyan-500/20",
+    },
   ];
 
   const tooltipStyle = {
@@ -273,9 +346,13 @@ export default function AdminAnalytics() {
         <CardContent>
           <div className="h-52">
             {periodLoading ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading…</div>
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Loading…
+              </div>
             ) : data.length === 0 ? (
-              <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">No data yet.</div>
+              <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
+                No data yet.
+              </div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={data} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
@@ -348,8 +425,8 @@ export default function AdminAnalytics() {
               <p className="text-xl font-bold text-foreground">
                 {s.loading ? "—" : s.value.toLocaleString()}
               </p>
-              <p className="text-xs font-medium text-muted-foreground mt-0.5">{s.title}</p>
-              <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+              <p className="mt-0.5 text-xs font-medium text-muted-foreground">{s.title}</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground/60">
                 {s.loading ? "" : s.sub}
               </p>
             </CardContent>

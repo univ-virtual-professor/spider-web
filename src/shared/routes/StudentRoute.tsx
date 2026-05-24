@@ -2,7 +2,6 @@ import React from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@app/providers/AuthProvider";
 import { useTenant } from "@app/providers/TenantProvider";
-import { buildTenantUrl } from "@shared/lib/tenant";
 import { Loader2 } from "lucide-react";
 
 export default function StudentRoute() {

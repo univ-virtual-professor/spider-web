@@ -1303,7 +1303,14 @@ export default function StudentCBTAttempt() {
         isSubjectiveTest,
       } = proctorStateRef.current;
       // Subjective tests: photo upload closes fullscreen — don't penalise
-      if (!document.fullscreenElement && started && !subOpen && !violOpen && !instOpen && !isSubjectiveTest) {
+      if (
+        !document.fullscreenElement &&
+        started &&
+        !subOpen &&
+        !violOpen &&
+        !instOpen &&
+        !isSubjectiveTest
+      ) {
         handleViolation("Exited Fullscreen");
       }
     };
@@ -2519,7 +2526,9 @@ export default function StudentCBTAttempt() {
                               <span style={{ fontSize: 12, color: "#6b7280", fontWeight: 600 }}>
                                 Upload Image
                               </span>
-                              <span style={{ fontSize: 10, color: "#9ca3af" }}>JPG, PNG, up to 10MB</span>
+                              <span style={{ fontSize: 10, color: "#9ca3af" }}>
+                                JPG, PNG, up to 10MB
+                              </span>
                               <input
                                 type="file"
                                 accept="image/jpeg,image/png,image/webp"

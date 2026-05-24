@@ -218,7 +218,6 @@ export default function SeatManagement() {
     { id: string; name: string; pricePerSeat: number; featureDefaults?: any }[]
   >([]);
 
-
   // Hierarchy tab
   const [hierarchy, setHierarchy] = useState<BranchNode[]>([]);
   const [loadingHierarchy, setLoadingHierarchy] = useState(false);
@@ -1394,7 +1393,7 @@ export default function SeatManagement() {
           <DialogHeader>
             <DialogTitle>Allot Trial Seats</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground -mt-1">
+          <p className="-mt-1 text-sm text-muted-foreground">
             Seats go into the educator's pool. They can allocate to any batch. Seats are
             automatically removed when the expiry date passes.
           </p>
@@ -1451,10 +1450,7 @@ export default function SeatManagement() {
               <Button variant="outline" onClick={() => setTrialOpen(false)} disabled={trialBusy}>
                 Cancel
               </Button>
-              <Button
-                onClick={submitTrial}
-                disabled={trialBusy || !trialPlanId || !trialExpiry}
-              >
+              <Button onClick={submitTrial} disabled={trialBusy || !trialPlanId || !trialExpiry}>
                 {trialBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Allot
               </Button>
             </div>

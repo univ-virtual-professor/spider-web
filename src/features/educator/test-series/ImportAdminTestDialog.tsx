@@ -175,8 +175,7 @@ export default function ImportAdminTestDialog({
     }
   };
 
-  const sectionCount = (t: AdminTest) =>
-    Array.isArray(t.sections) ? t.sections.length : 0;
+  const sectionCount = (t: AdminTest) => (Array.isArray(t.sections) ? t.sections.length : 0);
 
   const questionCount = (t: AdminTest) => {
     if (typeof t.questionsCount === "number" && t.questionsCount > 0) return t.questionsCount;
@@ -195,8 +194,8 @@ export default function ImportAdminTestDialog({
             Import Admin Tests
           </DialogTitle>
           <DialogDescription>
-            Browse published tests created by admin. Importing copies the test and all its
-            questions into your library — you can edit and schedule them independently.
+            Browse published tests created by admin. Importing copies the test and all its questions
+            into your library — you can edit and schedule them independently.
           </DialogDescription>
         </DialogHeader>
 

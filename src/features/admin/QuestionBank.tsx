@@ -1060,7 +1060,10 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
       if (qFormat === "MCQ_MULTI") base.correctOptions = multiCorrects;
       if (qFormat === "SUBJECTIVE_SHORT" || qFormat === "SUBJECTIVE_LONG") {
         base.referenceAnswer = referenceAnswer.trim();
-        base.referenceKeywords = referenceKeywords.split(",").map((k) => k.trim()).filter(Boolean);
+        base.referenceKeywords = referenceKeywords
+          .split(",")
+          .map((k) => k.trim())
+          .filter(Boolean);
         base.evaluationInstructions = evaluationInstructions.trim();
       }
       if (qImgUrl.trim()) base.questionImage = qImgUrl.trim();
@@ -2561,14 +2564,17 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
                 <div className="space-y-1">
                   <Label>Reference Answer</Label>
                   <textarea
-                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="min-h-[80px] w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                     value={referenceAnswer}
                     onChange={(e) => setReferenceAnswer(e.target.value)}
                     placeholder="Model answer used for AI evaluation..."
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>Keywords <span className="text-xs text-muted-foreground">(comma-separated)</span></Label>
+                  <Label>
+                    Keywords{" "}
+                    <span className="text-xs text-muted-foreground">(comma-separated)</span>
+                  </Label>
                   <Input
                     value={referenceKeywords}
                     onChange={(e) => setReferenceKeywords(e.target.value)}
@@ -2576,7 +2582,10 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>Evaluation Instructions <span className="text-xs text-muted-foreground">(optional)</span></Label>
+                  <Label>
+                    Evaluation Instructions{" "}
+                    <span className="text-xs text-muted-foreground">(optional)</span>
+                  </Label>
                   <Input
                     value={evaluationInstructions}
                     onChange={(e) => setEvaluationInstructions(e.target.value)}

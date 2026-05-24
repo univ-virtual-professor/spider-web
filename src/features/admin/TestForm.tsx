@@ -64,7 +64,6 @@ import {
 import { TagInput } from "@shared/ui/tag-input";
 import ImageTextarea from "@features/educator/components/ImageTextarea";
 import { Slider } from "@shared/ui/slider";
-import { TopicMultiSelect } from "@shared/ui/topic-multi-select";
 import { MultiSelect } from "@shared/ui/MultiSelect";
 import { SearchableSingleSelect } from "@shared/ui/searchable-single-select";
 import { useQBOptions } from "@shared/hooks/useQBOptions";

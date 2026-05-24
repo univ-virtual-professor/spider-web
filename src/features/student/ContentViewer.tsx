@@ -393,7 +393,6 @@ export default function ContentViewer({ item, studentName, onClose }: Props) {
         {/* Video */}
         {isVideo && (
           <div className="relative flex min-h-full items-center justify-center p-4">
-            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
             <video
               src={item.fileUrl}
               controls

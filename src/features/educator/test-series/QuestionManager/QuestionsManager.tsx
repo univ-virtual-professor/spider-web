@@ -604,7 +604,9 @@ const QuestionsManager = ({
     const set = new Set<string>();
     [...questionBankRows, ...adminQuestionBankRows].forEach((q) => {
       if (Array.isArray((q as any).tags)) {
-        (q as any).tags.forEach((t: string) => { if (t?.trim()) set.add(t.trim()); });
+        (q as any).tags.forEach((t: string) => {
+          if (t?.trim()) set.add(t.trim());
+        });
       }
     });
     return Array.from(set).sort();
@@ -760,12 +762,18 @@ const QuestionsManager = ({
       topic: data?.topic ? String(data.topic) : "",
       marks: data?.marks != null ? Number(data.marks) : undefined,
       negativeMarks: data?.negativeMarks != null ? Number(data.negativeMarks) : undefined,
-      questionType: data?.format ? String(data.format) : data?.questionType ? String(data.questionType) : undefined,
+      questionType: data?.format
+        ? String(data.format)
+        : data?.questionType
+          ? String(data.questionType)
+          : undefined,
       referenceAnswer: data?.referenceAnswer ? String(data.referenceAnswer) : undefined,
       referenceKeywords: Array.isArray(data?.referenceKeywords)
         ? data.referenceKeywords.map(String).filter(Boolean)
         : undefined,
-      evaluationInstructions: data?.evaluationInstructions ? String(data.evaluationInstructions) : undefined,
+      evaluationInstructions: data?.evaluationInstructions
+        ? String(data.evaluationInstructions)
+        : undefined,
       updatedAt: data?.updatedAt,
     };
   }
@@ -1632,20 +1640,26 @@ const QuestionsManager = ({
           subject: question.subject || "",
           chapter: question.chapter || "",
           topic: question.topic || "",
-          marks: targetSection?.markingScheme?.correct != null
-            ? Number(targetSection.markingScheme.correct)
-            : (question.marks ?? null),
-          negativeMarks: targetSection?.markingScheme?.incorrect != null
-            ? Number(targetSection.markingScheme.incorrect)
-            : (question.negativeMarks ?? null),
+          marks:
+            targetSection?.markingScheme?.correct != null
+              ? Number(targetSection.markingScheme.correct)
+              : (question.marks ?? null),
+          negativeMarks:
+            targetSection?.markingScheme?.incorrect != null
+              ? Number(targetSection.markingScheme.incorrect)
+              : (question.negativeMarks ?? null),
           isActive: false,
           source: "question_bank_auto",
           bankQuestionId: question.id,
           questionOrder,
-          questionType: normalizeQuestionType(qAny.questionType || targetSection?.format || "MCQ_SINGLE"),
+          questionType: normalizeQuestionType(
+            qAny.questionType || targetSection?.format || "MCQ_SINGLE"
+          ),
           ...(qAny.referenceAnswer ? { referenceAnswer: qAny.referenceAnswer } : {}),
           ...(qAny.referenceKeywords?.length ? { referenceKeywords: qAny.referenceKeywords } : {}),
-          ...(qAny.evaluationInstructions ? { evaluationInstructions: qAny.evaluationInstructions } : {}),
+          ...(qAny.evaluationInstructions
+            ? { evaluationInstructions: qAny.evaluationInstructions }
+            : {}),
           // Preserve group linkage so CBT can load passage
           ...(qAny.groupId ? { groupId: qAny.groupId, groupOrder: qAny.groupOrder ?? null } : {}),
           createdAt: serverTimestamp(),
@@ -1848,20 +1862,30 @@ const QuestionsManager = ({
             subject: question.subject || "",
             chapter: question.chapter || "",
             topic: question.topic || "",
-            marks: section.markingScheme?.correct != null
-              ? Number(section.markingScheme.correct)
-              : (question.marks ?? null),
-            negativeMarks: section.markingScheme?.incorrect != null
-              ? Number(section.markingScheme.incorrect)
-              : (question.negativeMarks ?? null),
+            marks:
+              section.markingScheme?.correct != null
+                ? Number(section.markingScheme.correct)
+                : (question.marks ?? null),
+            negativeMarks:
+              section.markingScheme?.incorrect != null
+                ? Number(section.markingScheme.incorrect)
+                : (question.negativeMarks ?? null),
             isActive: true,
             source: "auto_import",
             bankQuestionId: question.id,
             questionOrder,
-            questionType: normalizeQuestionType((question as any).questionType || section.format || "MCQ_SINGLE"),
-            ...((question as any).referenceAnswer ? { referenceAnswer: (question as any).referenceAnswer } : {}),
-            ...((question as any).referenceKeywords?.length ? { referenceKeywords: (question as any).referenceKeywords } : {}),
-            ...((question as any).evaluationInstructions ? { evaluationInstructions: (question as any).evaluationInstructions } : {}),
+            questionType: normalizeQuestionType(
+              (question as any).questionType || section.format || "MCQ_SINGLE"
+            ),
+            ...((question as any).referenceAnswer
+              ? { referenceAnswer: (question as any).referenceAnswer }
+              : {}),
+            ...((question as any).referenceKeywords?.length
+              ? { referenceKeywords: (question as any).referenceKeywords }
+              : {}),
+            ...((question as any).evaluationInstructions
+              ? { evaluationInstructions: (question as any).evaluationInstructions }
+              : {}),
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           };
@@ -1889,7 +1913,10 @@ const QuestionsManager = ({
       }
 
       if (!allImportedRows.length) {
-        if (skippedFullCount > 0 && skippedFullCount === sections.filter((s) => s.topics.length > 0).length) {
+        if (
+          skippedFullCount > 0 &&
+          skippedFullCount === sections.filter((s) => s.topics.length > 0).length
+        ) {
           toast.info("All sections are already at their question limit.");
         } else {
           toast.error("No matching questions found for any section. Check topics.");
@@ -2697,8 +2724,12 @@ const QuestionsManager = ({
       referenceKeywords: Array.isArray(data?.referenceKeywords)
         ? data.referenceKeywords.map(String).filter(Boolean)
         : undefined,
-      referenceAnswerFileUrl: data?.referenceAnswerFileUrl ? String(data.referenceAnswerFileUrl) : undefined,
-      evaluationInstructions: data?.evaluationInstructions ? String(data.evaluationInstructions) : undefined,
+      referenceAnswerFileUrl: data?.referenceAnswerFileUrl
+        ? String(data.referenceAnswerFileUrl)
+        : undefined,
+      evaluationInstructions: data?.evaluationInstructions
+        ? String(data.evaluationInstructions)
+        : undefined,
       isActive: isQuestionPublished(data?.isActive),
       createdAt: data?.createdAt,
       updatedAt: data?.updatedAt,
@@ -3090,39 +3121,51 @@ const QuestionsManager = ({
                         {/* Filters grid */}
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <div>
-                            <Label className="mb-1 block text-xs text-muted-foreground">Subject</Label>
+                            <Label className="mb-1 block text-xs text-muted-foreground">
+                              Subject
+                            </Label>
                             <MultiSelect
                               options={allAvailableSubjects}
                               selected={section.subjects}
                               onChange={(vals) =>
                                 setAutoImportSections((prev) =>
-                                  prev.map((s) => (s.id === section.id ? { ...s, subjects: vals } : s))
+                                  prev.map((s) =>
+                                    s.id === section.id ? { ...s, subjects: vals } : s
+                                  )
                                 )
                               }
                               placeholder="Any subject"
                             />
                           </div>
                           <div>
-                            <Label className="mb-1 block text-xs text-muted-foreground">Chapter</Label>
+                            <Label className="mb-1 block text-xs text-muted-foreground">
+                              Chapter
+                            </Label>
                             <MultiSelect
                               options={allAvailableChapters}
                               selected={section.chapters}
                               onChange={(vals) =>
                                 setAutoImportSections((prev) =>
-                                  prev.map((s) => (s.id === section.id ? { ...s, chapters: vals } : s))
+                                  prev.map((s) =>
+                                    s.id === section.id ? { ...s, chapters: vals } : s
+                                  )
                                 )
                               }
                               placeholder="Any chapter"
                             />
                           </div>
                           <div>
-                            <Label className="mb-1 block text-xs text-muted-foreground">Topic</Label>
+                            <Label className="mb-1 block text-xs text-muted-foreground">
+                              Topic
+                            </Label>
                             <MultiSelect
                               options={allAvailableTopics}
                               selected={section.topics}
                               onChange={(vals) =>
                                 setAutoImportSections((prev) =>
-                                  prev.map((s) => (s.id === section.id ? { ...s, topics: vals } : s))
+                                  prev.map((s) =>
+                                    s.id === section.id ? { ...s, topics: vals } : s
+                                  )
                                 )
                               }
                               placeholder="Any topic"

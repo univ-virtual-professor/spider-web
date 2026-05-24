@@ -24,7 +24,6 @@ import { cn } from "@shared/lib/utils";
 const API = import.meta.env.VITE_MONKEY_KING_API_URL;
 const ADMIN_KEY = import.meta.env.VITE_MONKEY_KING_ADMIN_KEY;
 
-
 type Stats = {
   totalEducators: number;
   totalStudents: number;
@@ -60,10 +59,7 @@ export default function AdminDashboard() {
       const educatorsQ = query(collection(db, "users"), where("role", "==", "EDUCATOR"));
       const studentsQ = query(collection(db, "users"), where("role", "==", "STUDENT"));
       const attemptsQ = query(collection(db, "attempts"));
-      const activeTrialsQ = query(
-        collection(db, "educators"),
-        where("trialSeats", ">", 0)
-      );
+      const activeTrialsQ = query(collection(db, "educators"), where("trialSeats", ">", 0));
 
       const [educatorsCnt, studentsCnt, attemptsCnt, trialsCnt] = await Promise.all([
         getCountFromServer(educatorsQ),
@@ -227,7 +223,11 @@ export default function AdminDashboard() {
           );
           return stat.href ? (
             <Link key={stat.title} to={stat.href}>
-              <Card className={cn("border-border/50 transition-colors hover:border-orange-500/50 hover:bg-orange-500/5 cursor-pointer")}>
+              <Card
+                className={cn(
+                  "cursor-pointer border-border/50 transition-colors hover:border-orange-500/50 hover:bg-orange-500/5"
+                )}
+              >
                 {cardContent}
               </Card>
             </Link>

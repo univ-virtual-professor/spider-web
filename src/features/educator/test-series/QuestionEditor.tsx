@@ -1,5 +1,5 @@
 import { useState, type Dispatch, type MouseEvent, type SetStateAction } from "react";
-import { Plus, Trash2, Loader2, CheckCircle2, Upload, ImagePlus } from "lucide-react";
+import { Plus, Trash2, Loader2, CheckCircle2, ImagePlus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Input } from "@shared/ui/input";

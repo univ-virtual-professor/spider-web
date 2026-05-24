@@ -129,7 +129,9 @@ export default function DppGenerator() {
   const educatorUid = firebaseUser?.uid || "";
   const { features, loading: featuresLoading } = useEducatorFeatures(educatorUid);
   const { subjects, allowedSubjectIds } = useAccessibleCourses(educatorUid);
-  const { chapters, topics } = useQBOptions(allowedSubjectIds.length ? allowedSubjectIds : undefined);
+  const { chapters, topics } = useQBOptions(
+    allowedSubjectIds.length ? allowedSubjectIds : undefined
+  );
   const subjectOptions = useMemo(() => subjects.map((s) => s.name), [subjects]);
 
   const [content, setContent] = useState<ContentItem[]>([]);
@@ -350,7 +352,8 @@ export default function DppGenerator() {
     usageToday < dailyLimit &&
     ((genSource === "upload" && !!uploadFile) ||
       (genSource === "content" && genSelectedIds.size > 0) ||
-      (genSource === "qb" && (genTopicFilters.length > 0 || genSubjects.length > 0 || !!genTopicName)));
+      (genSource === "qb" &&
+        (genTopicFilters.length > 0 || genSubjects.length > 0 || !!genTopicName)));
 
   const performGeneration = async (finalContentIds: string[], finalContentTitles: string[]) => {
     if (!firebaseUser) return;

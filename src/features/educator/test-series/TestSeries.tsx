@@ -446,7 +446,10 @@ export default function TestSeries() {
     );
 
     // MY tests: educators/{uid}/my_tests
-    const myTestsQ = query(collection(db, "educators", uid, "my_tests"), orderBy("createdAt", "desc"));
+    const myTestsQ = query(
+      collection(db, "educators", uid, "my_tests"),
+      orderBy("createdAt", "desc")
+    );
     const unsubMy = onSnapshot(
       myTestsQ,
       async (snap) => {
@@ -671,9 +674,15 @@ export default function TestSeries() {
         };
       });
 
-      console.log("[autoFill] sectionConstraints:", sectionConstraints.map((s) => ({
-        id: s.id, name: s.name, questionsCount: s.questionsCount, markingScheme: s.markingScheme,
-      })));
+      console.log(
+        "[autoFill] sectionConstraints:",
+        sectionConstraints.map((s) => ({
+          id: s.id,
+          name: s.name,
+          questionsCount: s.questionsCount,
+          markingScheme: s.markingScheme,
+        }))
+      );
 
       if (sectionConstraints.every((s) => s.questionsCount === 0)) {
         console.log("[autoFill] all sections at limit — aborting");
@@ -754,7 +763,9 @@ export default function TestSeries() {
             section_name: c.sectionName,
             current_question_count: order,
             positive_marks: Number((constraint?.markingScheme || test.markingScheme)?.correct ?? 4),
-            negative_marks: Number((constraint?.markingScheme || test.markingScheme)?.incorrect ?? -1),
+            negative_marks: Number(
+              (constraint?.markingScheme || test.markingScheme)?.incorrect ?? -1
+            ),
             course_id: test.courseId ?? "",
             course_name: test.courseName ?? "",
           };
@@ -769,7 +780,11 @@ export default function TestSeries() {
               body: JSON.stringify(gapFillBody),
             });
             const result = await res.json();
-            console.log("[autoFill] gap-fill response:", { status: res.status, ok: res.ok, result });
+            console.log("[autoFill] gap-fill response:", {
+              status: res.status,
+              ok: res.ok,
+              result,
+            });
             if (res.ok) {
               aiGenerated += result.generated ?? 0;
               order += result.generated ?? 0;
@@ -860,8 +875,12 @@ export default function TestSeries() {
     if (idx < 0 || swapIdx < 0 || swapIdx >= sorted.length) return;
     try {
       const batch = writeBatch(db);
-      batch.update(doc(db, "educators", currentUser.uid, "folders", (sorted[idx] as any).id), { order: swapIdx });
-      batch.update(doc(db, "educators", currentUser.uid, "folders", (sorted[swapIdx] as any).id), { order: idx });
+      batch.update(doc(db, "educators", currentUser.uid, "folders", (sorted[idx] as any).id), {
+        order: swapIdx,
+      });
+      batch.update(doc(db, "educators", currentUser.uid, "folders", (sorted[swapIdx] as any).id), {
+        order: idx,
+      });
       await batch.commit();
     } catch {
       toast.error("Failed to reorder folder");
@@ -1035,11 +1054,21 @@ export default function TestSeries() {
         if (ao !== bo) return ao - bo;
         return (a.folder.createdAt?.toMillis?.() ?? 0) - (b.folder.createdAt?.toMillis?.() ?? 0);
       })
-      .map(({ folder, tests }) => ({ type: "folder" as const, key: folder.id, label: folder.name, tests }));
+      .map(({ folder, tests }) => ({
+        type: "folder" as const,
+        key: folder.id,
+        label: folder.name,
+        tests,
+      }));
 
     const subjectGroups = [...subjectMap.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([subject, tests]) => ({ type: "subject" as const, key: "subject__" + subject, label: subject, tests }));
+      .map(([subject, tests]) => ({
+        type: "subject" as const,
+        key: "subject__" + subject,
+        label: subject,
+        tests,
+      }));
 
     return [...folderGroups, ...subjectGroups];
   }, [sortedTests, folders]);
@@ -1490,11 +1519,7 @@ export default function TestSeries() {
               if (!open) setCreateOpen(true);
             }}
           />
-          <Button
-            variant="outline"
-            className="rounded-xl"
-            onClick={() => setImportAdminOpen(true)}
-          >
+          <Button variant="outline" className="rounded-xl" onClick={() => setImportAdminOpen(true)}>
             <Download className="mr-2 h-4 w-4" /> Import Test
           </Button>
           <Button className="gradient-bg text-white shadow-lg" onClick={() => setCreateOpen(true)}>
@@ -1533,7 +1558,10 @@ export default function TestSeries() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Select value={sortBy} onValueChange={(v) => setSortBy(v as "newest" | "oldest" | "az")}>
+            <Select
+              value={sortBy}
+              onValueChange={(v) => setSortBy(v as "newest" | "oldest" | "az")}
+            >
               <SelectTrigger className="h-8 w-[140px] rounded-xl text-xs">
                 <ArrowUpDown className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
                 <SelectValue />
@@ -1551,7 +1579,11 @@ export default function TestSeries() {
               onClick={() => setFlatView((v) => !v)}
               title={flatView ? "Switch to grouped view" : "Switch to flat view"}
             >
-              {flatView ? <LayoutGrid className="h-3.5 w-3.5" /> : <LayoutList className="h-3.5 w-3.5" />}
+              {flatView ? (
+                <LayoutGrid className="h-3.5 w-3.5" />
+              ) : (
+                <LayoutList className="h-3.5 w-3.5" />
+              )}
             </Button>
             <NewFolderButton {...folderState} />
           </div>
@@ -1710,10 +1742,14 @@ export default function TestSeries() {
                               >
                                 <Pencil className="mr-2 h-3.5 w-3.5" /> Rename
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => void handleReorderFolder(group.key, -1)}>
+                              <DropdownMenuItem
+                                onClick={() => void handleReorderFolder(group.key, -1)}
+                              >
                                 Move Up
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => void handleReorderFolder(group.key, 1)}>
+                              <DropdownMenuItem
+                                onClick={() => void handleReorderFolder(group.key, 1)}
+                              >
                                 Move Down
                               </DropdownMenuItem>
                               <DropdownMenuItem
@@ -1730,268 +1766,306 @@ export default function TestSeries() {
                     {isExpanded && (
                       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                         {group.tests.map((test) => (
-                <motion.div key={test.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                  {(() => {
-                    const isAdminLinked =
-                      test.originSource === "admin" ||
-                      test.source === "imported" ||
-                      test.source === "linked_admin" ||
-                      test.isQuestionSourceShared === true ||
-                      !!test.linkedAdminTestId ||
-                      !!test.originalTestId;
+                          <motion.div
+                            key={test.id}
+                            layout
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                          >
+                            {(() => {
+                              const isAdminLinked =
+                                test.originSource === "admin" ||
+                                test.source === "imported" ||
+                                test.source === "linked_admin" ||
+                                test.isQuestionSourceShared === true ||
+                                !!test.linkedAdminTestId ||
+                                !!test.originalTestId;
 
-                    const isDpp =
-                      test.type === "dpp" ||
-                      String(test.title || "")
-                        .toLowerCase()
-                        .includes("dpp");
+                              const isDpp =
+                                test.type === "dpp" ||
+                                String(test.title || "")
+                                  .toLowerCase()
+                                  .includes("dpp");
 
-                    return (
-                      <Card className="relative flex h-full flex-col transition-shadow hover:shadow-md">
-                        <CardHeader>
-                          <CardTitle className="flex items-start justify-between gap-2">
-                            <span className="truncate text-lg">{test.title}</span>
-                            <div className="flex items-center gap-1">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 rounded-xl"
-                                  >
-                                    <MoreVertical className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="rounded-xl">
-                                  <DropdownMenuItem
-                                    onClick={() => {
-                                      setTestToMove(test);
-                                      setMoveTestOpen(true);
-                                    }}
-                                  >
-                                    <Move className="mr-2 h-4 w-4" /> Move to Folder
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => {
-                                      setBatchAssignTest(test);
-                                      setSelectedBatchIds(test.targetBatches || []);
-                                      setBatchAssignOpen(true);
-                                    }}
-                                  >
-                                    <Award className="mr-2 h-4 w-4" /> Assign to Batches
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => openAccessCode(test)}>
-                                    <Key className="mr-2 h-4 w-4" /> Access Code
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() => {
-                                      setTestToSchedule(test);
-                                      setScheduleOpen(true);
-                                    }}
-                                  >
-                                    <Clock className="mr-2 h-4 w-4" /> Schedule
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    className="text-destructive"
-                                    onClick={async () => {
-                                      if (!currentUser) return;
-                                      if (!confirm("Delete this test and all its questions?"))
-                                        return;
-                                      try {
-                                        const qs = await getDocs(
-                                          collection(
-                                            db,
-                                            "educators",
-                                            currentUser.uid,
-                                            "my_tests",
-                                            test.id,
-                                            "questions"
-                                          )
-                                        );
-                                        const batch = writeBatch(db);
-                                        qs.forEach((d) => batch.delete(d.ref));
-                                        batch.delete(
-                                          doc(db, "educators", currentUser.uid, "my_tests", test.id)
-                                        );
-                                        await batch.commit();
-                                        toast.success("Test deleted");
-                                      } catch (e) {
-                                        console.error(e);
-                                        toast.error("Delete failed");
-                                      }
-                                    }}
-                                  >
-                                    <Trash2 className="mr-2 h-4 w-4" /> Delete
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent className="flex flex-1 flex-col gap-4">
-                          {/* Template drift banner */}
-                          {driftTests.has(test.id) && (
-                            <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs dark:border-amber-700 dark:bg-amber-950/40">
-                              <span className="mt-0.5 text-amber-600 dark:text-amber-400">⚠</span>
-                              <div className="flex-1">
-                                <span className="font-semibold text-amber-700 dark:text-amber-400">
-                                  Template updated
-                                </span>
-                                <span className="ml-1 text-amber-600 dark:text-amber-500">
-                                  — section constraints may be outdated.
-                                </span>
-                                <button
-                                  className="ml-2 text-amber-700 underline hover:no-underline dark:text-amber-400"
-                                  onClick={async () => {
-                                    if (!currentUser || !test.sourceTemplateId) return;
-                                    try {
-                                      const tmplSnap = await getDoc(
-                                        doc(db, "templates", test.sourceTemplateId)
-                                      );
-                                      if (!tmplSnap.exists()) {
-                                        toast.error("Template not found");
-                                        return;
-                                      }
-                                      const tmpl = tmplSnap.data() as any;
-                                      await updateDoc(
-                                        doc(db, "educators", currentUser.uid, "my_tests", test.id),
-                                        {
-                                          sections: tmpl.sections ?? [],
-                                          markingScheme: tmpl.markingScheme ?? null,
-                                          durationMinutes:
-                                            tmpl.durationMinutes ?? test.durationMinutes,
-                                          sourceTemplateVersion: Number(tmpl.version ?? 0),
-                                          updatedAt: serverTimestamp(),
-                                        }
-                                      );
-                                      setDriftTests((prev) => {
-                                        const s = new Set(prev);
-                                        s.delete(test.id);
-                                        return s;
-                                      });
-                                      toast.success("Synced section structure from template");
-                                    } catch (e) {
-                                      console.error(e);
-                                      toast.error("Sync failed");
-                                    }
-                                  }}
-                                >
-                                  Sync from template
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                          <p className="line-clamp-2 text-sm text-muted-foreground">
-                            {test.description}
-                          </p>
-
-                          <div className="mt-auto flex flex-wrap items-center justify-between gap-y-3">
-                            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-                              <span className="flex shrink-0 items-center gap-1">
-                                <BookOpen className="h-3 w-3" /> {test.subject || "—"}
-                              </span>
-                              <span className="flex shrink-0 items-center gap-1">
-                                <Clock className="h-3 w-3" /> {Number(test.durationMinutes || 0)}m
-                              </span>
-                              {isAdminLinked ? (
-                                <Badge
-                                  variant="outline"
-                                  className="h-5 shrink-0 px-2 py-0 text-[10px]"
-                                >
-                                  Admin Linked
-                                </Badge>
-                              ) : test.source === "imported" ? (
-                                <Badge
-                                  variant="secondary"
-                                  className="h-5 shrink-0 px-2 py-0 text-[10px]"
-                                >
-                                  Imported
-                                </Badge>
-                              ) : (
-                                <Badge className="h-5 shrink-0 px-2 py-0 text-[10px]">Custom</Badge>
-                              )}
-                            </div>
-
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <div className="flex shrink-0 cursor-pointer items-center gap-1 rounded-lg bg-muted/30 px-2 py-1 hover:bg-muted/50">
-                                  <span className="text-[9px] font-bold uppercase text-muted-foreground">
-                                    Attempts:
-                                  </span>
-                                  <span className="text-[10px] font-bold">
-                                    {(test.attemptsAllowed ?? 3) === 0
-                                      ? "∞"
-                                      : (test.attemptsAllowed ?? 3)}
-                                  </span>
-                                </div>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-auto p-2" align="end" sideOffset={4}>
-                                <ScrollPicker
-                                  options={ATTEMPTS_OPTIONS}
-                                  value={String(test.attemptsAllowed ?? 3)}
-                                  onChange={(v) => handleUpdateTestAttempts(test.id, Number(v))}
-                                />
-                              </PopoverContent>
-                            </Popover>
-                          </div>
-
-                          <div className="mt-4 space-y-2 border-t pt-4">
-                            {/* Quick actions */}
-                            {isDpp && test.targetBatches && test.targetBatches.length > 0 && (
-                              <div className="flex flex-wrap gap-1.5 pb-1">
-                                {test.targetBatches.map((bId: string) => {
-                                  const bMeta = batchMap.get(bId);
-                                  return (
-                                    <Badge
-                                      key={bId}
-                                      variant="secondary"
-                                      className="rounded-md border border-border/40 bg-muted/40 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground"
-                                    >
-                                      {bMeta?.name || bId}
-                                    </Badge>
-                                  );
-                                })}
-                              </div>
-                            )}
-                            {/* Primary actions */}
-                            <div className="flex min-w-0 gap-2">
-                              <Button
-                                className="gradient-bg min-w-0 flex-1 rounded-xl text-white shadow-sm"
-                                size="sm"
-                                onClick={() => {
-                                  navigate(`/educator/test-series/${test.id}/questions`);
-                                }}
-                              >
-                                <Edit className="mr-1.5 h-3 w-3 shrink-0" />
-                                <span className="truncate">
-                                  {isAdminLinked ? "View Qs" : "Manage Qs"}
-                                </span>
-                              </Button>
-                              {!isAdminLinked &&
-                                ((test.sections || []).length > 0 ||
-                                  (test.questionsCount || 0) > 0) && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="min-w-0 flex-1 rounded-xl"
-                                    disabled={autoFillTestId === test.id}
-                                    onClick={() => handleAutoFill(test)}
-                                  >
-                                    {autoFillTestId === test.id ? (
-                                      <Loader2 className="mr-1.5 h-3 w-3 shrink-0 animate-spin" />
-                                    ) : (
-                                      <FileUp className="mr-1.5 h-3 w-3 shrink-0" />
+                              return (
+                                <Card className="relative flex h-full flex-col transition-shadow hover:shadow-md">
+                                  <CardHeader>
+                                    <CardTitle className="flex items-start justify-between gap-2">
+                                      <span className="truncate text-lg">{test.title}</span>
+                                      <div className="flex items-center gap-1">
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-8 w-8 rounded-xl"
+                                            >
+                                              <MoreVertical className="h-4 w-4" />
+                                            </Button>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end" className="rounded-xl">
+                                            <DropdownMenuItem
+                                              onClick={() => {
+                                                setTestToMove(test);
+                                                setMoveTestOpen(true);
+                                              }}
+                                            >
+                                              <Move className="mr-2 h-4 w-4" /> Move to Folder
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                              onClick={() => {
+                                                setBatchAssignTest(test);
+                                                setSelectedBatchIds(test.targetBatches || []);
+                                                setBatchAssignOpen(true);
+                                              }}
+                                            >
+                                              <Award className="mr-2 h-4 w-4" /> Assign to Batches
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => openAccessCode(test)}>
+                                              <Key className="mr-2 h-4 w-4" /> Access Code
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                              onClick={() => {
+                                                setTestToSchedule(test);
+                                                setScheduleOpen(true);
+                                              }}
+                                            >
+                                              <Clock className="mr-2 h-4 w-4" /> Schedule
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                              className="text-destructive"
+                                              onClick={async () => {
+                                                if (!currentUser) return;
+                                                if (
+                                                  !confirm(
+                                                    "Delete this test and all its questions?"
+                                                  )
+                                                )
+                                                  return;
+                                                try {
+                                                  const qs = await getDocs(
+                                                    collection(
+                                                      db,
+                                                      "educators",
+                                                      currentUser.uid,
+                                                      "my_tests",
+                                                      test.id,
+                                                      "questions"
+                                                    )
+                                                  );
+                                                  const batch = writeBatch(db);
+                                                  qs.forEach((d) => batch.delete(d.ref));
+                                                  batch.delete(
+                                                    doc(
+                                                      db,
+                                                      "educators",
+                                                      currentUser.uid,
+                                                      "my_tests",
+                                                      test.id
+                                                    )
+                                                  );
+                                                  await batch.commit();
+                                                  toast.success("Test deleted");
+                                                } catch (e) {
+                                                  console.error(e);
+                                                  toast.error("Delete failed");
+                                                }
+                                              }}
+                                            >
+                                              <Trash2 className="mr-2 h-4 w-4" /> Delete
+                                            </DropdownMenuItem>
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      </div>
+                                    </CardTitle>
+                                  </CardHeader>
+                                  <CardContent className="flex flex-1 flex-col gap-4">
+                                    {/* Template drift banner */}
+                                    {driftTests.has(test.id) && (
+                                      <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs dark:border-amber-700 dark:bg-amber-950/40">
+                                        <span className="mt-0.5 text-amber-600 dark:text-amber-400">
+                                          ⚠
+                                        </span>
+                                        <div className="flex-1">
+                                          <span className="font-semibold text-amber-700 dark:text-amber-400">
+                                            Template updated
+                                          </span>
+                                          <span className="ml-1 text-amber-600 dark:text-amber-500">
+                                            — section constraints may be outdated.
+                                          </span>
+                                          <button
+                                            className="ml-2 text-amber-700 underline hover:no-underline dark:text-amber-400"
+                                            onClick={async () => {
+                                              if (!currentUser || !test.sourceTemplateId) return;
+                                              try {
+                                                const tmplSnap = await getDoc(
+                                                  doc(db, "templates", test.sourceTemplateId)
+                                                );
+                                                if (!tmplSnap.exists()) {
+                                                  toast.error("Template not found");
+                                                  return;
+                                                }
+                                                const tmpl = tmplSnap.data() as any;
+                                                await updateDoc(
+                                                  doc(
+                                                    db,
+                                                    "educators",
+                                                    currentUser.uid,
+                                                    "my_tests",
+                                                    test.id
+                                                  ),
+                                                  {
+                                                    sections: tmpl.sections ?? [],
+                                                    markingScheme: tmpl.markingScheme ?? null,
+                                                    durationMinutes:
+                                                      tmpl.durationMinutes ?? test.durationMinutes,
+                                                    sourceTemplateVersion: Number(
+                                                      tmpl.version ?? 0
+                                                    ),
+                                                    updatedAt: serverTimestamp(),
+                                                  }
+                                                );
+                                                setDriftTests((prev) => {
+                                                  const s = new Set(prev);
+                                                  s.delete(test.id);
+                                                  return s;
+                                                });
+                                                toast.success(
+                                                  "Synced section structure from template"
+                                                );
+                                              } catch (e) {
+                                                console.error(e);
+                                                toast.error("Sync failed");
+                                              }
+                                            }}
+                                          >
+                                            Sync from template
+                                          </button>
+                                        </div>
+                                      </div>
                                     )}
-                                    <span className="truncate">Auto-fill</span>
-                                  </Button>
-                                )}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })()}
-                </motion.div>
+                                    <p className="line-clamp-2 text-sm text-muted-foreground">
+                                      {test.description}
+                                    </p>
+
+                                    <div className="mt-auto flex flex-wrap items-center justify-between gap-y-3">
+                                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+                                        <span className="flex shrink-0 items-center gap-1">
+                                          <BookOpen className="h-3 w-3" /> {test.subject || "—"}
+                                        </span>
+                                        <span className="flex shrink-0 items-center gap-1">
+                                          <Clock className="h-3 w-3" />{" "}
+                                          {Number(test.durationMinutes || 0)}m
+                                        </span>
+                                        {isAdminLinked ? (
+                                          <Badge
+                                            variant="outline"
+                                            className="h-5 shrink-0 px-2 py-0 text-[10px]"
+                                          >
+                                            Admin Linked
+                                          </Badge>
+                                        ) : test.source === "imported" ? (
+                                          <Badge
+                                            variant="secondary"
+                                            className="h-5 shrink-0 px-2 py-0 text-[10px]"
+                                          >
+                                            Imported
+                                          </Badge>
+                                        ) : (
+                                          <Badge className="h-5 shrink-0 px-2 py-0 text-[10px]">
+                                            Custom
+                                          </Badge>
+                                        )}
+                                      </div>
+
+                                      <Popover>
+                                        <PopoverTrigger asChild>
+                                          <div className="flex shrink-0 cursor-pointer items-center gap-1 rounded-lg bg-muted/30 px-2 py-1 hover:bg-muted/50">
+                                            <span className="text-[9px] font-bold uppercase text-muted-foreground">
+                                              Attempts:
+                                            </span>
+                                            <span className="text-[10px] font-bold">
+                                              {(test.attemptsAllowed ?? 3) === 0
+                                                ? "∞"
+                                                : (test.attemptsAllowed ?? 3)}
+                                            </span>
+                                          </div>
+                                        </PopoverTrigger>
+                                        <PopoverContent
+                                          className="w-auto p-2"
+                                          align="end"
+                                          sideOffset={4}
+                                        >
+                                          <ScrollPicker
+                                            options={ATTEMPTS_OPTIONS}
+                                            value={String(test.attemptsAllowed ?? 3)}
+                                            onChange={(v) =>
+                                              handleUpdateTestAttempts(test.id, Number(v))
+                                            }
+                                          />
+                                        </PopoverContent>
+                                      </Popover>
+                                    </div>
+
+                                    <div className="mt-4 space-y-2 border-t pt-4">
+                                      {/* Quick actions */}
+                                      {isDpp &&
+                                        test.targetBatches &&
+                                        test.targetBatches.length > 0 && (
+                                          <div className="flex flex-wrap gap-1.5 pb-1">
+                                            {test.targetBatches.map((bId: string) => {
+                                              const bMeta = batchMap.get(bId);
+                                              return (
+                                                <Badge
+                                                  key={bId}
+                                                  variant="secondary"
+                                                  className="rounded-md border border-border/40 bg-muted/40 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                                                >
+                                                  {bMeta?.name || bId}
+                                                </Badge>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                      {/* Primary actions */}
+                                      <div className="flex min-w-0 gap-2">
+                                        <Button
+                                          className="gradient-bg min-w-0 flex-1 rounded-xl text-white shadow-sm"
+                                          size="sm"
+                                          onClick={() => {
+                                            navigate(`/educator/test-series/${test.id}/questions`);
+                                          }}
+                                        >
+                                          <Edit className="mr-1.5 h-3 w-3 shrink-0" />
+                                          <span className="truncate">
+                                            {isAdminLinked ? "View Qs" : "Manage Qs"}
+                                          </span>
+                                        </Button>
+                                        {!isAdminLinked &&
+                                          ((test.sections || []).length > 0 ||
+                                            (test.questionsCount || 0) > 0) && (
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              className="min-w-0 flex-1 rounded-xl"
+                                              disabled={autoFillTestId === test.id}
+                                              onClick={() => handleAutoFill(test)}
+                                            >
+                                              {autoFillTestId === test.id ? (
+                                                <Loader2 className="mr-1.5 h-3 w-3 shrink-0 animate-spin" />
+                                              ) : (
+                                                <FileUp className="mr-1.5 h-3 w-3 shrink-0" />
+                                              )}
+                                              <span className="truncate">Auto-fill</span>
+                                            </Button>
+                                          )}
+                                      </div>
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              );
+                            })()}
+                          </motion.div>
                         ))}
                       </div>
                     )}

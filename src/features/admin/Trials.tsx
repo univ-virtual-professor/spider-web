@@ -70,7 +70,9 @@ export default function AdminTrials() {
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <Activity className="h-4 w-4 text-orange-500" />
-            {loading ? "Loading…" : `${educators.length} educator${educators.length !== 1 ? "s" : ""} on trial`}
+            {loading
+              ? "Loading…"
+              : `${educators.length} educator${educators.length !== 1 ? "s" : ""} on trial`}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -85,7 +87,7 @@ export default function AdminTrials() {
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="pb-2 pr-4 font-medium">Educator</th>
                     <th className="pb-2 pr-4 font-medium">Email</th>
-                    <th className="pb-2 pr-4 font-medium text-right">Trial Seats</th>
+                    <th className="pb-2 pr-4 text-right font-medium">Trial Seats</th>
                     <th className="pb-2 pr-4 font-medium">Expires</th>
                     <th className="pb-2 font-medium">Status</th>
                   </tr>
@@ -95,15 +97,9 @@ export default function AdminTrials() {
                     const expired = isExpired(e.trialExpiryAt);
                     return (
                       <tr key={e.uid} className="border-b last:border-0">
-                        <td className="py-3 pr-4 font-medium">
-                          {e.displayName || e.uid}
-                        </td>
-                        <td className="py-3 pr-4 text-muted-foreground">
-                          {e.email || "—"}
-                        </td>
-                        <td className="py-3 pr-4 text-right font-semibold">
-                          {e.trialSeats}
-                        </td>
+                        <td className="py-3 pr-4 font-medium">{e.displayName || e.uid}</td>
+                        <td className="py-3 pr-4 text-muted-foreground">{e.email || "—"}</td>
+                        <td className="py-3 pr-4 text-right font-semibold">{e.trialSeats}</td>
                         <td className="py-3 pr-4">
                           <span className={expired ? "text-destructive" : ""}>
                             {fmtDate(e.trialExpiryAt)}
@@ -111,9 +107,13 @@ export default function AdminTrials() {
                         </td>
                         <td className="py-3">
                           {expired ? (
-                            <Badge variant="destructive" className="text-xs">Expired</Badge>
+                            <Badge variant="destructive" className="text-xs">
+                              Expired
+                            </Badge>
                           ) : (
-                            <Badge className="bg-orange-500/15 text-orange-600 hover:bg-orange-500/25 text-xs">Active</Badge>
+                            <Badge className="bg-orange-500/15 text-xs text-orange-600 hover:bg-orange-500/25">
+                              Active
+                            </Badge>
                           )}
                         </td>
                       </tr>

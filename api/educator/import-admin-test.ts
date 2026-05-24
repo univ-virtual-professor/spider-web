@@ -19,8 +19,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { adminTestId } = (req.body || {}) as { adminTestId?: unknown };
 
-  if (!adminTestId || typeof adminTestId !== "string" || adminTestId.trim().length === 0 || adminTestId.length > 128) {
-    return res.status(400).json({ error: "adminTestId is required and must be a non-empty string" });
+  if (
+    !adminTestId ||
+    typeof adminTestId !== "string" ||
+    adminTestId.trim().length === 0 ||
+    adminTestId.length > 128
+  ) {
+    return res
+      .status(400)
+      .json({ error: "adminTestId is required and must be a non-empty string" });
   }
 
   const safeAdminTestId = adminTestId.trim();
@@ -57,10 +64,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // 3. Fetch all questions from the admin test
-    const questionsSnap = await db.collection(`test_series/${safeAdminTestId}/questions`).orderBy("questionOrder", "asc").get().catch(async () => {
-      // questionOrder index may not exist yet — fall back to unordered fetch
-      return db.collection(`test_series/${safeAdminTestId}/questions`).get();
-    });
+    const questionsSnap = await db
+      .collection(`test_series/${safeAdminTestId}/questions`)
+      .orderBy("questionOrder", "asc")
+      .get()
+      .catch(async () => {
+        // questionOrder index may not exist yet — fall back to unordered fetch
+        return db.collection(`test_series/${safeAdminTestId}/questions`).get();
+      });
 
     const questions = questionsSnap.docs.map((d) => ({ _id: d.id, ...d.data() }));
 
@@ -117,11 +128,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ops = 0;
       }
 
-      const { _id, questionOrder: _qo, ...questionData } = q as Record<string, unknown> & { _id: string; questionOrder?: unknown };
+      const {
+        _id,
+        questionOrder: _qo,
+        ...questionData
+      } = q as Record<string, unknown> & { _id: string; questionOrder?: unknown };
 
-      const qRef = db
-        .collection(`educators/${user.uid}/my_tests/${testId}/questions`)
-        .doc();
+      const qRef = db.collection(`educators/${user.uid}/my_tests/${testId}/questions`).doc();
 
       batch.set(qRef, {
         ...questionData,
