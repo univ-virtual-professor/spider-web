@@ -26,7 +26,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (seatLimit <= 0) {
       return res.status(403).json({
         error:
-          "No seats assigned to your coaching yet. Contact Univ.Live support/admin to get seats.",
+          "No seats assigned to your coaching yet. Contact PrepareKaro support/admin to get seats.",
       });
     }
 

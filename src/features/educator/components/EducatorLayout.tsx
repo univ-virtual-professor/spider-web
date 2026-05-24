@@ -46,6 +46,7 @@ import ImpersonationBanner from "@shared/components/ImpersonationBanner";
 import NotificationBell from "@shared/components/NotificationBell";
 import EducatorBroadcastModal from "./EducatorBroadcastModal";
 import { EmployeeProvider, useEmployee } from "@shared/contexts/EmployeeContext";
+import { PERMISSIONS } from "@shared/lib/rolesConfig";
 
 type SubItem = { icon: any; label: string; href: string };
 type SidebarItem = { icon: any; label: string; href: string; badge?: number; children?: SubItem[] };
@@ -69,7 +70,7 @@ function EducatorLayoutInner() {
   const navigate = useNavigate();
 
   const { profile } = useAuth();
-  const { isEmployee, hasPermission } = useEmployee();
+  const { isEmployee, hasPermission, empLoading } = useEmployee();
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [instituteName, setInstituteName] = useState<string | null>(null);
 
@@ -139,49 +140,55 @@ function EducatorLayoutInner() {
   }, [profile?.uid]);
 
   const sidebarItems = useMemo<SidebarItem[]>(() => {
+    // Don't build sidebar while employee permissions are still loading
+    if (isEmployee && empLoading) return [];
+
     const items: SidebarItem[] = [
       { icon: LayoutDashboard, label: "Dashboard", href: "/educator/dashboard" },
     ];
 
-    if (!isEmployee || hasPermission("students.view")) {
+    if (!isEmployee || hasPermission(PERMISSIONS.STUDENTS_VIEW)) {
       items.push({ icon: Users, label: "Batches", href: "/educator/batches" });
       items.push({ icon: UserCheck, label: "Students", href: "/educator/learners" });
     }
 
-    if (!isEmployee || hasPermission("analytics.view")) {
+    if (!isEmployee || hasPermission(PERMISSIONS.ANALYTICS_VIEW)) {
       items.push({ icon: BarChart3, label: "Analytics", href: "/educator/analytics" });
     }
 
     // Build Test Series children based on permissions
     const testChildren: SubItem[] = [];
-    if (!isEmployee || hasPermission("question_bank.view")) {
+    if (!isEmployee || hasPermission(PERMISSIONS.QB_VIEW)) {
       testChildren.push({
         icon: Database,
         label: "Question Bank",
         href: "/educator/question-bank",
       });
     }
-    if (!isEmployee || hasPermission("tests.create")) {
+    if (!isEmployee || hasPermission(PERMISSIONS.TESTS_CREATE)) {
       testChildren.push({
         icon: ClipboardList,
         label: "Test Upload Request",
         href: "/educator/question-papers",
       });
+    }
+    if (!isEmployee || hasPermission(PERMISSIONS.DPPS_MANAGE)) {
       testChildren.push({ icon: Zap, label: "DPP Generator", href: "/educator/dpp" });
     }
-
-    // Reported Questions
-    testChildren.push({
-      icon: AlertTriangle,
-      label: "Reported Questions",
-      href: "/educator/reported-questions",
-    });
+    if (!isEmployee || hasPermission(PERMISSIONS.TESTS_VIEW)) {
+      testChildren.push({
+        icon: AlertTriangle,
+        label: "Reported Questions",
+        href: "/educator/reported-questions",
+      });
+    }
 
     const showTests =
       !isEmployee ||
-      hasPermission("tests.view") ||
-      hasPermission("tests.create") ||
-      testChildren.length > 0;
+      hasPermission(PERMISSIONS.TESTS_VIEW) ||
+      hasPermission(PERMISSIONS.TESTS_CREATE) ||
+      hasPermission(PERMISSIONS.QB_VIEW) ||
+      hasPermission(PERMISSIONS.DPPS_MANAGE);
     if (showTests) {
       items.push({
         icon: FileText,
@@ -191,12 +198,12 @@ function EducatorLayoutInner() {
       });
     }
 
-    if (!isEmployee || hasPermission("content.view")) {
+    if (!isEmployee || hasPermission(PERMISSIONS.CONTENT_VIEW)) {
       items.push({ icon: BookOpen, label: "Content", href: "/educator/content" });
     }
 
     return items;
-  }, [isEmployee, hasPermission]);
+  }, [isEmployee, empLoading, hasPermission]);
 
   const isActive = (href: string) => {
     if (href === "/educator/dashboard")
@@ -293,7 +300,7 @@ function EducatorLayoutInner() {
                 )}
                 {!sidebarCollapsed && (
                   <span className="truncate font-display text-base font-bold text-foreground">
-                    {instituteName || "UNIV.LIVE"}
+                    {instituteName || "PrepareKaro"}
                   </span>
                 )}
               </Link>
@@ -320,6 +327,11 @@ function EducatorLayoutInner() {
             </div>
 
             <nav className="flex-1 space-y-1 overflow-y-auto p-4">
+              {isEmployee && empLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-border border-t-muted-foreground" />
+                </div>
+              ) : null}
               {sidebarItems.map((item) => {
                 const active = isActive(item.href);
                 const childActive = isChildActive(item);
@@ -459,35 +471,37 @@ function EducatorLayoutInner() {
             </nav>
 
             <div className="mt-auto space-y-2 border-t border-border p-4">
-              <Button
-                variant="ghost"
-                className={cn(
-                  "w-full text-muted-foreground hover:text-white",
-                  sidebarCollapsed ? "justify-center px-0" : "justify-start"
-                )}
-                onClick={() => {
-                  setSidebarOpen(false);
-                  navigate("/educator/messages");
-                }}
-                title={sidebarCollapsed ? "Help & Support" : undefined}
-              >
-                <div className={cn("relative flex items-center", !sidebarCollapsed && "mr-3")}>
-                  <MessageSquare className="h-5 w-5 hover:text-white" />
-                  {sidebarCollapsed && unreadMessages > 0 && (
-                    <span className="absolute -right-1 -top-1 flex h-2 w-2 rounded-full bg-primary" />
+              {(!isEmployee || hasPermission(PERMISSIONS.MESSAGES_VIEW)) && (
+                <Button
+                  variant="ghost"
+                  className={cn(
+                    "w-full text-muted-foreground hover:text-white",
+                    sidebarCollapsed ? "justify-center px-0" : "justify-start"
                   )}
-                </div>
-                {!sidebarCollapsed && (
-                  <div className="flex flex-1 items-center justify-between">
-                    <span>Help & Support</span>
-                    {unreadMessages > 0 && (
-                      <Badge variant="secondary" className="ml-2 text-xs">
-                        {unreadMessages}
-                      </Badge>
+                  onClick={() => {
+                    setSidebarOpen(false);
+                    navigate("/educator/messages");
+                  }}
+                  title={sidebarCollapsed ? "Help & Support" : undefined}
+                >
+                  <div className={cn("relative flex items-center", !sidebarCollapsed && "mr-3")}>
+                    <MessageSquare className="h-5 w-5 hover:text-white" />
+                    {sidebarCollapsed && unreadMessages > 0 && (
+                      <span className="absolute -right-1 -top-1 flex h-2 w-2 rounded-full bg-primary" />
                     )}
                   </div>
-                )}
-              </Button>
+                  {!sidebarCollapsed && (
+                    <div className="flex flex-1 items-center justify-between">
+                      <span>Help & Support</span>
+                      {unreadMessages > 0 && (
+                        <Badge variant="secondary" className="ml-2 text-xs">
+                          {unreadMessages}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 className={cn(
@@ -564,7 +578,7 @@ function EducatorLayoutInner() {
                       </DropdownMenuItem>
                     </>
                   )}
-                  {(!isEmployee || hasPermission("website.manage")) && (
+                  {(!isEmployee || hasPermission(PERMISSIONS.WEBSITE_MANAGE)) && (
                     <DropdownMenuItem onClick={() => navigate("/educator/settings?builder=true")}>
                       <Palette className="mr-2 h-4 w-4" />
                       Customize Website

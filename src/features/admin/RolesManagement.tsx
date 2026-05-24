@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, getDocs, addDoc, updateDoc, doc, Timestamp } from "firebase/firestore";
+import { collection, getDocs, addDoc, updateDoc, doc, Timestamp, setDoc } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { toast } from "sonner";
 import { Button } from "@shared/ui/button";
@@ -9,12 +9,13 @@ import { Badge } from "@shared/ui/badge";
 import { Checkbox } from "@shared/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@shared/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@shared/ui/table";
-import { Loader2, Plus, Pencil, Archive, RotateCcw, Copy } from "lucide-react";
+import { Loader2, Plus, Pencil, Archive, RotateCcw, Copy, Sparkles } from "lucide-react";
 import {
   PERMISSION_GROUPS,
   PERMISSION_LABELS,
+  DEFAULT_ROLES,
   type Permission,
-} from "@shared/lib/employeePermissions";
+} from "@shared/lib/rolesConfig";
 
 type Role = {
   id: string;
@@ -127,6 +128,42 @@ export default function RolesManagement() {
     loadRoles();
   }
 
+  async function seedDefaultRoles() {
+    if (
+      !confirm(
+        "Add the 5 default role templates? Existing roles with the same ID won't be overwritten."
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      const existingSnap = await getDocs(collection(db, "roles"));
+      const existingIds = new Set(existingSnap.docs.map((d) => d.id));
+      let added = 0;
+      for (const role of DEFAULT_ROLES) {
+        if (!existingIds.has(role.id)) {
+          await setDoc(doc(db, "roles", role.id), {
+            name: role.name,
+            description: role.description,
+            permissions: role.permissions,
+            status: "active",
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now(),
+          });
+          added++;
+        }
+      }
+      toast.success(
+        added > 0 ? `${added} default role(s) added` : "All default roles already exist"
+      );
+      loadRoles();
+    } catch {
+      toast.error("Seeding failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function togglePermission(p: Permission) {
     setSelectedPermissions((prev) =>
       prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
@@ -150,9 +187,14 @@ export default function RolesManagement() {
             Define roles and their permissions. Educators assign these to their staff.
           </p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" /> Create Role
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={seedDefaultRoles} disabled={busy}>
+            <Sparkles className="mr-2 h-4 w-4" /> Seed Defaults
+          </Button>
+          <Button onClick={openCreate}>
+            <Plus className="mr-2 h-4 w-4" /> Create Role
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-lg border">

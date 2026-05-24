@@ -147,7 +147,7 @@ export default function AdminLayout() {
             <div className="flex items-center gap-3">
               <img
                 src="/logo-compact.png"
-                alt="UNIV.LIVE"
+                alt="PrepareKaro"
                 className="h-10 w-10 flex-shrink-0 object-contain"
               />
               {(!collapsed || mobile) && (

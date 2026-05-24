@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
-import type { Permission } from "@shared/lib/employeePermissions";
+import type { Permission } from "@shared/lib/rolesConfig";
 
 type EmployeeContextValue = {
   isEmployee: boolean;
@@ -45,6 +45,11 @@ export function EmployeeProvider({ children }: { children: ReactNode }) {
         const empSnap = await getDoc(doc(db, "educators", orgUid, "employees", employeeDocId));
         if (!empSnap.exists()) return;
         const empData = empSnap.data() as any;
+
+        if (empData.status !== "ACTIVE") {
+          // Deactivated employees get no permissions — sidebar will be empty
+          return;
+        }
 
         const roleSnap = await getDoc(doc(db, "roles", empData.roleId));
         if (roleSnap.exists()) {

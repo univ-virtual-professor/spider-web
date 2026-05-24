@@ -261,7 +261,7 @@ export default function AdminEducators() {
   function copyCredentials() {
     if (!created) return;
     navigator.clipboard.writeText(
-      `Email: ${created.email}\nPassword: ${created.password}\nPortal: https://${created.tenantSlug}.preparekaro.in`
+      `Email: ${created.email}\nPassword: ${created.password}\nPortal: ${window.location.protocol}//${created.tenantSlug}.${window.location.host}`
     );
     setCredCopied(true);
     setTimeout(() => setCredCopied(false), 2000);
@@ -354,7 +354,7 @@ export default function AdminEducators() {
                         <div className="flex items-center gap-2">
                           <Badge variant="secondary">{edu.tenantSlug}</Badge>
                           <a
-                            href={`https://${edu.tenantSlug}.preparekaro.in`}
+                            href={`${window.location.protocol}//${edu.tenantSlug}.${window.location.host}`}
                             target="_blank"
                             rel="noreferrer"
                             className="text-muted-foreground hover:text-primary"

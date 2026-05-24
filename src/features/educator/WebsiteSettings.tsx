@@ -704,7 +704,7 @@ export default function WebsiteSettings() {
                 >
                   <div className="font-semibold">Theme 1</div>
                   <div className="mt-1 text-xs text-muted-foreground">
-                    Classic Univ.Live landing
+                    Classic PrepareKaro landing
                   </div>
                   <div className="mt-3 text-xs">
                     {theme1Unlocked ? "Available" : "Locked by config"}

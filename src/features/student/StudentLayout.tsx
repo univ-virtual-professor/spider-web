@@ -290,7 +290,7 @@ export default function StudentLayout() {
                 )}
                 {!sidebarCollapsed && (
                   <span className="truncate font-display text-base font-bold text-foreground">
-                    {instituteName || "UNIV.LIVE"}
+                    {instituteName || "PrepareKaro"}
                   </span>
                 )}
               </Link>

@@ -298,7 +298,7 @@ export default function Signup() {
         {/* Header / Nav */}
         <div className="mb-6 flex items-center justify-between">
           {effectiveRole === "educator" ? (
-            <img src="/logo.png" className="w-25 h-10" alt="UNIV.LIVE Logo" />
+            <img src="/logo.png" className="w-25 h-10" alt="PrepareKaro Logo" />
           ) : (
             <div />
           )}

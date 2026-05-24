@@ -63,7 +63,7 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
 - `/admin/analytics` — platform activity: 7-day attempts chart, today's engagement, recent activity feed
 - `/admin/educators` — educator management (create educators here)
 - `/admin/plans`, `/admin/coupons`, `/admin/payment-logs`, `/admin/seats`, `/admin/subjects`
-- `/admin/roles` — Employee Roles management: create/edit/archive roles with permission checkboxes; roles are org-wide and assigned to employees by educator admins
+- `/admin/roles` — Employee Roles management: create/edit/archive roles with permission checkboxes; "Seed Defaults" button creates 5 built-in role templates from `rolesConfig.ts`; roles are org-wide and assigned to employees by educator admins
 - `/admin/content` — Admin content library (books/notes per subject)
 - No `/login` or `/signup` on main domain (intentional)
 
@@ -84,13 +84,15 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
 
 ## Employee RBAC System
 
-- **Roles**: defined by platform admin at `roles/{roleId}` (global Firestore collection); fields: `name, description, permissions[], status`
-- **Permissions**: 16 atomic permissions in `src/shared/lib/employeePermissions.ts` (e.g. `students.view`, `tests.create`, `analytics.view`)
-- **Employees**: stored in `educators/{orgUid}/employees/{empUid}`; fields: `uid, email, name, roleId, status, scope.branchIds[]`
-- **Auth**: employees have `role: "EDUCATOR"` in `users/{uid}` plus `isEmployee: true, orgUid, employeeDocId`
-- **Context**: `src/shared/contexts/EmployeeContext.tsx` — `EmployeeProvider` wraps `EducatorLayout`; `useEmployee()` gives `hasPermission(p)` and `inBranchScope(branchId)` to any educator page
-- **Sidebar**: `EducatorLayout` filters nav items based on `hasPermission`; Billing + Organization hidden for employees
-- **Invite flow**: org head fills form → `POST /api/org/invite-employee` creates Firebase Auth user + writes Firestore docs → frontend calls `sendPasswordResetEmail` → employee sets password → logs in
+- **Config**: `src/shared/lib/rolesConfig.ts` — single source of truth; exports `PERMISSIONS`, `PERMISSION_LABELS`, `PERMISSION_GROUPS`, `DEFAULT_ROLES` (5 built-in templates); `employeePermissions.ts` is now a re-export shim pointing here
+- **Roles**: defined by platform admin at `roles/{roleId}` (global Firestore collection); fields: `name, description, permissions[], status`; seeded from `DEFAULT_ROLES` via "Seed Defaults" button in admin panel
+- **Permissions**: 17 atomic permissions (e.g. `students.view`, `tests.create`, `analytics.view`, `dpps.manage`, `website.manage`)
+- **Employees**: stored in `educators/{orgUid}/employees/{empUid}`; fields: `uid, email, name, roleId, status (PENDING|ACTIVE|DEACTIVATED), scope.branchIds[]`
+- **Auth**: employees have `role: "EDUCATOR"` in `users/{uid}` plus `isEmployee: true, orgUid, employeeDocId` — also set as Firebase custom claims on invite so backend can check status
+- **Context**: `src/shared/contexts/EmployeeContext.tsx` — loads permissions only if `status === "ACTIVE"`; shows spinner while loading; `useEmployee()` gives `hasPermission(p)` and `inBranchScope(branchId)`
+- **Sidebar**: `EducatorLayout` filters nav items using `PERMISSIONS` constants; Billing + Organization hidden for employees; Messages gated by `messages.view`; Reported Questions gated by `tests.view`; DPP Generator gated by `dpps.manage`
+- **Backend enforcement**: `auth_middleware.get_current_educator` rejects DEACTIVATED employees by reading their Firestore employee doc when `isEmployee` claim is present
+- **Invite flow**: org head fills form → `POST /api/org/invite-employee` creates Firebase Auth user + writes Firestore docs + sets custom claims → frontend calls `sendPasswordResetEmail` → employee sets password → logs in
 
 ## Multi-Tenant Theming
 

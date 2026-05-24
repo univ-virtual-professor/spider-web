@@ -47,7 +47,7 @@ export default function Navbar() {
       <nav className="container-main flex items-center justify-between py-4">
         {/* Logo */}
         <Link to="/" className="flex items-center">
-          <img src="/logo.png" alt="Univ.live" className="h-16 w-auto" />
+          <img src="/logo.png" alt="PrepareKaro" className="h-16 w-auto" />
         </Link>
 
         {/* Desktop Nav Links */}
@@ -87,7 +87,7 @@ export default function Navbar() {
             className="overflow-hidden border-b border-border bg-background/95 backdrop-blur-xl md:hidden"
           >
             <div className="container-main flex flex-col gap-2 py-4">
-              <img src="/logo-compact.png" alt="Univ.live" className="mb-2 h-10 w-10" />
+              <img src="/logo-compact.png" alt="PrepareKaro" className="mb-2 h-10 w-10" />
               {navLinks.map((link) => (
                 <Link
                   key={link.path}

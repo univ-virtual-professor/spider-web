@@ -118,10 +118,10 @@ export default function StudentMessages() {
               </p>
               <div className="mt-auto w-full rounded-xl border border-border bg-muted/50 p-4">
                 <a
-                  href="mailto:univ.live@gmail.com"
+                  href="mailto:support@univ.live"
                   className="block break-all text-sm font-bold text-foreground transition-colors hover:text-accent"
                 >
-                  univ.live@gmail.com
+                  support@univ.live
                 </a>
               </div>
             </CardContent>

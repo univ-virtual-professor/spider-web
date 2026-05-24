@@ -216,7 +216,7 @@ export default function Login() {
         {/* Header / Nav */}
         <div className="mb-8 flex items-center justify-between">
           {role === "educator" ? (
-            <img src="/logo.png" className="w-25 h-10" alt="UNIV.LIVE Logo" />
+            <img src="/logo.png" className="w-25 h-10" alt="PrepareKaro Logo" />
           ) : (
             <div />
           )}
