@@ -47,6 +47,7 @@ import NotificationBell from "@shared/components/NotificationBell";
 import EducatorBroadcastModal from "./EducatorBroadcastModal";
 import { EmployeeProvider, useEmployee } from "@shared/contexts/EmployeeContext";
 import { PERMISSIONS } from "@shared/lib/rolesConfig";
+import { useAppTokenBootstrap } from "@shared/hooks/useAppTokenBootstrap";
 
 type SubItem = { icon: any; label: string; href: string };
 type SidebarItem = { icon: any; label: string; href: string; badge?: number; children?: SubItem[] };
@@ -68,6 +69,9 @@ function EducatorLayoutInner() {
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+
+  const isApp = new URLSearchParams(window.location.search).get("_app") === "1";
+  const { isReady: appTokenReady } = useAppTokenBootstrap();
 
   const { profile } = useAuth();
   const { isEmployee, hasPermission, empLoading } = useEmployee();
@@ -256,6 +260,10 @@ function EducatorLayoutInner() {
     if (!tenantSlug) return;
     window.open(buildTenantUrl(tenantSlug, "/"), "_blank");
   };
+
+  if (isApp && !appTokenReady) {
+    return <div className="py-12 text-center text-muted-foreground">Loading...</div>;
+  }
 
   return (
     <div className="flex h-[100dvh] min-h-screen flex-col overflow-hidden bg-background">

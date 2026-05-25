@@ -2,6 +2,7 @@ import React from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@app/providers/AuthProvider";
 import { useTenant } from "@app/providers/TenantProvider";
+import { useAppTokenBootstrap } from "@shared/hooks/useAppTokenBootstrap";
 import { Loader2 } from "lucide-react";
 
 export default function StudentRoute() {
@@ -9,10 +10,13 @@ export default function StudentRoute() {
   const { isTenantDomain, tenantSlug, loading: tenantLoading } = useTenant();
   const location = useLocation();
 
+  const isApp = new URLSearchParams(window.location.search).get("_app") === "1";
+  const { isReady: appTokenReady } = useAppTokenBootstrap();
+
   const isImpersonating = !!sessionStorage.getItem("imp_session");
 
-  // wait for both contexts
-  if (authLoading || tenantLoading) {
+  // Wait for Firebase auth, tenant context, AND app-token exchange before making any decision.
+  if (authLoading || tenantLoading || (isApp && !appTokenReady)) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center gap-2 text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />
@@ -21,8 +25,6 @@ export default function StudentRoute() {
     );
   }
 
-  // Students must be on tenant domain — unless impersonating (admin opened /impersonate
-  // which uses navigate() so no page reload; impAuth user stays in memory).
   if (!isTenantDomain && !isImpersonating) {
     return <Navigate to="/" replace />;
   }
@@ -36,7 +38,6 @@ export default function StudentRoute() {
     return <Navigate to="/login?role=student" replace state={{ from: location.pathname }} />;
   }
 
-  // Skip enrollment check when impersonating — admin explicitly chose this student.
   if (!isImpersonating) {
     const enrolledTenants = Array.isArray(profile?.enrolledTenants)
       ? profile!.enrolledTenants!

@@ -35,6 +35,7 @@ import { cn } from "@shared/lib/utils";
 
 import { useAuth } from "@app/providers/AuthProvider";
 import { useTenant } from "@app/providers/TenantProvider";
+import { useAppTokenBootstrap } from "@shared/hooks/useAppTokenBootstrap";
 import { db } from "@shared/lib/firebase";
 import { collection, doc, onSnapshot, query, where, getDoc } from "firebase/firestore";
 import { getAuth, signOut } from "firebase/auth";
@@ -75,6 +76,9 @@ export default function StudentLayout() {
 
   const { firebaseUser, profile, loading: authLoading } = useAuth();
   const { tenant, tenantSlug, loading: tenantLoading } = useTenant();
+
+  const isApp = new URLSearchParams(window.location.search).get("_app") === "1";
+  const { isReady: appTokenReady } = useAppTokenBootstrap();
 
   const uid = firebaseUser?.uid || null;
   const educatorId = tenant?.educatorId || profile?.educatorId || null;
@@ -239,7 +243,7 @@ export default function StudentLayout() {
     }
   };
 
-  if (authLoading || tenantLoading) {
+  if (authLoading || tenantLoading || (isApp && !appTokenReady)) {
     return <div className="py-12 text-center text-muted-foreground">Loading...</div>;
   }
 
