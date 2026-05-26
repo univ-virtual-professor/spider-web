@@ -8,6 +8,7 @@ import { Progress } from "@shared/ui/progress";
 import { useAuth } from "@app/providers/AuthProvider";
 import { db } from "@shared/lib/firebase";
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
+import { isSubjectiveType } from "@shared/lib/questionTypes";
 
 type AttemptResponse = {
   answer: string | null;
@@ -146,12 +147,7 @@ function computeFromQuestionsAndResponses(
 
     if (!isAnswered(userAnswer)) continue;
 
-    const qType = (d.questionType || "").toUpperCase();
-    const isSubjective =
-      qType === "SUBJECTIVE_SHORT" ||
-      qType === "SUBJECTIVE_LONG" ||
-      qType === "SHORT_ANSWER" ||
-      qType === "UPLOAD";
+    const isSubjective = isSubjectiveType(d.questionType);
 
     if (isSubjective) {
       const aiScore = responses[q.id]?.aiEvaluation?.score;
@@ -453,6 +449,23 @@ export default function StudentResults() {
           )}
         </CardContent>
       </Card>
+
+      {/* Pending evaluation banner */}
+      {attempt.hasSubjectiveQuestions &&
+        (attempt.subjectiveEvaluatedCount ?? 0) === 0 &&
+        !questionsData.some((q) => attempt.responses?.[q.id]?.aiEvaluation) && (
+          <Card className="card-soft border-0 border-amber-200 bg-amber-50 dark:bg-amber-900/20">
+            <CardContent className="p-4">
+              <p className="font-medium text-amber-800 dark:text-amber-300">
+                ⏳ Subjective answers pending review
+              </p>
+              <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">
+                AI evaluation was unable to run for this submission. Your educator will review your
+                answers manually.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
       {/* AI-Evaluated Answers Card */}
       {attempt.hasSubjectiveQuestions &&

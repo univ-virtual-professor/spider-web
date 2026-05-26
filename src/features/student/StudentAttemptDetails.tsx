@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, CheckCircle, XCircle, Circle } from "lucide-react";
+import { ArrowLeft, CheckCircle, XCircle, Circle, BrainCircuit } from "lucide-react";
 
 import { Card, CardContent, CardHeader } from "@shared/ui/card";
 import { Button } from "@shared/ui/button";
@@ -8,6 +8,7 @@ import { Badge } from "@shared/ui/badge";
 import { cn } from "@shared/lib/utils";
 import { HtmlView } from "@shared/lib/safeHtml";
 import QuestionActionHoverWrapper from "@shared/components/QuestionActionHoverWrapper";
+import { normalizeQuestionType } from "@shared/lib/questionTypes";
 
 import { useAuth } from "@app/providers/AuthProvider";
 import { db } from "@shared/lib/firebase";
@@ -19,6 +20,13 @@ type AttemptResponse = {
   markedForReview: boolean;
   visited: boolean;
   answered: boolean;
+  aiEvaluation?: {
+    score: number;
+    maxScore: number;
+    confidence: number;
+    feedback: string;
+    evaluatedAt?: number;
+  };
 };
 
 type AttemptDoc = {
@@ -40,14 +48,13 @@ type AttemptDoc = {
 type AttemptQuestion = {
   id: string;
   sectionId: string;
-  type: "mcq" | "integer";
+  type: "mcq" | "integer" | "subjective";
   stem: string;
   options?: { id: string; text: string }[];
   correctAnswer?: string; // for mcq => option index as string, for integer => exact string
   explanation?: string;
   marks: { correct: number; incorrect: number }; // incorrect as positive penalty
   passage?: { title: string; content: string } | null;
-  /** Used for display ordering */
   sortOrder: number;
 };
 
@@ -83,11 +90,18 @@ function parseMcqCorrectIndex(value: any, optionCount: number): number | null {
 }
 
 function mapQuestion(id: string, data: any): AttemptQuestion {
-  const opts: string[] = Array.isArray(data.options) ? data.options : [];
-  const parsedCorrectIndex = parseMcqCorrectIndex(
-    data.correctOption ?? data.correctOptionIndex ?? data.correctAnswer,
-    opts.length || 4
-  );
+  const rawType = normalizeQuestionType(data.questionType);
+  const isSubjective = rawType === "SUBJECTIVE_SHORT" || rawType === "SUBJECTIVE_LONG";
+  const isInteger = !isSubjective && data.type === "integer";
+  const type: AttemptQuestion["type"] = isSubjective ? "subjective" : isInteger ? "integer" : "mcq";
+
+  const opts: string[] = !isSubjective && Array.isArray(data.options) ? data.options : [];
+  const parsedCorrectIndex = isSubjective
+    ? null
+    : parseMcqCorrectIndex(
+        data.correctOption ?? data.correctOptionIndex ?? data.correctAnswer,
+        opts.length || 4
+      );
   const correctIndex = parsedCorrectIndex ?? 0;
 
   const positive = data.marks ?? data.positiveMarks ?? 5;
@@ -96,10 +110,10 @@ function mapQuestion(id: string, data: any): AttemptQuestion {
   return {
     id,
     sectionId: data.sectionId || "main",
-    type: "mcq",
+    type,
     stem: data.question || data.text || "",
-    options: opts.map((t, i) => ({ id: String(i), text: String(t) })),
-    correctAnswer: String(correctIndex),
+    options: type === "mcq" ? opts.map((t, i) => ({ id: String(i), text: String(t) })) : undefined,
+    correctAnswer: isSubjective ? undefined : String(correctIndex),
     explanation: data.explanation || "",
     marks: { correct: positive, incorrect: negative },
     passage: data.passage || null,
@@ -112,6 +126,7 @@ function isAnswered(val: any) {
 }
 
 function isCorrectAnswer(q: AttemptQuestion, userAnswer: string | null) {
+  if (q.type === "subjective") return false; // subjective graded by AI, not boolean correct/incorrect
   if (!isAnswered(userAnswer)) return false;
   if (q.type === "integer")
     return String(userAnswer).trim() === String(q.correctAnswer ?? "").trim();
@@ -270,7 +285,9 @@ export default function StudentAttemptDetails() {
     return map;
   }, [questions, sections]);
 
-  const [filter, setFilter] = useState<"all" | "correct" | "incorrect" | "unanswered">("all");
+  const [filter, setFilter] = useState<
+    "all" | "correct" | "incorrect" | "unanswered" | "subjective"
+  >("all");
 
   if (loading || authLoading) return <div className="py-12 text-center">Loading...</div>;
   if (error) return <div className="py-12 text-center">{error}</div>;
@@ -281,11 +298,12 @@ export default function StudentAttemptDetails() {
       const userAnswer = responses[q.id]?.answer ?? null;
       const answered = isAnswered(userAnswer);
       if (!answered) acc.unanswered++;
+      else if (q.type === "subjective") acc.subjective++;
       else if (isCorrectAnswer(q, userAnswer)) acc.correct++;
       else acc.incorrect++;
       return acc;
     },
-    { correct: 0, incorrect: 0, unanswered: 0 }
+    { correct: 0, incorrect: 0, unanswered: 0, subjective: 0 }
   );
 
   return (
@@ -311,11 +329,14 @@ export default function StudentAttemptDetails() {
             { key: "correct", label: "Correct", count: filterCounts.correct },
             { key: "incorrect", label: "Incorrect", count: filterCounts.incorrect },
             { key: "unanswered", label: "Unanswered", count: filterCounts.unanswered },
+            ...(filterCounts.subjective > 0
+              ? [{ key: "subjective", label: "AI Graded", count: filterCounts.subjective }]
+              : []),
           ] as const
         ).map(({ key, label, count }) => (
           <button
             key={key}
-            onClick={() => setFilter(key)}
+            onClick={() => setFilter(key as typeof filter)}
             className={cn(
               "flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-sm font-medium transition-all",
               filter === key
@@ -325,13 +346,16 @@ export default function StudentAttemptDetails() {
                     ? "border-red-500 bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
                     : key === "unanswered"
                       ? "border-slate-400 bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                      : "border-primary bg-primary/10 text-primary"
+                      : key === "subjective"
+                        ? "border-purple-500 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"
+                        : "border-primary bg-primary/10 text-primary"
                 : "border-border bg-background text-muted-foreground hover:bg-muted"
             )}
           >
             {key === "correct" && <CheckCircle className="h-3.5 w-3.5" />}
             {key === "incorrect" && <XCircle className="h-3.5 w-3.5" />}
             {key === "unanswered" && <Circle className="h-3.5 w-3.5" />}
+            {key === "subjective" && <BrainCircuit className="h-3.5 w-3.5" />}
             {label}
             <span className="ml-0.5 rounded-full bg-background/60 px-1.5 text-xs">{count}</span>
           </button>
@@ -345,9 +369,12 @@ export default function StudentAttemptDetails() {
             if (filter === "all") return true;
             const userAnswer = responses[q.id]?.answer ?? null;
             const answered = isAnswered(userAnswer);
-            if (filter === "unanswered") return !answered;
-            if (filter === "correct") return answered && isCorrectAnswer(q, userAnswer);
-            if (filter === "incorrect") return answered && !isCorrectAnswer(q, userAnswer);
+            if (filter === "subjective") return q.type === "subjective";
+            if (filter === "unanswered") return !answered && q.type !== "subjective";
+            if (filter === "correct")
+              return q.type !== "subjective" && answered && isCorrectAnswer(q, userAnswer);
+            if (filter === "incorrect")
+              return q.type !== "subjective" && answered && !isCorrectAnswer(q, userAnswer);
             return true;
           });
           if (sectionQs.length === 0) return null;
@@ -368,12 +395,30 @@ export default function StudentAttemptDetails() {
                   const idx = allSectionQs.indexOf(q);
                   const userAnswer = responses[q.id]?.answer ?? null;
                   const answered = isAnswered(userAnswer);
+                  const aiEval = responses[q.id]?.aiEvaluation;
+
                   const correct = isCorrectAnswer(q, userAnswer);
-                  const awarded = !answered
-                    ? 0
-                    : correct
-                      ? q.marks.correct
-                      : -Math.abs(q.marks.incorrect);
+                  const isSubjective = q.type === "subjective";
+                  const isImageAnswer =
+                    isSubjective && answered && String(userAnswer).startsWith("https://");
+
+                  const awarded = isSubjective
+                    ? aiEval
+                      ? aiEval.score
+                      : 0
+                    : !answered
+                      ? 0
+                      : correct
+                        ? q.marks.correct
+                        : -Math.abs(q.marks.incorrect);
+
+                  const cardBg = isSubjective
+                    ? "bg-purple-50 dark:bg-purple-900/10"
+                    : !answered
+                      ? "bg-slate-50 dark:bg-slate-900/10"
+                      : correct
+                        ? "bg-green-50 dark:bg-green-900/10"
+                        : "bg-red-50 dark:bg-red-900/10";
 
                   return (
                     <QuestionActionHoverWrapper
@@ -382,24 +427,31 @@ export default function StudentAttemptDetails() {
                       contextId={attemptId || ""}
                       questionContent={q.stem}
                     >
-                      <Card
-                        className={cn(
-                          "card-soft border-0",
-                          !answered
-                            ? "bg-slate-50 dark:bg-slate-900/10"
-                            : correct
-                              ? "bg-green-50 dark:bg-green-900/10"
-                              : "bg-red-50 dark:bg-red-900/10"
-                        )}
-                      >
+                      <Card className={cn("card-soft border-0", cardBg)}>
                         <CardHeader className="pb-2">
                           <div className="flex items-center justify-between">
-                            <Badge variant="secondary" className="rounded-full">
-                              Q{idx + 1}
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary" className="rounded-full">
+                                Q{idx + 1}
+                              </Badge>
+                              {isSubjective && (
+                                <Badge className="rounded-full border border-purple-200 bg-purple-100 text-purple-700">
+                                  <BrainCircuit className="mr-1 h-3 w-3" />
+                                  AI Graded
+                                </Badge>
+                              )}
+                            </div>
 
                             <div className="flex items-center gap-2">
-                              {answered ? (
+                              {isSubjective ? (
+                                answered ? (
+                                  <BrainCircuit className="h-5 w-5 text-purple-600" />
+                                ) : (
+                                  <Badge className="rounded-full bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                                    Unanswered
+                                  </Badge>
+                                )
+                              ) : answered ? (
                                 correct ? (
                                   <CheckCircle className="h-5 w-5 text-green-600" />
                                 ) : (
@@ -414,14 +466,26 @@ export default function StudentAttemptDetails() {
                               <Badge
                                 className={cn(
                                   "rounded-full",
-                                  !answered
-                                    ? "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                                    : correct
-                                      ? "bg-green-100 text-green-700"
-                                      : "bg-red-100 text-red-700"
+                                  isSubjective
+                                    ? aiEval
+                                      ? "bg-purple-100 text-purple-700"
+                                      : "bg-slate-200 text-slate-700"
+                                    : !answered
+                                      ? "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                                      : correct
+                                        ? "bg-green-100 text-green-700"
+                                        : "bg-red-100 text-red-700"
                                 )}
                               >
-                                {!answered ? "0" : awarded > 0 ? `+${awarded}` : `${awarded}`}
+                                {isSubjective
+                                  ? aiEval
+                                    ? `${aiEval.score}/${aiEval.maxScore}`
+                                    : "Pending"
+                                  : !answered
+                                    ? "0"
+                                    : awarded > 0
+                                      ? `+${awarded}`
+                                      : `${awarded}`}
                               </Badge>
                             </div>
                           </div>
@@ -438,6 +502,65 @@ export default function StudentAttemptDetails() {
                           )}
 
                           <HtmlView html={q.stem} className="font-medium" />
+
+                          {isSubjective && (
+                            <div className="space-y-3">
+                              <div className="rounded-xl border bg-background/50 p-3">
+                                <p className="mb-2 text-sm font-medium text-muted-foreground">
+                                  Your Answer
+                                </p>
+                                {!answered ? (
+                                  <p className="text-sm italic text-muted-foreground">
+                                    Not answered
+                                  </p>
+                                ) : isImageAnswer ? (
+                                  <img
+                                    src={String(userAnswer)}
+                                    alt="Your uploaded answer"
+                                    className="max-h-80 rounded-lg border object-contain"
+                                  />
+                                ) : (
+                                  <p className="text-sm">{userAnswer}</p>
+                                )}
+                              </div>
+                              {aiEval ? (
+                                <div className="rounded-xl border border-purple-200 bg-purple-50 p-3 dark:bg-purple-900/20">
+                                  <div className="mb-2 flex items-center justify-between">
+                                    <p className="text-sm font-medium text-purple-700">
+                                      AI Feedback
+                                    </p>
+                                    <span
+                                      className={cn(
+                                        "rounded-full px-2 py-0.5 text-[10px] font-medium",
+                                        aiEval.confidence >= 0.8
+                                          ? "bg-green-100 text-green-700"
+                                          : aiEval.confidence >= 0.5
+                                            ? "bg-amber-100 text-amber-700"
+                                            : "bg-red-100 text-red-600"
+                                      )}
+                                    >
+                                      {Math.round(aiEval.confidence * 100)}% confidence
+                                    </span>
+                                  </div>
+                                  <p className="text-sm leading-relaxed text-muted-foreground">
+                                    {aiEval.feedback}
+                                  </p>
+                                  {aiEval.confidence < 0.5 && (
+                                    <p className="mt-1 text-[10px] text-amber-600">
+                                      ⚠ Low confidence — may require manual review
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:bg-amber-900/20">
+                                  <p className="text-sm text-amber-700">
+                                    ⏳ AI evaluation pending — your educator will review this answer
+                                    manually.
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          )}
 
                           {q.options && q.type === "mcq" && (
                             <div className="space-y-2">
@@ -498,19 +621,21 @@ export default function StudentAttemptDetails() {
                             </div>
                           )}
 
-                          <div className="rounded-xl bg-pastel-cream p-4">
-                            <p className="mb-1 text-sm font-medium">Explanation</p>
-                            {q.explanation?.trim() ? (
-                              <HtmlView
-                                html={q.explanation}
-                                className="text-sm text-muted-foreground"
-                              />
-                            ) : (
-                              <p className="text-sm text-muted-foreground">
-                                No explanation available.
-                              </p>
-                            )}
-                          </div>
+                          {!isSubjective && (
+                            <div className="rounded-xl bg-pastel-cream p-4">
+                              <p className="mb-1 text-sm font-medium">Explanation</p>
+                              {q.explanation?.trim() ? (
+                                <HtmlView
+                                  html={q.explanation}
+                                  className="text-sm text-muted-foreground"
+                                />
+                              ) : (
+                                <p className="text-sm text-muted-foreground">
+                                  No explanation available.
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </CardContent>
                       </Card>
                     </QuestionActionHoverWrapper>

@@ -75,6 +75,7 @@ export default function StudentAttempts() {
   const educatorId = tenant?.educatorId || null;
 
   const [loading, setLoading] = useState(true);
+  const [queryError, setQueryError] = useState(false);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [activeTab, setActiveTab] = useState<"test" | "dpp">("test");
 
@@ -98,6 +99,7 @@ export default function StudentAttempts() {
     }
 
     setLoading(true);
+    setQueryError(false);
 
     const q = query(
       collection(db, "attempts"),
@@ -149,9 +151,9 @@ export default function StudentAttempts() {
         setAttempts(rows);
         setLoading(false);
       },
-      () => {
-        // If permission/index error occurs, we avoid crashing UI
-        setAttempts([]);
+      (err) => {
+        console.error("[StudentAttempts] Firestore query failed:", err);
+        setQueryError(true);
         setLoading(false);
       }
     );
@@ -168,6 +170,29 @@ export default function StudentAttempts() {
         </div>
         <div className="rounded-xl border border-border p-6 text-muted-foreground">
           Loading attempts…
+        </div>
+      </div>
+    );
+  }
+
+  if (queryError) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold">My Attempts</h1>
+          <p className="text-muted-foreground">Review all your test attempts and performance</p>
+        </div>
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center">
+          <p className="font-medium text-destructive">Failed to load attempts</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            There was a problem connecting to the database. Please refresh the page.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-3 rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium hover:bg-muted"
+          >
+            Refresh
+          </button>
         </div>
       </div>
     );

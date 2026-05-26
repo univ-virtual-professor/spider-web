@@ -1080,7 +1080,9 @@ export default function StudentCBTAttempt() {
       const finalMaxScore = objectiveResult.maxScore;
 
       // AI evaluation for subjective questions
+      let didEvaluateSubjective = false;
       if (subjectiveToEvaluate.length > 0) {
+        didEvaluateSubjective = true;
         setSaving(false);
         setSubmitDialogOpen(false);
         setEvaluatingSubjective(true);
@@ -1142,15 +1144,39 @@ export default function StudentCBTAttempt() {
           } else {
             console.error("AI evaluation failed:", res.status);
             setEvaluationProgress(
-              "AI evaluation encountered an issue. Saving with partial scores..."
+              "AI evaluation encountered an issue. Saving for manual review..."
             );
+            for (const q of subjectiveToEvaluate) {
+              submissionResponses[q.id] = {
+                ...submissionResponses[q.id],
+                aiEvaluation: {
+                  score: 0,
+                  maxScore: safeNumber(q.marks.correct, 5),
+                  confidence: 0,
+                  feedback:
+                    "Automated evaluation failed. Your answer has been saved and will be reviewed manually by your educator.",
+                  evaluatedAt: Date.now(),
+                },
+              };
+            }
             await new Promise((r) => setTimeout(r, 1500));
           }
         } catch (evalErr) {
           console.error("AI evaluation error:", evalErr);
-          setEvaluationProgress(
-            "AI evaluation encountered an issue. Saving with partial scores..."
-          );
+          setEvaluationProgress("AI evaluation encountered an issue. Saving for manual review...");
+          for (const q of subjectiveToEvaluate) {
+            submissionResponses[q.id] = {
+              ...submissionResponses[q.id],
+              aiEvaluation: {
+                score: 0,
+                maxScore: safeNumber(q.marks.correct, 5),
+                confidence: 0,
+                feedback:
+                  "Automated evaluation failed. Your answer has been saved and will be reviewed manually by your educator.",
+                evaluatedAt: Date.now(),
+              },
+            };
+          }
           await new Promise((r) => setTimeout(r, 1500));
         }
       }
@@ -1178,14 +1204,14 @@ export default function StudentCBTAttempt() {
         notAnsweredCount: counts.notAnsweredCount,
         accuracy: finalAccuracy,
         timeTakenSec,
-        hasSubjectiveQuestions: subjectiveToEvaluate.length > 0,
+        hasSubjectiveQuestions: questions.some((q) => q.type === "short_answer"),
         subjectiveEvaluatedCount: subjectiveToEvaluate.filter(
           (q) => submissionResponses[q.id]?.aiEvaluation
         ).length,
       });
 
       localStorage.removeItem(attemptIdStorageKey);
-      if (!evaluatingSubjective) await exitFullscreenSafe();
+      if (!didEvaluateSubjective) await exitFullscreenSafe();
 
       // Invalidate cached attempt counts & dashboard so they refresh immediately
       queryClient.invalidateQueries({ queryKey: ["studentAttemptCounts"] });

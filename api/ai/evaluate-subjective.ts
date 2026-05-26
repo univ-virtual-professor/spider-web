@@ -67,9 +67,28 @@ const ALLOWED_IMAGE_MIME = new Set(["image/png", "image/jpeg", "image/jpg", "ima
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
+const ALLOWED_IMAGE_HOSTS = new Set(["ik.imagekit.io", "imagekit.io"]);
+
+function validateImageUrl(url: string, label: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Invalid ${label} image URL`);
+  }
+  if (parsed.protocol !== "https:") {
+    throw new Error(`${label} image URL must use HTTPS`);
+  }
+  if (!ALLOWED_IMAGE_HOSTS.has(parsed.hostname)) {
+    throw new Error(`${label} image URL host is not allowed`);
+  }
+}
+
 async function fetchImageInlinePart(url: string, label: string) {
   const trimmed = String(url || "").trim();
   if (!trimmed) return null;
+
+  validateImageUrl(trimmed, label);
 
   const res = await fetch(trimmed);
   if (!res.ok) {
@@ -159,8 +178,16 @@ async function buildRequestParts(req: EvaluationRequest) {
   }
 
   if (hasStudentImage) {
-    const studentImagePart = await fetchImageInlinePart(req.studentAnswer || "", "student");
-    if (studentImagePart) parts.push(studentImagePart);
+    try {
+      const studentImagePart = await fetchImageInlinePart(req.studentAnswer || "", "student");
+      if (studentImagePart) parts.push(studentImagePart);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`[evaluate-subjective] Student image skipped: ${msg}`);
+      parts.push(
+        `Note: Student uploaded an image answer but it could not be loaded (${msg}). Evaluate based on available context; award 0 if the answer cannot be assessed.`
+      );
+    }
   }
 
   return parts;
