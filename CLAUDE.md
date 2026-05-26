@@ -144,10 +144,8 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
   - Schedule: 3-step wizard — Step 1: Source mode + content/QB filters; Step 2: Template summary + difficulty; Step 3: Date range, time, batches, topic rotation list
   - Topic rotation: round-robin list of topics (replaces per-date dailyTopics map for new schedules)
   - Source modes: `ai_only` (Pinecone+Gemini), `qb_only` (educator QB only), `hybrid` (QB first, AI fills gap)
-  - Link to `/educator/dpp/template` for editing educator's personal DPP template
 - **Backend**: `monkey-king /api/dpp/*`
-  - `GET/PUT/DELETE /api/dpp/template/my` — educator's personal DPP template (overrides global per-educator)
-  - Template stored at Firestore `educators/{uid}/dpp_settings/template`; falls back to `dpp_template/default`
+  - DPP template: global only (`dpp_template/default`, admin-managed via `GET/PUT /api/dpp/template`)
   - `POST /api/dpp/generate` — accepts `source_mode`, `topic_filters`, `subject_filter`
   - `POST /api/test/gap-fill` — AI gap-fill for normal test sections when QB is short; questions get `source: "ai_gap_fill"` + `reviewRequired: true`
   - APScheduler job runs every 15 min, auto-generates DPPs for due schedules and publishes to `targetBatches`

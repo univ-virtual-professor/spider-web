@@ -26,7 +26,6 @@ import {
   StudentHealthCategoryList,
   ReportedQuestions,
 } from "@features/educator";
-import DppTemplatePage from "@features/educator/DppTemplatePage";
 import QuestionPaperRequests from "@features/educator/QuestionPaperRequests";
 
 export function getEducatorRoutes() {
@@ -62,7 +61,6 @@ export function getEducatorRoutes() {
       <Route path="divisions" element={<Navigate to="/educator/organization" replace />} />
       <Route path="content" element={<EducatorContent />} />
       <Route path="dpp" element={<DppGenerator />} />
-      <Route path="dpp/template" element={<DppTemplatePage />} />
       <Route path="website-builder" element={<InstituteBuilder />} />
       <Route path="question-papers" element={<QuestionPaperRequests />} />
     </Route>

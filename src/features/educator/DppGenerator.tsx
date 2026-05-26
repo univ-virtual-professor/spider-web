@@ -1,14 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from "react";
-import {
-  collection,
-  getDocs,
-  onSnapshot,
-  orderBy,
-  query,
-  limit,
-  addDoc,
-  serverTimestamp,
-} from "firebase/firestore";
+import { collection, getDocs, onSnapshot, orderBy, query, limit } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@shared/lib/firebase";
@@ -26,7 +17,6 @@ import { Input } from "@shared/ui/input";
 import { Checkbox } from "@shared/ui/checkbox";
 import { AlertCircle, CheckCircle2, ExternalLink, Loader2, Lock, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
-import { uploadToImageKit } from "@shared/lib/imagekitUpload";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -355,7 +345,11 @@ export default function DppGenerator() {
       (genSource === "qb" &&
         (genTopicFilters.length > 0 || genSubjects.length > 0 || !!genTopicName)));
 
-  const performGeneration = async (finalContentIds: string[], finalContentTitles: string[]) => {
+  const performGeneration = async (
+    finalContentIds: string[],
+    finalContentTitles: string[],
+    uploadedContext = ""
+  ) => {
     if (!firebaseUser) return;
 
     if (isScheduled) {
@@ -394,6 +388,7 @@ export default function DppGenerator() {
           title: customTitle,
           type: "dpp",
           folderId: "dpp_folder",
+          uploaded_context: uploadedContext,
         }),
       });
       const data = await res.json();
@@ -446,6 +441,7 @@ export default function DppGenerator() {
           title: customTitle,
           type: "dpp",
           folderId: "dpp_folder",
+          uploaded_context: uploadedContext,
         }),
       });
       const data = await res.json();
@@ -473,47 +469,28 @@ export default function DppGenerator() {
 
     setGenerating(true);
     try {
-      let finalContentIds = [...genSelectedIds];
+      const finalContentIds = [...genSelectedIds];
       let finalContentTitles = genSelectedContent.map((c) => c.title);
+      let uploadedContext = "";
 
-      if (genSource === "upload" && uploadFile && courseObj) {
+      if (genSource === "upload" && uploadFile) {
         setUploading(true);
-        const result = await uploadToImageKit(
-          uploadFile,
-          uploadFile.name,
-          `/content/educator/${educatorUid}`,
-          "content"
-        );
-        const docRef = await addDoc(
-          collection(
-            db,
-            "educators",
-            educatorUid,
-            "branches",
-            courseObj.branchId,
-            "courses",
-            courseObj.courseId,
-            "content"
-          ),
-          {
-            type: "note",
-            title: uploadTitle.trim() || uploadFile.name,
-            fileUrl: result.url,
-            fileId: result.fileId,
-            fileName: uploadFile.name,
-            fileSize: uploadFile.size,
-            mimeType: uploadFile.type,
-            source: "educator",
-            addedBy: educatorUid,
-            createdAt: serverTimestamp(),
-          }
-        );
-        finalContentIds = [docRef.id];
+        const token = await firebaseUser.getIdToken();
+        const formData = new FormData();
+        formData.append("file", uploadFile);
+        const extractRes = await fetch(`${MONKEY_KING}/api/chat/extract-upload/educator`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        });
+        if (!extractRes.ok) throw new Error("Failed to extract file content");
+        const { context } = await extractRes.json();
+        uploadedContext = context as string;
         finalContentTitles = [uploadTitle.trim() || uploadFile.name];
         setUploading(false);
       }
 
-      await performGeneration(finalContentIds, finalContentTitles);
+      await performGeneration(finalContentIds, finalContentTitles, uploadedContext);
     } catch (e: any) {
       console.log(e.message);
       toast.error(e?.message || "Failed to process DPP");
