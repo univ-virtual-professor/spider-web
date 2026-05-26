@@ -243,7 +243,7 @@ export default function StudentTests() {
       : tests;
     return {
       regular: all.filter((t) => !isDppTest(t)),
-      dpp: all.filter((t) => isDppTest(t)),
+      dpp: all.filter((t) => isDppTest(t) && t.status !== "failed" && t.status !== "generating"),
     };
   }, [tests, search]);
 

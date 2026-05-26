@@ -841,7 +841,7 @@ export default function StudentCBTAttempt() {
           tenantSlug: tenantSlug || null,
           testId,
           testTitle: testMeta.title,
-          subject: testMeta.subject,
+          subject: testMeta.subject || null,
           status: "in_progress",
           durationSec: totalSec,
           startedAtMs,

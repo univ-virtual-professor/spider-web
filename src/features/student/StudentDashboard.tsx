@@ -212,16 +212,16 @@ export default function StudentDashboard() {
       const qTop = query(
         collection(db, "attempts"),
         where("educatorId", "==", educatorId!),
-        where("status", "in", ["completed", "submitted", "finished", "done"]),
-        orderBy("score", "desc"),
-        limit(300)
+        orderBy("createdAt", "desc"),
+        limit(500)
       );
       const snap = await getDocs(qTop);
+      const DONE = new Set(["completed", "submitted", "finished", "done"]);
       const best: Record<string, number> = {};
       snap.docs.forEach((d) => {
         const a = d.data() as any;
         const sid = String(a?.studentId || "");
-        if (!sid) return;
+        if (!sid || !DONE.has(String(a?.status || "").toLowerCase())) return;
         const sc = safeNum(a?.score, 0);
         best[sid] = Math.max(best[sid] || 0, sc);
       });
@@ -426,16 +426,16 @@ export default function StudentDashboard() {
       const qTop = query(
         collection(db, "attempts"),
         where("educatorId", "==", educatorId!),
-        where("status", "in", ["completed", "submitted", "finished", "done"]),
-        orderBy("score", "desc"),
-        limit(200)
+        orderBy("createdAt", "desc"),
+        limit(500)
       );
       const snap = await getDocs(qTop);
+      const DONE = new Set(["completed", "submitted", "finished", "done"]);
       const best: Record<string, number> = {};
       snap.docs.forEach((d) => {
         const a = d.data() as any;
         const sid = String(a?.studentId || "");
-        if (!sid) return;
+        if (!sid || !DONE.has(String(a?.status || "").toLowerCase())) return;
         const sc = safeNum(a?.score, 0);
         best[sid] = Math.max(best[sid] || 0, sc);
       });
@@ -754,34 +754,43 @@ export default function StudentDashboard() {
                 <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Upcoming
                 </span>
-                <div className="flex flex-col gap-2">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {visibleUpcoming.map((test) => {
                     const msLeft = test._startsAtMs! - now;
                     return (
                       <div
                         key={test.id}
-                        className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 shadow-sm"
+                        className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md"
                       >
-                        <div className="w-1 self-stretch rounded-full bg-amber-400" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-foreground">
-                            {test.title || "Untitled Test"}
-                          </p>
-                          {test.subject && (
-                            <p className="text-xs text-muted-foreground">{test.subject}</p>
-                          )}
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                            in {formatCountdown(msLeft)}
-                          </span>
+                        <div className="h-1 bg-amber-400" />
+                        <div className="flex flex-1 flex-col gap-3 p-3.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
+                              {test.title || "Untitled Test"}
+                            </p>
+                            <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0 text-[9px] font-bold tracking-wider text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+                              in {formatCountdown(msLeft)}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            {test.subject && <span className="truncate">{test.subject}</span>}
+                            <span className="ml-auto flex shrink-0 items-center gap-2">
+                              {test.durationMinutes && (
+                                <span className="flex items-center gap-0.5">
+                                  <Clock className="h-3 w-3" />
+                                  {test.durationMinutes}m
+                                </span>
+                              )}
+                              {test.questionsCount && <span>{test.questionsCount}Q</span>}
+                            </span>
+                          </div>
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-7 rounded-lg px-2.5 text-xs"
+                            className="h-7 w-full rounded-lg text-xs font-medium"
                             asChild
                           >
-                            <Link to={`/student/tests/${test.id}`}>View</Link>
+                            <Link to={`/student/tests/${test.id}`}>View Details</Link>
                           </Button>
                         </div>
                       </div>

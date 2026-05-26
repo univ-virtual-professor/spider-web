@@ -154,8 +154,13 @@ export default function DppGenerator() {
 
   // Scheduling state
   const [isScheduled, setIsScheduled] = useState(false);
-  const [schedDays, setSchedDays] = useState<number>(1);
+  const [schedDays, setSchedDays] = useState<number>(7);
+  const [schedContinuous, setSchedContinuous] = useState(false);
   const [schedTime, setSchedTime] = useState("08:00");
+  const [schedStartDate, setSchedStartDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
 
   type CourseOption = {
     courseId: string;
@@ -360,10 +365,15 @@ export default function DppGenerator() {
     if (!firebaseUser) return;
 
     if (isScheduled) {
-      // Create a schedule
-      const startDate = new Date();
-      const endDate = new Date();
-      endDate.setDate(startDate.getDate() + (schedDays - 1));
+      // Use local date strings to avoid UTC-offset date shift
+      const startDateStr = schedStartDate;
+      const endDateStr = schedContinuous
+        ? "2099-12-31"
+        : (() => {
+            const d = new Date(schedStartDate + "T00:00:00");
+            d.setDate(d.getDate() + (schedDays - 1));
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          })();
 
       const batchNames = [...selectedBatchIds].map(
         (id) => batches.find((b) => b.id === id)?.name || id
@@ -385,8 +395,8 @@ export default function DppGenerator() {
           chapter_filter: genChapters,
           difficulty: genDifficulty,
           target_batches: [...selectedBatchIds],
-          start_date: startDate.toISOString().split("T")[0],
-          end_date: endDate.toISOString().split("T")[0],
+          start_date: startDateStr,
+          end_date: endDateStr,
           time_of_day: schedTime,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           topic_rotation: [],
@@ -410,8 +420,8 @@ export default function DppGenerator() {
           id: schedId,
           contentTitles: finalContentTitles,
           difficulty: genDifficulty,
-          startDate: startDate.toISOString().split("T")[0],
-          endDate: endDate.toISOString().split("T")[0],
+          startDate: startDateStr,
+          endDate: endDateStr,
           timeOfDay: schedTime,
           targetBatches: [...selectedBatchIds],
           isActive: true,
@@ -784,7 +794,7 @@ export default function DppGenerator() {
 
               <div className="space-y-1">
                 <Label>
-                  DPP (topic) Name <span className="font-normal text-muted-foreground">(optional)</span>
+                  DPP (topic) Name
                 </Label>
                 <Input
                   placeholder="e.g. Newton's Laws"
@@ -804,26 +814,47 @@ export default function DppGenerator() {
                 </label>
 
                 {isScheduled && (
-                  <div className="grid grid-cols-2 gap-4 pt-2">
-                    <div className="space-y-1.5">
-                      <Label>For how many days?</Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        max={30}
-                        value={schedDays}
-                        onChange={(e) => setSchedDays(Math.max(1, parseInt(e.target.value) || 1))}
-                      />
-                      <p className="text-[10px] text-muted-foreground">Continuously published</p>
+                  <div className="space-y-3 pt-2">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label>Start from</Label>
+                        <Input
+                          type="date"
+                          value={schedStartDate}
+                          min={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })()}
+                          onChange={(e) => setSchedStartDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>At what time?</Label>
+                        <Input
+                          type="time"
+                          value={schedTime}
+                          onChange={(e) => setSchedTime(e.target.value)}
+                        />
+                        <p className="text-[10px] text-muted-foreground">Daily at this time</p>
+                      </div>
                     </div>
                     <div className="space-y-1.5">
-                      <Label>At what time?</Label>
-                      <Input
-                        type="time"
-                        value={schedTime}
-                        onChange={(e) => setSchedTime(e.target.value)}
-                      />
-                      <p className="text-[10px] text-muted-foreground">Daily at this time</p>
+                      <label className="flex cursor-pointer items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={schedContinuous}
+                          onCheckedChange={(c) => setSchedContinuous(!!c)}
+                        />
+                        Continuously published
+                      </label>
+                      {!schedContinuous && (
+                        <div className="space-y-1.5">
+                          <Label>For how many days?</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            max={365}
+                            value={schedDays}
+                            onChange={(e) => setSchedDays(Math.max(1, parseInt(e.target.value) || 1))}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

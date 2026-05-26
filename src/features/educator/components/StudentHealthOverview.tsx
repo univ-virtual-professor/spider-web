@@ -181,7 +181,7 @@ export default function StudentHealthOverview({
   const cards = [
     {
       id: "excellent",
-      title: "The torch bearers",
+      title: "The Torch Bearers",
       count: healthStats.excellent.count,
       pct: healthStats.excellent.pct,
       students: healthStats.excellent.students,
