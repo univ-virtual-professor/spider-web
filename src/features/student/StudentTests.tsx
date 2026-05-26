@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Input } from "@shared/ui/input";
 import { Button } from "@shared/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@shared/ui/tabs";
 import { toast } from "sonner";
 
 import { useAuth } from "@app/providers/AuthProvider";
@@ -31,6 +32,14 @@ import { TestCard } from "@features/student/components/TestCard";
 import { Badge } from "@shared/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@shared/lib/utils";
+
+const isDppTest = (t: any) => t.type === "from_dpp" || t.type === "dpp";
+
+const getDppDisplayTitle = (t: any) => {
+  if (t.topic) return `DPP: ${t.topic}`;
+  const m = String(t.title || "").match(/^DPP\s*[-–]\s*(.+?)\s*\(/i);
+  return m ? `DPP: ${m[1].trim()}` : "DPP";
+};
 
 export default function StudentTests() {
   const nav = useNavigate();
@@ -191,6 +200,7 @@ export default function StudentTests() {
     return () => clearInterval(id);
   }, []);
 
+  const [activeTab, setActiveTab] = useState<"tests" | "dpp">("tests");
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
 
   const toggleFolder = (folderId: string) => {
@@ -225,18 +235,23 @@ export default function StudentTests() {
 
   const filteredTests = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return tests;
-    return tests.filter(
-      (t) =>
-        (t.title || "").toLowerCase().includes(q) || (t.subject || "").toLowerCase().includes(q)
-    );
+    const all = q
+      ? tests.filter(
+          (t) =>
+            (t.title || "").toLowerCase().includes(q) || (t.subject || "").toLowerCase().includes(q)
+        )
+      : tests;
+    return {
+      regular: all.filter((t) => !isDppTest(t)),
+      dpp: all.filter((t) => isDppTest(t)),
+    };
   }, [tests, search]);
 
-  // Separate upcoming scheduled tests from available/past ones
+  // Separate upcoming scheduled tests from available/past ones (regular tests only)
   const { upcomingTests, availableTests } = useMemo(() => {
     const upcoming: any[] = [];
     const available: any[] = [];
-    filteredTests.forEach((t) => {
+    filteredTests.regular.forEach((t) => {
       const startMs = t.startTime
         ? typeof t.startTime.toMillis === "function"
           ? t.startTime.toMillis()
@@ -248,10 +263,9 @@ export default function StudentTests() {
         available.push(t);
       }
     });
-    // Sort upcoming by nearest first
     upcoming.sort((a, b) => a._startsAtMs - b._startsAtMs);
     return { upcomingTests: upcoming, availableTests: available };
-  }, [filteredTests, now]);
+  }, [filteredTests.regular, now]);
 
   const groupedTests = useMemo(() => {
     const groups: Record<
@@ -421,10 +435,31 @@ export default function StudentTests() {
         <h1 className="text-xl font-semibold">Available Tests</h1>
       </div>
 
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "tests" | "dpp")}>
+        <TabsList className="rounded-xl">
+          <TabsTrigger value="tests" className="rounded-xl">
+            Tests
+            {filteredTests.regular.length > 0 && (
+              <Badge variant="secondary" className="ml-1.5 rounded-full px-1.5 py-0 text-[10px]">
+                {filteredTests.regular.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="dpp" className="rounded-xl">
+            DPP
+            {filteredTests.dpp.length > 0 && (
+              <Badge variant="secondary" className="ml-1.5 rounded-full px-1.5 py-0 text-[10px]">
+                {filteredTests.dpp.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
       <div className="flex items-center gap-2">
         <Search className="h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search tests..."
+          placeholder={`Search ${activeTab === "dpp" ? "DPPs" : "tests"}...`}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -446,124 +481,174 @@ export default function StudentTests() {
         <div className="text-sm text-muted-foreground">Press Enter to unlock</div>
       </div>
 
-      {/* Upcoming scheduled tests */}
-      {upcomingTests.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/40 dark:bg-amber-900/10">
-            <CalendarClock className="h-5 w-5 text-amber-600" />
-            <h3 className="font-semibold text-amber-900 dark:text-amber-200">Upcoming Tests</h3>
-            <Badge variant="secondary" className="ml-1 rounded-full bg-amber-100 text-amber-700">
-              {upcomingTests.length}
-            </Badge>
-          </div>
-          <div className="flex flex-col gap-3">
-            {upcomingTests.map((t) => (
-              <TestCard
-                key={t.id}
-                test={{
-                  ...t,
-                  isLocked: false,
-                  isUpcoming: true,
-                  startsAtMs: t._startsAtMs,
-                  windowExpiresAt: null,
-                }}
-                attemptsUsed={attemptCounts[t.id] || 0}
-                onView={() => nav(`/student/tests/${t.id}`)}
-                onStart={() => nav(`/student/tests/${t.id}`)}
-                onUnlock={() => {}}
-              />
-            ))}
-          </div>
-        </div>
-      )}
+      {activeTab === "tests" && (
+        <>
+          {/* Upcoming scheduled tests */}
+          {upcomingTests.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/40 dark:bg-amber-900/10">
+                <CalendarClock className="h-5 w-5 text-amber-600" />
+                <h3 className="font-semibold text-amber-900 dark:text-amber-200">Upcoming Tests</h3>
+                <Badge variant="secondary" className="ml-1 rounded-full bg-amber-100 text-amber-700">
+                  {upcomingTests.length}
+                </Badge>
+              </div>
+              <div className="flex flex-col gap-3">
+                {upcomingTests.map((t) => (
+                  <TestCard
+                    key={t.id}
+                    test={{
+                      ...t,
+                      isLocked: false,
+                      isUpcoming: true,
+                      startsAtMs: t._startsAtMs,
+                      windowExpiresAt: null,
+                    }}
+                    attemptsUsed={attemptCounts[t.id] || 0}
+                    onView={() => nav(`/student/tests/${t.id}`)}
+                    onStart={() => nav(`/student/tests/${t.id}`)}
+                    onUnlock={() => {}}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
-      <div className="space-y-6">
-        {Object.entries(groupedTests).map(([groupId, group]) => {
-          const isExpanded = !!expandedFolders[groupId];
-          return (
-            <div key={groupId} className="space-y-3">
-              <div
-                className={cn(
-                  "group flex cursor-pointer items-center justify-between rounded-lg border border-l-4 border-border border-l-primary/60 bg-card px-3 py-2.5 shadow-sm transition-all duration-200 hover:bg-muted/15",
-                  isExpanded && "border-l-primary bg-muted/5"
-                )}
-                onClick={() => toggleFolder(groupId)}
-              >
-                <div className="flex items-center gap-2.5">
+          <div className="space-y-6">
+            {Object.entries(groupedTests).map(([groupId, group]) => {
+              const isExpanded = !!expandedFolders[groupId];
+              return (
+                <div key={groupId} className="space-y-3">
                   <div
                     className={cn(
-                      "flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary transition-all duration-200",
-                      isExpanded && "bg-primary text-primary-foreground"
+                      "group flex cursor-pointer items-center justify-between rounded-lg border border-l-4 border-border border-l-primary/60 bg-card px-3 py-2.5 shadow-sm transition-all duration-200 hover:bg-muted/15",
+                      isExpanded && "border-l-primary bg-muted/5"
                     )}
+                    onClick={() => toggleFolder(groupId)}
                   >
-                    <Folder className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-semibold text-foreground">{group.name}</h3>
-                    <p className="text-xs text-muted-foreground">
-                      {group.tests.length} test{group.tests.length !== 1 ? "s" : ""}
-                    </p>
-                  </div>
-                </div>
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={cn(
+                          "flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary transition-all duration-200",
+                          isExpanded && "bg-primary text-primary-foreground"
+                        )}
+                      >
+                        <Folder className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-foreground">{group.name}</h3>
+                        <p className="text-xs text-muted-foreground">
+                          {group.tests.length} test{group.tests.length !== 1 ? "s" : ""}
+                        </p>
+                      </div>
+                    </div>
 
-                <div
-                  className={cn(
-                    "flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-all duration-200",
-                    isExpanded && "rotate-180 text-primary"
+                    <div
+                      className={cn(
+                        "flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-all duration-200",
+                        isExpanded && "rotate-180 text-primary"
+                      )}
+                    >
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="flex flex-col gap-3 pl-2 transition-all duration-200 duration-300 animate-in fade-in sm:pl-4">
+                      {group.tests.map((t) => {
+                        const unlockEntry = unlockedIds.get(t.id);
+                        const windowValid =
+                          unlockEntry !== undefined && (unlockEntry === null || unlockEntry > now);
+
+                        const startTime = t.startTime
+                          ? typeof t.startTime.toMillis === "function"
+                            ? t.startTime.toMillis()
+                            : t.startTime
+                          : null;
+                        const endTime = t.endTime
+                          ? typeof t.endTime.toMillis === "function"
+                            ? t.endTime.toMillis()
+                            : t.endTime
+                          : null;
+                        const isLive = startTime && endTime && now >= startTime && now <= endTime;
+
+                        const locked = !(t.isPublic === true || windowValid || isLive);
+                        return (
+                          <TestCard
+                            key={t.id}
+                            test={{
+                              ...t,
+                              isLocked: locked,
+                              windowExpiresAt: unlockEntry ?? null,
+                              isLive,
+                            }}
+                            attemptsUsed={attemptCounts[t.id] || 0}
+                            onView={() => nav(`/student/tests/${t.id}`)}
+                            onStart={() => nav(`/student/tests/${t.id}`)}
+                            onUnlock={(testId: string) => {
+                              const entered = window.prompt("Enter access code to unlock this test:");
+                              if (entered && entered.trim()) {
+                                unlockWithCode(entered.trim(), testId);
+                              }
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
                   )}
-                >
-                  <ChevronDown className="h-3.5 w-3.5" />
                 </div>
-              </div>
+              );
+            })}
+          </div>
+        </>
+      )}
 
-              {isExpanded && (
-                <div className="flex flex-col gap-3 pl-2 transition-all duration-200 duration-300 animate-in fade-in sm:pl-4">
-                  {group.tests.map((t) => {
-                    const unlockEntry = unlockedIds.get(t.id);
-                    const windowValid =
-                      unlockEntry !== undefined && (unlockEntry === null || unlockEntry > now);
-
-                    // Check if test is currently live via schedule
-                    const startTime = t.startTime
-                      ? typeof t.startTime.toMillis === "function"
-                        ? t.startTime.toMillis()
-                        : t.startTime
-                      : null;
-                    const endTime = t.endTime
-                      ? typeof t.endTime.toMillis === "function"
-                        ? t.endTime.toMillis()
-                        : t.endTime
-                      : null;
-                    const isLive = startTime && endTime && now >= startTime && now <= endTime;
-
-                    const locked = !(t.isPublic === true || windowValid || isLive);
-                    return (
-                      <TestCard
-                        key={t.id}
-                        test={{
-                          ...t,
-                          isLocked: locked,
-                          windowExpiresAt: unlockEntry ?? null,
-                          isLive,
-                        }}
-                        attemptsUsed={attemptCounts[t.id] || 0}
-                        onView={() => nav(`/student/tests/${t.id}`)}
-                        onStart={() => nav(`/student/tests/${t.id}`)}
-                        onUnlock={(testId: string) => {
-                          const entered = window.prompt("Enter access code to unlock this test:");
-                          if (entered && entered.trim()) {
-                            unlockWithCode(entered.trim(), testId);
-                          }
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+      {activeTab === "dpp" && (
+        <div className="flex flex-col gap-3">
+          {filteredTests.dpp.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">No DPPs available yet.</p>
+          ) : (
+            filteredTests.dpp.map((t) => {
+              const unlockEntry = unlockedIds.get(t.id);
+              const windowValid =
+                unlockEntry !== undefined && (unlockEntry === null || unlockEntry > now);
+              const startTime = t.startTime
+                ? typeof t.startTime.toMillis === "function"
+                  ? t.startTime.toMillis()
+                  : t.startTime
+                : null;
+              const endTime = t.endTime
+                ? typeof t.endTime.toMillis === "function"
+                  ? t.endTime.toMillis()
+                  : t.endTime
+                : null;
+              const isLive = startTime && endTime && now >= startTime && now <= endTime;
+              const locked = !(t.isPublic === true || windowValid || isLive);
+              return (
+                <TestCard
+                  key={t.id}
+                  test={{
+                    ...t,
+                    title: getDppDisplayTitle(t),
+                    isLocked: locked,
+                    windowExpiresAt: unlockEntry ?? null,
+                    isLive,
+                  }}
+                  attemptsUsed={attemptCounts[t.id] || 0}
+                  onView={() => nav(`/student/tests/${t.id}`)}
+                  onStart={() => nav(`/student/tests/${t.id}`)}
+                  onUnlock={(testId: string) => {
+                    const entered = window.prompt("Enter access code to unlock this DPP:");
+                    if (entered && entered.trim()) {
+                      unlockWithCode(entered.trim(), testId);
+                    }
+                  }}
+                />
+              );
+            })
+          )}
+        </div>
+      )}
     </div>
   );
 }

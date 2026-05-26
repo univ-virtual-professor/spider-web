@@ -168,7 +168,7 @@ const QuestionsManager = ({
   const [formQuestionType, setFormQuestionType] = useState<QuestionType>("MCQ_SINGLE");
   const [formReferenceAnswer, setFormReferenceAnswer] = useState("");
   const [formReferenceKeywords, setFormReferenceKeywords] = useState("");
-  const [formReferenceAnswerFileUrl, setFormReferenceAnswerFileUrl] = useState("");
+  const [formReferenceAnswerFileUrls, setFormReferenceAnswerFileUrls] = useState<string[]>([]);
   const [formEvaluationInstructions, setFormEvaluationInstructions] = useState("");
   const [editorSnapshot, setEditorSnapshot] = useState<EditorDraftSnapshot | null>(null);
   const [unsavedConfirmOpen, setUnsavedConfirmOpen] = useState(false);
@@ -665,7 +665,7 @@ const QuestionsManager = ({
       questionType: formQuestionType,
       referenceAnswer: formReferenceAnswer,
       referenceKeywords: formReferenceKeywords,
-      referenceAnswerFileUrl: formReferenceAnswerFileUrl,
+      referenceAnswerFileUrls: formReferenceAnswerFileUrls,
       evaluationInstructions: formEvaluationInstructions,
     }),
     [
@@ -682,7 +682,7 @@ const QuestionsManager = ({
       formQuestionType,
       formReferenceAnswer,
       formReferenceKeywords,
-      formReferenceAnswerFileUrl,
+      formReferenceAnswerFileUrls,
       formEvaluationInstructions,
     ]
   );
@@ -1100,7 +1100,7 @@ const QuestionsManager = ({
     setFormQuestionType("MCQ_SINGLE");
     setFormReferenceAnswer("");
     setFormReferenceKeywords("");
-    setFormReferenceAnswerFileUrl("");
+    setFormReferenceAnswerFileUrls([]);
     setFormEvaluationInstructions("");
     setInsertAfterQuestionId(null);
     setEditorSnapshot(null);
@@ -1154,7 +1154,13 @@ const QuestionsManager = ({
     setFormReferenceKeywords(
       Array.isArray(q.referenceKeywords) ? q.referenceKeywords.join(", ") : ""
     );
-    setFormReferenceAnswerFileUrl(q.referenceAnswerFileUrl || "");
+    setFormReferenceAnswerFileUrls(
+      Array.isArray(q.referenceAnswerFileUrls)
+        ? q.referenceAnswerFileUrls.filter(Boolean)
+        : q.referenceAnswerFileUrl
+          ? [q.referenceAnswerFileUrl]
+          : []
+    );
     setFormEvaluationInstructions(q.evaluationInstructions || "");
     setEditorSnapshot(buildSnapshotFromQuestion(q));
     setEditorOpen(true);
@@ -2283,7 +2289,7 @@ const QuestionsManager = ({
         .split(",")
         .map((k) => k.trim())
         .filter(Boolean);
-      payload.referenceAnswerFileUrl = formReferenceAnswerFileUrl || "";
+      payload.referenceAnswerFileUrls = formReferenceAnswerFileUrls;
       payload.evaluationInstructions = formEvaluationInstructions || "";
     }
 
@@ -2724,9 +2730,11 @@ const QuestionsManager = ({
       referenceKeywords: Array.isArray(data?.referenceKeywords)
         ? data.referenceKeywords.map(String).filter(Boolean)
         : undefined,
-      referenceAnswerFileUrl: data?.referenceAnswerFileUrl
-        ? String(data.referenceAnswerFileUrl)
-        : undefined,
+      referenceAnswerFileUrls: Array.isArray(data?.referenceAnswerFileUrls)
+        ? data.referenceAnswerFileUrls.map(String).filter(Boolean)
+        : data?.referenceAnswerFileUrl
+          ? [String(data.referenceAnswerFileUrl)]
+          : undefined,
       evaluationInstructions: data?.evaluationInstructions
         ? String(data.evaluationInstructions)
         : undefined,
@@ -3018,8 +3026,8 @@ const QuestionsManager = ({
                             setFormReferenceAnswer={setFormReferenceAnswer}
                             formReferenceKeywords={formReferenceKeywords}
                             setFormReferenceKeywords={setFormReferenceKeywords}
-                            formReferenceAnswerFileUrl={formReferenceAnswerFileUrl}
-                            setFormReferenceAnswerFileUrl={setFormReferenceAnswerFileUrl}
+                            formReferenceAnswerFileUrls={formReferenceAnswerFileUrls}
+                            setFormReferenceAnswerFileUrls={setFormReferenceAnswerFileUrls}
                             formEvaluationInstructions={formEvaluationInstructions}
                             setFormEvaluationInstructions={setFormEvaluationInstructions}
                           />

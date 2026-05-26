@@ -19,6 +19,7 @@ import {
   BookOpen,
   Bot,
   BarChart2,
+  Lock,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
@@ -37,7 +38,7 @@ import { useAuth } from "@app/providers/AuthProvider";
 import { useTenant } from "@app/providers/TenantProvider";
 import { useAppTokenBootstrap } from "@shared/hooks/useAppTokenBootstrap";
 import { db } from "@shared/lib/firebase";
-import { collection, doc, onSnapshot, query, where, getDoc } from "firebase/firestore";
+import { doc, onSnapshot, collection, query, where, getDoc } from "firebase/firestore";
 import { getAuth, signOut } from "firebase/auth";
 import ImpersonationBanner from "@shared/components/ImpersonationBanner";
 import NotificationBell from "@shared/components/NotificationBell";
@@ -124,6 +125,8 @@ export default function StudentLayout() {
 
   const [userDoc, setUserDoc] = useState<UserDoc | null>(null);
   const [unreadThreadsCount, setUnreadThreadsCount] = useState(0);
+  const [seatActive, setSeatActive] = useState(false);
+  const [seatLoading, setSeatLoading] = useState(true);
 
   // Live user profile from users/{uid}
   useEffect(() => {
@@ -147,6 +150,28 @@ export default function StudentLayout() {
 
     return () => unsub();
   }, [uid]);
+
+  // Seat access: lock whole profile if no active billing seat
+  useEffect(() => {
+    if (!uid || !educatorId) {
+      setSeatLoading(false);
+      return;
+    }
+    setSeatLoading(true);
+    const unsub = onSnapshot(
+      doc(db, "educators", educatorId, "billingSeats", uid),
+      (snap) => {
+        const s = String((snap.data() as any)?.status || "").toLowerCase();
+        setSeatActive(s === "active");
+        setSeatLoading(false);
+      },
+      () => {
+        setSeatActive(false);
+        setSeatLoading(false);
+      }
+    );
+    return () => unsub();
+  }, [uid, educatorId]);
 
   // Live unread badge for messages (count threads with unreadCountStudent > 0)
   useEffect(() => {
@@ -509,14 +534,34 @@ export default function StudentLayout() {
 
           {/* ONLY this scrolls */}
           <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-6">
-            <motion.div
-              key={location.pathname}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <Outlet />
-            </motion.div>
+            {!seatLoading && !seatActive ? (
+              <div className="flex h-full min-h-[60vh] flex-col items-center justify-center gap-4 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                  <Lock className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <div className="space-y-1">
+                  <h2 className="text-xl font-semibold text-foreground">Account Locked</h2>
+                  <p className="max-w-sm text-sm text-muted-foreground">
+                    Your seat has not been activated yet. Please contact your educator to get access.
+                  </p>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="mt-2 text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <motion.div
+                key={location.pathname}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <Outlet />
+              </motion.div>
+            )}
           </main>
         </div>
       </div>

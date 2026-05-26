@@ -43,7 +43,8 @@ export type TestQuestion = {
   // Subjective answer reference
   referenceAnswer?: string;
   referenceKeywords?: string[];
-  referenceAnswerFileUrl?: string;
+  referenceAnswerFileUrl?: string; // legacy single image
+  referenceAnswerFileUrls?: string[]; // multi-image
   evaluationInstructions?: string;
 
   // AI import metadata
@@ -102,7 +103,7 @@ export type EditorDraftSnapshot = {
   questionType: string;
   referenceAnswer: string;
   referenceKeywords: string;
-  referenceAnswerFileUrl: string;
+  referenceAnswerFileUrls: string[];
   evaluationInstructions: string;
 };
 

@@ -149,6 +149,7 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
   - `POST /api/dpp/generate` — accepts `source_mode`, `topic_filters`, `subject_filter`
   - `POST /api/test/gap-fill` — AI gap-fill for normal test sections when QB is short; questions get `source: "ai_gap_fill"` + `reviewRequired: true`
   - APScheduler job runs every 15 min, auto-generates DPPs for due schedules and publishes to `targetBatches`
+  - DPP tests stored in `educators/{uid}/my_tests` with `type: "from_dpp"`; no separate `dpps` collection
 
 ## Question Types
 

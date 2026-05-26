@@ -73,8 +73,8 @@ type QuestionEditorProps = {
   setFormReferenceAnswer: (value: string) => void;
   formReferenceKeywords: string;
   setFormReferenceKeywords: (value: string) => void;
-  formReferenceAnswerFileUrl: string;
-  setFormReferenceAnswerFileUrl: (value: string) => void;
+  formReferenceAnswerFileUrls: string[];
+  setFormReferenceAnswerFileUrls: (value: string[]) => void;
   formEvaluationInstructions: string;
   setFormEvaluationInstructions: (value: string) => void;
 };
@@ -95,48 +95,60 @@ function getPublishStatusLabel(isActive?: boolean) {
   return isActive !== false ? "Published" : "Draft";
 }
 
+const MAX_REFERENCE_IMAGES = 5;
+
 function UploadReferenceSection({
   formReferenceAnswer,
   setFormReferenceAnswer,
-  formReferenceAnswerFileUrl,
-  setFormReferenceAnswerFileUrl,
+  formReferenceAnswerFileUrls,
+  setFormReferenceAnswerFileUrls,
   formEvaluationInstructions,
   setFormEvaluationInstructions,
 }: {
   formReferenceAnswer: string;
   setFormReferenceAnswer: (v: string) => void;
-  formReferenceAnswerFileUrl: string;
-  setFormReferenceAnswerFileUrl: (v: string) => void;
+  formReferenceAnswerFileUrls: string[];
+  setFormReferenceAnswerFileUrls: (v: string[]) => void;
   formEvaluationInstructions: string;
   setFormEvaluationInstructions: (v: string) => void;
 }) {
   const [uploading, setUploading] = useState(false);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("File too large. Max 10MB.");
-      return;
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const remaining = MAX_REFERENCE_IMAGES - formReferenceAnswerFileUrls.length;
+    const toUpload = files.slice(0, remaining);
+    for (const file of toUpload) {
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error(`${file.name}: File too large. Max 10MB.`);
+        continue;
+      }
+      try {
+        setUploading(true);
+        const { url } = await uploadToImageKit(
+          file,
+          `ref_answer_${Date.now()}.${file.name.split(".").pop()}`,
+          "/test-reference-answers",
+          "website"
+        );
+        setFormReferenceAnswerFileUrls([...formReferenceAnswerFileUrls, url]);
+        toast.success("Reference image uploaded");
+      } catch (err) {
+        console.error(err);
+        toast.error("Upload failed. Please try again.");
+      } finally {
+        setUploading(false);
+      }
     }
-    try {
-      setUploading(true);
-      const { url } = await uploadToImageKit(
-        file,
-        `ref_answer_${Date.now()}.${file.name.split(".").pop()}`,
-        "/test-reference-answers",
-        "website"
-      );
-      setFormReferenceAnswerFileUrl(url);
-      toast.success("Reference image uploaded");
-    } catch (err) {
-      console.error(err);
-      toast.error("Upload failed. Please try again.");
-    } finally {
-      setUploading(false);
-      e.target.value = "";
-    }
+    e.target.value = "";
   };
+
+  const removeImage = (idx: number) => {
+    setFormReferenceAnswerFileUrls(formReferenceAnswerFileUrls.filter((_, i) => i !== idx));
+  };
+
+  const canAddMore = formReferenceAnswerFileUrls.length < MAX_REFERENCE_IMAGES;
 
   return (
     <div className="space-y-4">
@@ -158,27 +170,34 @@ function UploadReferenceSection({
       </div>
       <div className="space-y-2">
         <Label>
-          Reference Answer Image{" "}
-          <span className="font-normal text-muted-foreground">(optional)</span>
+          Reference Answer Images{" "}
+          <span className="font-normal text-muted-foreground">
+            (optional, up to {MAX_REFERENCE_IMAGES})
+          </span>
         </Label>
-        {formReferenceAnswerFileUrl ? (
-          <div className="relative inline-block rounded-xl border border-border p-2">
-            <img
-              src={formReferenceAnswerFileUrl}
-              alt="Reference"
-              className="max-h-48 rounded-lg object-contain"
-            />
-            <Button
-              type="button"
-              variant="destructive"
-              size="icon"
-              className="absolute right-1 top-1 h-6 w-6 rounded-full"
-              onClick={() => setFormReferenceAnswerFileUrl("")}
-            >
-              <Trash2 className="h-3 w-3" />
-            </Button>
+        {formReferenceAnswerFileUrls.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {formReferenceAnswerFileUrls.map((url, idx) => (
+              <div key={idx} className="relative rounded-xl border border-border p-2">
+                <img
+                  src={url}
+                  alt={`Reference ${idx + 1}`}
+                  className="max-h-40 max-w-[160px] rounded-lg object-contain"
+                />
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="icon"
+                  className="absolute right-1 top-1 h-6 w-6 rounded-full"
+                  onClick={() => removeImage(idx)}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
           </div>
-        ) : (
+        )}
+        {canAddMore && (
           <label
             className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 border-dashed px-4 py-3 transition-colors ${
               uploading
@@ -192,11 +211,16 @@ function UploadReferenceSection({
               <ImagePlus className="h-5 w-5 text-muted-foreground" />
             )}
             <span className="text-sm text-muted-foreground">
-              {uploading ? "Uploading..." : "Click to upload reference image (JPG, PNG)"}
+              {uploading
+                ? "Uploading..."
+                : formReferenceAnswerFileUrls.length > 0
+                  ? `Add more images (${formReferenceAnswerFileUrls.length}/${MAX_REFERENCE_IMAGES})`
+                  : "Click to upload reference images (JPG, PNG)"}
             </span>
             <input
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
               disabled={uploading}
               onChange={handleFileUpload}
@@ -261,8 +285,8 @@ const QuestionEditor = (props: QuestionEditorProps) => {
     setFormReferenceAnswer,
     formReferenceKeywords,
     setFormReferenceKeywords,
-    formReferenceAnswerFileUrl,
-    setFormReferenceAnswerFileUrl,
+    formReferenceAnswerFileUrls,
+    setFormReferenceAnswerFileUrls,
     formEvaluationInstructions,
     setFormEvaluationInstructions,
   } = props;
@@ -497,8 +521,8 @@ const QuestionEditor = (props: QuestionEditorProps) => {
             <UploadReferenceSection
               formReferenceAnswer={formReferenceAnswer}
               setFormReferenceAnswer={setFormReferenceAnswer}
-              formReferenceAnswerFileUrl={formReferenceAnswerFileUrl}
-              setFormReferenceAnswerFileUrl={setFormReferenceAnswerFileUrl}
+              formReferenceAnswerFileUrls={formReferenceAnswerFileUrls}
+              setFormReferenceAnswerFileUrls={setFormReferenceAnswerFileUrls}
               formEvaluationInstructions={formEvaluationInstructions}
               setFormEvaluationInstructions={setFormEvaluationInstructions}
             />

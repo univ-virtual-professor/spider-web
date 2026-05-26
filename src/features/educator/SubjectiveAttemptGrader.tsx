@@ -54,11 +54,32 @@ type QuestionDoc = {
   questionText?: string;
   questionType?: string;
   referenceAnswer?: string;
-  referenceAnswerFileUrl?: string;
+  referenceAnswerFileUrl?: string; // legacy
+  referenceAnswerFileUrls?: string[]; // multi-image
   referenceKeywords?: string[];
   evaluationInstructions?: string;
   marks?: { correct: number; incorrect: number };
 };
+
+function getRefImageUrls(q: QuestionDoc | undefined): string[] {
+  if (!q) return [];
+  if (q.referenceAnswerFileUrls?.length) return q.referenceAnswerFileUrls.filter(Boolean);
+  if (q.referenceAnswerFileUrl) return [q.referenceAnswerFileUrl];
+  return [];
+}
+
+function getAnswerImageUrls(answer: string | undefined): string[] {
+  if (!answer) return [];
+  if (answer.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(answer);
+      if (Array.isArray(parsed))
+        return parsed.filter((u): u is string => typeof u === "string" && u.startsWith("https://"));
+    } catch {}
+  }
+  if (answer.startsWith("http")) return [answer];
+  return [];
+}
 
 type ReviewState = {
   score: string;
@@ -293,7 +314,9 @@ export default function SubjectiveAttemptGrader() {
             const state = reviewStates[qId];
             const conf = ai?.confidence ?? 0;
             const confMeta = confidenceLabel(conf);
-            const isImageAnswer = typeof resp.answer === "string" && resp.answer.startsWith("http");
+            const studentImageUrls = getAnswerImageUrls(resp.answer);
+            const isImageAnswer = studentImageUrls.length > 0;
+            const refImageUrls = getRefImageUrls(q);
 
             if (!state) return null;
 
@@ -338,13 +361,17 @@ export default function SubjectiveAttemptGrader() {
                       </p>
                       <div className="min-h-[100px] rounded-lg border border-border/50 p-3">
                         {isImageAnswer ? (
-                          <a href={resp.answer} target="_blank" rel="noopener noreferrer">
-                            <img
-                              src={resp.answer}
-                              alt="Student answer"
-                              className="max-h-72 w-full rounded object-contain"
-                            />
-                          </a>
+                          <div className="flex flex-wrap gap-2">
+                            {studentImageUrls.map((imgUrl, imgIdx) => (
+                              <a key={imgIdx} href={imgUrl} target="_blank" rel="noopener noreferrer">
+                                <img
+                                  src={imgUrl}
+                                  alt={`Student answer ${imgIdx + 1}`}
+                                  className="max-h-56 max-w-[180px] rounded object-contain border border-border/50"
+                                />
+                              </a>
+                            ))}
+                          </div>
                         ) : resp.answer ? (
                           <p className="text-sm">{resp.answer}</p>
                         ) : (
@@ -359,25 +386,26 @@ export default function SubjectiveAttemptGrader() {
                         Reference Answer
                       </p>
                       <div className="min-h-[100px] rounded-lg border border-border/50 p-3">
-                        {q?.referenceAnswer ? (
-                          <p className="text-sm">{q.referenceAnswer}</p>
-                        ) : q?.referenceAnswerFileUrl ? (
-                          <a
-                            href={q.referenceAnswerFileUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          >
-                            <img
-                              src={q.referenceAnswerFileUrl}
-                              alt="Reference answer"
-                              className="max-h-72 w-full rounded object-contain"
-                            />
-                          </a>
-                        ) : (
+                        {q?.referenceAnswer && (
+                          <p className="text-sm mb-2">{q.referenceAnswer}</p>
+                        )}
+                        {refImageUrls.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {refImageUrls.map((imgUrl, imgIdx) => (
+                              <a key={imgIdx} href={imgUrl} target="_blank" rel="noopener noreferrer">
+                                <img
+                                  src={imgUrl}
+                                  alt={`Reference answer ${imgIdx + 1}`}
+                                  className="max-h-56 max-w-[180px] rounded object-contain border border-border/50"
+                                />
+                              </a>
+                            ))}
+                          </div>
+                        ) : !q?.referenceAnswer ? (
                           <p className="text-sm italic text-muted-foreground">
                             No reference answer provided
                           </p>
-                        )}
+                        ) : null}
                         {q?.referenceKeywords?.length ? (
                           <p className="mt-2 text-xs text-muted-foreground">
                             Keywords: {q.referenceKeywords.join(", ")}

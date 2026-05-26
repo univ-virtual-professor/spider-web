@@ -8,10 +8,12 @@ interface EvaluationRequest {
   questionText: string;
   questionType: "SHORT_ANSWER" | "UPLOAD";
   referenceAnswer?: string;
-  referenceAnswerImageUrl?: string;
+  referenceAnswerImageUrl?: string; // legacy single image
+  referenceAnswerImageUrls?: string[]; // multiple images (preferred)
   referenceKeywords?: string[];
   evaluationInstructions?: string;
-  studentAnswer: string; // text for short_answer, imageUrl for upload
+  studentAnswer: string; // text for short_answer; unused for UPLOAD when studentAnswerImageUrls provided
+  studentAnswerImageUrls?: string[]; // for UPLOAD type: multiple images
   maxScore: number;
 }
 
@@ -116,12 +118,24 @@ async function fetchImageInlinePart(url: string, label: string) {
   };
 }
 
+function resolveReferenceImageUrls(req: EvaluationRequest): string[] {
+  if (req.referenceAnswerImageUrls?.length) return req.referenceAnswerImageUrls.filter(Boolean);
+  if (req.referenceAnswerImageUrl) return [req.referenceAnswerImageUrl];
+  return [];
+}
+
+function resolveStudentImageUrls(req: EvaluationRequest): string[] {
+  if (req.studentAnswerImageUrls?.length) return req.studentAnswerImageUrls.filter(Boolean);
+  if (req.questionType === "UPLOAD" && req.studentAnswer?.startsWith("https://")) return [req.studentAnswer];
+  return [];
+}
+
 async function buildRequestParts(req: EvaluationRequest) {
   const referenceAnswer = String(req.referenceAnswer || "").trim();
   const hasReferenceText = Boolean(referenceAnswer);
-  const hasReferenceImage = Boolean(String(req.referenceAnswerImageUrl || "").trim());
-  const hasStudentImage =
-    req.questionType === "UPLOAD" && Boolean(String(req.studentAnswer || "").trim());
+  const referenceImageUrls = resolveReferenceImageUrls(req);
+  const studentImageUrls = resolveStudentImageUrls(req);
+  const hasStudentImages = req.questionType === "UPLOAD" && studentImageUrls.length > 0;
 
   const lines = [
     "EVALUATE THIS STUDENT ANSWER:",
@@ -132,8 +146,8 @@ async function buildRequestParts(req: EvaluationRequest) {
     `Reference Answer: ${hasReferenceText ? referenceAnswer : "(not provided)"}`,
   ];
 
-  if (hasReferenceImage) {
-    lines.push("Reference Answer Image is attached.");
+  if (referenceImageUrls.length > 0) {
+    lines.push(`Reference Answer: ${referenceImageUrls.length} image(s) attached.`);
   }
 
   if (req.referenceKeywords?.length) {
@@ -148,7 +162,9 @@ async function buildRequestParts(req: EvaluationRequest) {
 
   if (req.questionType === "UPLOAD") {
     lines.push(
-      hasStudentImage ? "Student Answer Image is attached." : "Student Answer Image: (not provided)"
+      hasStudentImages
+        ? `Student Answer: ${studentImageUrls.length} image(s) attached.`
+        : "Student Answer Image: (not provided)"
     );
   } else {
     lines.push(`Student Answer: ${req.studentAnswer}`);
@@ -164,33 +180,31 @@ async function buildRequestParts(req: EvaluationRequest) {
 
   const parts: any[] = [lines.join("\n")];
 
-  if (hasReferenceImage) {
+  for (let i = 0; i < referenceImageUrls.length; i++) {
     try {
-      const referenceImagePart = await fetchImageInlinePart(
-        req.referenceAnswerImageUrl || "",
-        "reference"
-      );
-      if (referenceImagePart) parts.push(referenceImagePart);
+      const part = await fetchImageInlinePart(referenceImageUrls[i], `reference ${i + 1}`);
+      if (part) parts.push(part);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[evaluate-subjective] Reference image skipped: ${msg}`);
+      console.warn(`[evaluate-subjective] Reference image ${i + 1} skipped: ${msg}`);
     }
   }
 
-  if (hasStudentImage) {
+  for (let i = 0; i < studentImageUrls.length; i++) {
     try {
-      const studentImagePart = await fetchImageInlinePart(req.studentAnswer || "", "student");
-      if (studentImagePart) parts.push(studentImagePart);
+      const part = await fetchImageInlinePart(studentImageUrls[i], `student ${i + 1}`);
+      if (part) parts.push(part);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.warn(`[evaluate-subjective] Student image skipped: ${msg}`);
+      console.warn(`[evaluate-subjective] Student image ${i + 1} skipped: ${msg}`);
       void sendDiscordEmbed("warning", "⚠️ Student image could not be loaded", [
         { name: "Question ID", value: req.questionId, inline: true },
+        { name: "Image #", value: String(i + 1), inline: true },
         { name: "Reason", value: msg, inline: true },
-        { name: "URL", value: req.studentAnswer.slice(0, 200) },
+        { name: "URL", value: studentImageUrls[i].slice(0, 200) },
       ]);
       parts.push(
-        `Note: Student uploaded an image answer but it could not be loaded (${msg}). Evaluate based on available context; award 0 if the answer cannot be assessed.`
+        `Note: Student image ${i + 1} could not be loaded (${msg}). Evaluate based on available context.`
       );
     }
   }

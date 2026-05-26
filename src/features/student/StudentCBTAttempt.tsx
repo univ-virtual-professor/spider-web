@@ -82,6 +82,23 @@ type AttemptResponse = {
   };
 };
 
+function getStudentImageUrls(answer: string | null | undefined): string[] {
+  if (!answer) return [];
+  if (answer.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(answer);
+      if (Array.isArray(parsed))
+        return parsed.filter((u): u is string => typeof u === "string" && u.startsWith("https://"));
+    } catch {}
+  }
+  if (answer.startsWith("https://")) return [answer];
+  return [];
+}
+
+function isImageAnswer(answer: string | null | undefined): boolean {
+  return getStudentImageUrls(answer).length > 0;
+}
+
 type AttemptQuestion = {
   id: string;
   sectionId: string;
@@ -91,7 +108,7 @@ type AttemptQuestion = {
   correctAnswer?: string;
   referenceAnswer?: string;
   referenceKeywords?: string[];
-  referenceAnswerFileUrl?: string;
+  referenceAnswerFileUrls?: string[]; // multiple images (preferred)
   evaluationInstructions?: string;
   explanation?: string;
   marks: { correct: number; incorrect: number };
@@ -195,7 +212,11 @@ const mapQuestion = (id: string, data: any): AttemptQuestion => {
       mappedType === "mcq" || mappedType === "integer" ? String(correctIndex) : undefined,
     referenceAnswer: data.referenceAnswer || "",
     referenceKeywords: Array.isArray(data.referenceKeywords) ? data.referenceKeywords : [],
-    referenceAnswerFileUrl: data.referenceAnswerFileUrl ? String(data.referenceAnswerFileUrl) : "",
+    referenceAnswerFileUrls: Array.isArray(data.referenceAnswerFileUrls)
+      ? data.referenceAnswerFileUrls.filter(Boolean).map(String)
+      : data.referenceAnswerFileUrl
+        ? [String(data.referenceAnswerFileUrl)]
+        : [],
     evaluationInstructions: data.evaluationInstructions ? String(data.evaluationInstructions) : "",
     explanation: data.explanation || "",
     marks: { correct: positive, incorrect: negative },
@@ -274,6 +295,7 @@ export default function StudentCBTAttempt() {
   const [timerStartSeconds, setTimerStartSeconds] = useState(0);
 
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [uploadingSubjectiveImage, setUploadingSubjectiveImage] = useState(false);
   const [mobilePaletteOpen, setMobilePaletteOpen] = useState(false);
 
   // Proctoring state
@@ -1092,19 +1114,23 @@ export default function StudentCBTAttempt() {
         await exitFullscreenSafe();
 
         try {
-          const evaluations = subjectiveToEvaluate.map((q) => ({
+          const evaluations = subjectiveToEvaluate.map((q) => {
+            const rawAnswer = String(submissionResponses[q.id]?.answer || "");
+            const imgUrls = getStudentImageUrls(rawAnswer);
+            const isUpload = imgUrls.length > 0;
+            return {
             questionId: q.id,
             questionText: q.stem,
-            questionType: String(submissionResponses[q.id]?.answer || "").startsWith("https://")
-              ? ("UPLOAD" as const)
-              : ("SHORT_ANSWER" as const),
+            questionType: isUpload ? ("UPLOAD" as const) : ("SHORT_ANSWER" as const),
             referenceAnswer: q.referenceAnswer || "",
             referenceKeywords: q.referenceKeywords || [],
-            referenceAnswerImageUrl: q.referenceAnswerFileUrl || "",
+            referenceAnswerImageUrls: q.referenceAnswerFileUrls || [],
             evaluationInstructions: q.evaluationInstructions || "",
-            studentAnswer: String(submissionResponses[q.id]?.answer || ""),
+            studentAnswer: isUpload ? "" : rawAnswer,
+            studentAnswerImageUrls: isUpload ? imgUrls : undefined,
             maxScore: safeNumber(q.marks.correct, 5),
-          }));
+            };
+          });
 
           setEvaluationProgress(
             `AI is analyzing your answers... (0/${subjectiveToEvaluate.length})`
@@ -2328,18 +2354,18 @@ export default function StudentCBTAttempt() {
               {/* Short Answer type — text OR image upload */}
               {currentQuestion.type === "short_answer" &&
                 (() => {
-                  const isImageAnswer = Boolean(
-                    selectedAnswer &&
-                    selectedAnswer !== "__uploading__" &&
-                    selectedAnswer.startsWith("https://")
-                  );
-                  const isUploading = saving && selectedAnswer === "__uploading__";
+                  const uploadedImages =
+                    selectedAnswer && selectedAnswer !== "__uploading__"
+                      ? getStudentImageUrls(selectedAnswer)
+                      : [];
+                  const hasImages = uploadedImages.length > 0;
+                  const isUploading = uploadingSubjectiveImage;
                   return (
                     <div
                       style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 12 }}
                     >
-                      {/* Text input — hidden when an image is uploaded */}
-                      {!isImageAnswer && (
+                      {/* Text input — hidden when images are uploaded */}
+                      {!hasImages && (
                         <div>
                           <div
                             style={{
@@ -2354,7 +2380,7 @@ export default function StudentCBTAttempt() {
                           </div>
                           <textarea
                             placeholder="Type your answer here..."
-                            value={selectedAnswer === "__uploading__" ? "" : selectedAnswer || ""}
+                            value={selectedAnswer || ""}
                             onChange={(e) => handleSelectOption(e.target.value)}
                             disabled={!isStarted || isUploading}
                             rows={6}
@@ -2382,24 +2408,18 @@ export default function StudentCBTAttempt() {
                               Write a clear, complete answer. This will be evaluated by AI.
                             </span>
                             <span style={{ fontSize: 11, color: "#9ca3af" }}>
-                              {
-                                (selectedAnswer && !selectedAnswer.startsWith("https://")
-                                  ? selectedAnswer
-                                  : ""
-                                ).length
-                              }{" "}
-                              chars
+                              {(selectedAnswer || "").length} chars
                             </span>
                           </div>
                         </div>
                       )}
 
                       {/* Divider */}
-                      {!isImageAnswer && (
+                      {!hasImages && (
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
                           <span style={{ fontSize: 11, color: "#9ca3af", whiteSpace: "nowrap" }}>
-                            OR upload an image
+                            OR upload images
                           </span>
                           <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
                         </div>
@@ -2407,56 +2427,193 @@ export default function StudentCBTAttempt() {
 
                       {/* Image upload */}
                       <div>
-                        {isImageAnswer ? (
+                        {hasImages ? (
                           <div>
                             <div
                               style={{
                                 fontSize: 12,
                                 fontWeight: 700,
                                 color: "#6b7280",
-                                marginBottom: 6,
+                                marginBottom: 8,
                                 textTransform: "uppercase",
                               }}
                             >
-                              Uploaded Answer :
+                              Uploaded Answer ({uploadedImages.length}/5) :
                             </div>
-                            <div style={{ position: "relative", display: "inline-block" }}>
-                              <img
-                                src={selectedAnswer!}
-                                alt="Uploaded answer"
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+                              {uploadedImages.map((imgUrl, imgIdx) => (
+                                <div key={imgIdx} style={{ position: "relative", display: "inline-block" }}>
+                                  <img
+                                    src={imgUrl}
+                                    alt={`Answer ${imgIdx + 1}`}
+                                    style={{
+                                      maxWidth: 160,
+                                      maxHeight: 160,
+                                      borderRadius: 8,
+                                      border: "1.5px solid #d1d5db",
+                                      objectFit: "contain",
+                                      display: "block",
+                                    }}
+                                  />
+                                  <button
+                                    onClick={() => {
+                                      const next = uploadedImages.filter((_, i) => i !== imgIdx);
+                                      handleSelectOption(next.length ? JSON.stringify(next) : "");
+                                    }}
+                                    disabled={!isStarted}
+                                    style={{
+                                      position: "absolute",
+                                      top: 4,
+                                      right: 4,
+                                      background: "#ef4444",
+                                      color: "#fff",
+                                      border: "none",
+                                      borderRadius: "50%",
+                                      width: 24,
+                                      height: 24,
+                                      fontSize: 12,
+                                      cursor: "pointer",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                    }}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                            {uploadingSubjectiveImage && (
+                              <div
                                 style={{
-                                  maxWidth: "100%",
-                                  maxHeight: 300,
-                                  borderRadius: 8,
-                                  border: "1.5px solid #d1d5db",
-                                  objectFit: "contain",
-                                }}
-                              />
-                              <button
-                                onClick={() => handleSelectOption("")}
-                                disabled={!isStarted}
-                                style={{
-                                  position: "absolute",
-                                  top: 4,
-                                  right: 4,
-                                  background: "#ef4444",
-                                  color: "#fff",
-                                  border: "none",
-                                  borderRadius: "50%",
-                                  width: 28,
-                                  height: 28,
-                                  fontSize: 14,
-                                  cursor: "pointer",
                                   display: "flex",
                                   alignItems: "center",
-                                  justifyContent: "center",
+                                  gap: 8,
+                                  padding: "8px 12px",
+                                  borderRadius: 8,
+                                  background: "#eef2ff",
+                                  marginBottom: 8,
                                 }}
                               >
-                                ✕
-                              </button>
-                            </div>
+                                <div
+                                  style={{
+                                    width: 20,
+                                    height: 20,
+                                    borderRadius: "50%",
+                                    border: "2px solid #c7d2fe",
+                                    borderTopColor: "#6366f1",
+                                    animation: "cbt-eval-spin 0.8s linear infinite",
+                                    flexShrink: 0,
+                                  }}
+                                />
+                                <span style={{ fontSize: 12, color: "#6366f1" }}>Uploading...</span>
+                              </div>
+                            )}
+                            {uploadedImages.length < 5 && !uploadingSubjectiveImage && (
+                              <div style={{ display: "flex", gap: 8 }}>
+                                <label
+                                  style={{
+                                    flex: 1,
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    padding: "10px 8px",
+                                    border: "2px dashed #d1d5db",
+                                    borderRadius: 10,
+                                    cursor: isStarted ? "pointer" : "not-allowed",
+                                    background: "#f9fafb",
+                                    gap: 4,
+                                  }}
+                                  onClick={() => {
+                                    if (!isStarted) return;
+                                    resumeFullscreenRef.current = Boolean(document.fullscreenElement);
+                                    ignoreProctoringRef.current = true;
+                                  }}
+                                >
+                                  <Camera size={18} style={{ color: "#6b7280" }} />
+                                  <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>Add Photo</span>
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    disabled={!isStarted}
+                                    style={{ display: "none" }}
+                                    onChange={async (e) => {
+                                      ignoreProctoringRef.current = false;
+                                      const file = e.target.files?.[0];
+                                      e.target.value = "";
+                                      if (!file) return;
+                                      if (file.size > 10 * 1024 * 1024) { toast.error("File too large. Max 10MB."); return; }
+                                      if (!file.type.startsWith("image/")) { toast.error("Only image files are allowed."); return; }
+                                      try {
+                                        setUploadingSubjectiveImage(true);
+                                        const prev = getStudentImageUrls(selectedAnswer);
+                                        const { url } = await uploadToImageKit(file, `student_ans_${currentQuestion.id}_${Date.now()}.${file.name.split(".").pop() || "jpg"}`, "/student-answers", "student");
+                                        handleSelectOption(JSON.stringify([...prev, url]));
+                                        toast.success("Image added");
+                                      } catch (err: any) {
+                                        console.error("[StudentCBT] Upload failed:", err);
+                                        toast.error(err?.message || "Upload failed. Please try again.");
+                                      } finally {
+                                        setUploadingSubjectiveImage(false);
+                                      }
+                                    }}
+                                  />
+                                </label>
+                                <label
+                                  style={{
+                                    flex: 1,
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    padding: "10px 8px",
+                                    border: "2px dashed #d1d5db",
+                                    borderRadius: 10,
+                                    cursor: isStarted ? "pointer" : "not-allowed",
+                                    background: "#f9fafb",
+                                    gap: 4,
+                                  }}
+                                  onClick={() => {
+                                    if (!isStarted) return;
+                                    resumeFullscreenRef.current = Boolean(document.fullscreenElement);
+                                    ignoreProctoringRef.current = true;
+                                  }}
+                                >
+                                  <Upload size={18} style={{ color: "#9ca3af" }} />
+                                  <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>Add Image</span>
+                                  <input
+                                    type="file"
+                                    accept="image/jpeg,image/png,image/webp"
+                                    disabled={!isStarted}
+                                    style={{ display: "none" }}
+                                    onChange={async (e) => {
+                                      ignoreProctoringRef.current = false;
+                                      const file = e.target.files?.[0];
+                                      e.target.value = "";
+                                      if (!file) return;
+                                      if (file.size > 10 * 1024 * 1024) { toast.error("File too large. Max 10MB."); return; }
+                                      if (!file.type.startsWith("image/")) { toast.error("Only image files are allowed."); return; }
+                                      try {
+                                        setUploadingSubjectiveImage(true);
+                                        const prev = getStudentImageUrls(selectedAnswer);
+                                        const { url } = await uploadToImageKit(file, `student_ans_${currentQuestion.id}_${Date.now()}.${file.name.split(".").pop() || "jpg"}`, "/student-answers", "student");
+                                        handleSelectOption(JSON.stringify([...prev, url]));
+                                        toast.success("Image added");
+                                      } catch (err: any) {
+                                        console.error("[StudentCBT] Upload failed:", err);
+                                        toast.error(err?.message || "Upload failed. Please try again.");
+                                      } finally {
+                                        setUploadingSubjectiveImage(false);
+                                      }
+                                    }}
+                                  />
+                                </label>
+                              </div>
+                            )}
                             <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
-                              Clear the image to type a text answer instead.
+                              Remove all images to type a text answer instead.
                             </div>
                           </div>
                         ) : isUploading ? (
@@ -2535,22 +2692,20 @@ export default function StudentCBTAttempt() {
                                     return;
                                   }
                                   try {
-                                    handleSelectOption("__uploading__");
-                                    setSaving(true);
+                                    setUploadingSubjectiveImage(true);
                                     const { url } = await uploadToImageKit(
                                       file,
                                       `student_ans_${currentQuestion.id}_${Date.now()}.${file.name.split(".").pop() || "jpg"}`,
                                       "/student-answers",
                                       "student"
                                     );
-                                    handleSelectOption(url);
+                                    handleSelectOption(JSON.stringify([url]));
                                     toast.success("Image uploaded successfully");
                                   } catch (err: any) {
                                     console.error("[StudentCBT] Upload failed:", err);
-                                    handleSelectOption("");
                                     toast.error(err?.message || "Upload failed. Please try again.");
                                   } finally {
-                                    setSaving(false);
+                                    setUploadingSubjectiveImage(false);
                                   }
                                 }}
                               />
@@ -2603,22 +2758,20 @@ export default function StudentCBTAttempt() {
                                     return;
                                   }
                                   try {
-                                    handleSelectOption("__uploading__");
-                                    setSaving(true);
+                                    setUploadingSubjectiveImage(true);
                                     const { url } = await uploadToImageKit(
                                       file,
                                       `student_ans_${currentQuestion.id}_${Date.now()}.${file.name.split(".").pop() || "jpg"}`,
                                       "/student-answers",
                                       "student"
                                     );
-                                    handleSelectOption(url);
+                                    handleSelectOption(JSON.stringify([url]));
                                     toast.success("Image uploaded successfully");
                                   } catch (err: any) {
                                     console.error("[StudentCBT] Upload failed:", err);
-                                    handleSelectOption("");
                                     toast.error(err?.message || "Upload failed. Please try again.");
                                   } finally {
-                                    setSaving(false);
+                                    setUploadingSubjectiveImage(false);
                                   }
                                 }}
                               />

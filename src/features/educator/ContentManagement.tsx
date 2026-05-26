@@ -152,6 +152,7 @@ export default function ContentManagement() {
   >([]);
   const [selectedBatchId, setSelectedBatchId] = useState("all");
   const [selectedBatches, setSelectedBatches] = useState<string[]>([]);
+  const [modalCourseId, setModalCourseId] = useState("");
 
   const [content, setContent] = useState<ContentItem[]>([]);
   const [contentLoading, setContentLoading] = useState(false);
@@ -329,25 +330,35 @@ export default function ContentManagement() {
       const allowedSubjectIds = subjectSnap.docs.map((d) => d.id);
       setAdminItems(all.filter((i) => allowedSubjectIds.includes(i.subjectId)));
     }
-    setTargetBranchId(selectedBranchId === "all" ? "" : selectedBranchId);
-    setSelectedBatches([]);
+    const initBranch =
+      selectedBranchId !== "all" ? selectedBranchId : branches.length === 1 ? branches[0].id : "";
+    setTargetBranchId(initBranch);
+
+    const branchCourses = courses.filter((c) => c.branchId === initBranch);
+    const initCourse =
+      selectedCourseId !== "all"
+        ? selectedCourseId
+        : branchCourses.length === 1
+          ? branchCourses[0].id
+          : "";
+    setModalCourseId(initCourse);
+
+    const courseBatches = batches.filter((b) => b.courseId === initCourse);
+    setSelectedBatches(initCourse && courseBatches.length === 1 ? [courseBatches[0].id] : []);
+
     setImportOpen(true);
   }
 
   async function handleImport(item: AdminLibraryItem) {
-    const branchIdToUse = selectedBranchId === "all" ? targetBranchId : selectedBranchId;
+    const branchIdToUse = selectedBranchId !== "all" ? selectedBranchId : targetBranchId;
     if (!branchIdToUse) return toast.error("Select a branch");
 
-    const courseIdToUse =
-      selectedCourseId && selectedCourseId !== "all"
-        ? selectedCourseId
-        : courses.find((c) => c.branchId === branchIdToUse)?.id;
+    const courseIdToUse = modalCourseId;
+    if (!courseIdToUse) return toast.error("Select a program");
 
-    if (!courseIdToUse) return toast.error("No program found for this branch");
-
-    const branchBatches = batches.filter((b) => b.branchId === branchIdToUse);
+    const courseBatches = batches.filter((b) => b.courseId === courseIdToUse);
     const finalSharingScope =
-      branchBatches.length > 1 && selectedBatches.length > 0 ? "batch" : "branch";
+      courseBatches.length > 0 && selectedBatches.length > 0 ? "batch" : "branch";
 
     setImportBusy(true);
     try {
@@ -395,27 +406,53 @@ export default function ContentManagement() {
     }
   }
 
+  function cascadeModalBranch(branchId: string) {
+    setTargetBranchId(branchId);
+    const branchCourses = courses.filter((c) => c.branchId === branchId);
+    const autoCourse = branchCourses.length === 1 ? branchCourses[0].id : "";
+    setModalCourseId(autoCourse);
+    const courseBatches = batches.filter((b) => b.courseId === autoCourse);
+    setSelectedBatches(autoCourse && courseBatches.length === 1 ? [courseBatches[0].id] : []);
+  }
+
+  function cascadeModalCourse(courseId: string) {
+    setModalCourseId(courseId);
+    const courseBatches = batches.filter((b) => b.courseId === courseId);
+    setSelectedBatches(courseBatches.length === 1 ? [courseBatches[0].id] : []);
+  }
+
   function openUpload() {
     setFile(null);
     setTitle("");
     setDescription("");
     setType("note");
     if (fileRef.current) fileRef.current.value = "";
-    setTargetBranchId(selectedBranchId === "all" ? "" : selectedBranchId);
-    setSelectedBatches([]);
+
+    const initBranch =
+      selectedBranchId !== "all" ? selectedBranchId : branches.length === 1 ? branches[0].id : "";
+    setTargetBranchId(initBranch);
+
+    const branchCourses = courses.filter((c) => c.branchId === initBranch);
+    const initCourse =
+      selectedCourseId !== "all"
+        ? selectedCourseId
+        : branchCourses.length === 1
+          ? branchCourses[0].id
+          : "";
+    setModalCourseId(initCourse);
+
+    const courseBatches = batches.filter((b) => b.courseId === initCourse);
+    setSelectedBatches(initCourse && courseBatches.length === 1 ? [courseBatches[0].id] : []);
+
     setUploadOpen(true);
   }
 
   async function handleUpload() {
-    const branchIdToUse = selectedBranchId === "all" ? targetBranchId : selectedBranchId;
+    const branchIdToUse = selectedBranchId !== "all" ? selectedBranchId : targetBranchId;
     if (!branchIdToUse) return toast.error("Select a branch");
 
-    const courseIdToUse =
-      selectedCourseId && selectedCourseId !== "all"
-        ? selectedCourseId
-        : courses.find((c) => c.branchId === branchIdToUse)?.id;
-
-    if (!courseIdToUse) return toast.error("No program found for this branch");
+    const courseIdToUse = modalCourseId;
+    if (!courseIdToUse) return toast.error("Select a program");
 
     if (!title.trim()) return toast.error("Title required");
     if (!file) return toast.error("File required");
@@ -434,9 +471,9 @@ export default function ContentManagement() {
         "content"
       );
 
-      const branchBatches = batches.filter((b) => b.branchId === branchIdToUse);
+      const courseBatches = batches.filter((b) => b.courseId === courseIdToUse);
       const finalSharingScope =
-        branchBatches.length > 1 && selectedBatches.length > 0 ? "batch" : "branch";
+        courseBatches.length > 0 && selectedBatches.length > 0 ? "batch" : "branch";
 
       const ref = await addDoc(
         collection(
@@ -593,7 +630,7 @@ export default function ContentManagement() {
             value={selectedBranchId}
             onValueChange={(v) => {
               setSelectedBranchId(v);
-              setSelectedCourseId("");
+              setSelectedCourseId("all");
               setSelectedBatchId("all");
             }}
           >
@@ -652,6 +689,22 @@ export default function ContentManagement() {
                 ))}
             </SelectContent>
           </Select>
+
+          {(selectedBranchId !== "all" ||
+            selectedCourseId !== "all" ||
+            selectedBatchId !== "all") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSelectedBranchId("all");
+                setSelectedCourseId("all");
+                setSelectedBatchId("all");
+              }}
+            >
+              Reset
+            </Button>
+          )}
         </CardContent>
       </Card>
 
@@ -778,8 +831,8 @@ export default function ContentManagement() {
           <div className="space-y-4">
             {branches.length > 1 && selectedBranchId === "all" && (
               <div className="space-y-1">
-                <Label>Choose Branch</Label>
-                <Select value={targetBranchId} onValueChange={setTargetBranchId}>
+                <Label>Branch</Label>
+                <Select value={targetBranchId} onValueChange={cascadeModalBranch}>
                   <SelectTrigger>
                     <SelectValue placeholder="Choose a branch" />
                   </SelectTrigger>
@@ -795,31 +848,52 @@ export default function ContentManagement() {
             )}
 
             {(() => {
-              const branchIdToUse = selectedBranchId === "all" ? targetBranchId : selectedBranchId;
-              const branchBatches = batches.filter((b) => b.branchId === branchIdToUse);
-
-              if (branchBatches.length > 1) {
-                return (
-                  <div className="space-y-2">
-                    <Label>Choose Batch</Label>
-                    <div className="flex flex-col gap-2 rounded-md border p-3">
-                      {branchBatches.map((b) => (
-                        <label key={b.id} className="flex items-center gap-2">
-                          <Checkbox
-                            checked={selectedBatches.includes(b.id)}
-                            onCheckedChange={(checked) => {
-                              if (checked) setSelectedBatches((prev) => [...prev, b.id]);
-                              else setSelectedBatches((prev) => prev.filter((id) => id !== b.id));
-                            }}
-                          />
-                          <span className="text-sm font-medium">{b.name}</span>
-                        </label>
+              const branchId = selectedBranchId !== "all" ? selectedBranchId : targetBranchId;
+              if (!branchId) return null;
+              const branchCourses = courses.filter((c) => c.branchId === branchId);
+              if (branchCourses.length <= 1) return null;
+              return (
+                <div className="space-y-1">
+                  <Label>Program</Label>
+                  <Select value={modalCourseId} onValueChange={cascadeModalCourse}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a program" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {branchCourses.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
                       ))}
-                    </div>
+                    </SelectContent>
+                  </Select>
+                </div>
+              );
+            })()}
+
+            {(() => {
+              if (!modalCourseId) return null;
+              const courseBatches = batches.filter((b) => b.courseId === modalCourseId);
+              if (courseBatches.length <= 1) return null;
+              return (
+                <div className="space-y-2">
+                  <Label>Batch</Label>
+                  <div className="flex flex-col gap-2 rounded-md border p-3">
+                    {courseBatches.map((b) => (
+                      <label key={b.id} className="flex items-center gap-2">
+                        <Checkbox
+                          checked={selectedBatches.includes(b.id)}
+                          onCheckedChange={(checked) => {
+                            if (checked) setSelectedBatches((prev) => [...prev, b.id]);
+                            else setSelectedBatches((prev) => prev.filter((id) => id !== b.id));
+                          }}
+                        />
+                        <span className="text-sm font-medium">{b.name}</span>
+                      </label>
+                    ))}
                   </div>
-                );
-              }
-              return null;
+                </div>
+              );
             })()}
 
             <div className="space-y-1">
@@ -873,51 +947,72 @@ export default function ContentManagement() {
             <DialogTitle>Import from Admin Library</DialogTitle>
           </DialogHeader>
 
-          {branches.length > 1 && selectedBranchId === "all" && (
-            <div className="mb-4 space-y-1">
-              <Label>Choose Branch</Label>
-              <Select value={targetBranchId} onValueChange={setTargetBranchId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Choose a branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
           <div className="mb-4 space-y-3 border-b pb-4">
-            {(() => {
-              const branchIdToUse = selectedBranchId === "all" ? targetBranchId : selectedBranchId;
-              const branchBatches = batches.filter((b) => b.branchId === branchIdToUse);
+            {branches.length > 1 && selectedBranchId === "all" && (
+              <div className="space-y-1">
+                <Label>Branch</Label>
+                <Select value={targetBranchId} onValueChange={cascadeModalBranch}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a branch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
-              if (branchBatches.length > 1) {
-                return (
-                  <div className="space-y-2">
-                    <Label>Choose Batch</Label>
-                    <div className="flex flex-col gap-2 rounded-md border p-3">
-                      {branchBatches.map((b) => (
-                        <label key={b.id} className="flex items-center gap-2">
-                          <Checkbox
-                            checked={selectedBatches.includes(b.id)}
-                            onCheckedChange={(checked) => {
-                              if (checked) setSelectedBatches((prev) => [...prev, b.id]);
-                              else setSelectedBatches((prev) => prev.filter((id) => id !== b.id));
-                            }}
-                          />
-                          <span className="text-sm font-medium">{b.name}</span>
-                        </label>
+            {(() => {
+              const branchId = selectedBranchId !== "all" ? selectedBranchId : targetBranchId;
+              if (!branchId) return null;
+              const branchCourses = courses.filter((c) => c.branchId === branchId);
+              if (branchCourses.length <= 1) return null;
+              return (
+                <div className="space-y-1">
+                  <Label>Program</Label>
+                  <Select value={modalCourseId} onValueChange={cascadeModalCourse}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a program" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {branchCourses.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
                       ))}
-                    </div>
+                    </SelectContent>
+                  </Select>
+                </div>
+              );
+            })()}
+
+            {(() => {
+              if (!modalCourseId) return null;
+              const courseBatches = batches.filter((b) => b.courseId === modalCourseId);
+              if (courseBatches.length <= 1) return null;
+              return (
+                <div className="space-y-2">
+                  <Label>Batch</Label>
+                  <div className="flex flex-col gap-2 rounded-md border p-3">
+                    {courseBatches.map((b) => (
+                      <label key={b.id} className="flex items-center gap-2">
+                        <Checkbox
+                          checked={selectedBatches.includes(b.id)}
+                          onCheckedChange={(checked) => {
+                            if (checked) setSelectedBatches((prev) => [...prev, b.id]);
+                            else setSelectedBatches((prev) => prev.filter((id) => id !== b.id));
+                          }}
+                        />
+                        <span className="text-sm font-medium">{b.name}</span>
+                      </label>
+                    ))}
                   </div>
-                );
-              }
-              return null;
+                </div>
+              );
             })()}
           </div>
 

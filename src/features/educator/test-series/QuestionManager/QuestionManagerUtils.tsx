@@ -23,7 +23,7 @@ export function buildSnapshotFromQuestion(question?: TestQuestion): EditorDraftS
       questionType: "MCQ_SINGLE",
       referenceAnswer: "",
       referenceKeywords: "",
-      referenceAnswerFileUrl: "",
+      referenceAnswerFileUrls: [],
       evaluationInstructions: "",
     };
   }
@@ -47,7 +47,11 @@ export function buildSnapshotFromQuestion(question?: TestQuestion): EditorDraftS
     referenceKeywords: Array.isArray(question.referenceKeywords)
       ? question.referenceKeywords.join(", ")
       : "",
-    referenceAnswerFileUrl: question.referenceAnswerFileUrl || "",
+    referenceAnswerFileUrls: Array.isArray(question.referenceAnswerFileUrls)
+      ? question.referenceAnswerFileUrls.filter(Boolean)
+      : question.referenceAnswerFileUrl
+        ? [question.referenceAnswerFileUrl]
+        : [],
     evaluationInstructions: question.evaluationInstructions || "",
   };
 }
@@ -65,7 +69,7 @@ export function areSnapshotsEqual(a: EditorDraftSnapshot, b: EditorDraftSnapshot
   if (a.questionType !== b.questionType) return false;
   if (a.referenceAnswer !== b.referenceAnswer) return false;
   if (a.referenceKeywords !== b.referenceKeywords) return false;
-  if (a.referenceAnswerFileUrl !== b.referenceAnswerFileUrl) return false;
+  if (JSON.stringify(a.referenceAnswerFileUrls) !== JSON.stringify(b.referenceAnswerFileUrls)) return false;
   if (a.evaluationInstructions !== b.evaluationInstructions) return false;
   if (a.options.length !== b.options.length) return false;
   for (let i = 0; i < a.options.length; i += 1) {

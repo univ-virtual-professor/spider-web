@@ -137,6 +137,7 @@ export default function Learners() {
   const [copied, setCopied] = useState(false);
   const [inviteTimeoutMinutes, setInviteTimeoutMinutes] = useState(15);
   const [firstPoolPlanId, setFirstPoolPlanId] = useState<string | null>(null);
+  const [poolSeatTotal, setPoolSeatTotal] = useState(0);
 
   // Bulk upload
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -178,9 +179,10 @@ export default function Learners() {
       setBranches(snap.docs.map((d) => ({ id: d.id, name: d.data().name || d.id })))
     );
 
-    // Load first seat pool plan ID for batch auto-registration
-    getDocs(collection(db, "educators", educatorId, "seatPools")).then((snap) => {
+    // Subscribe to seat pools for total capacity + first plan ID
+    const unsubPools = onSnapshot(collection(db, "educators", educatorId, "seatPools"), (snap) => {
       if (!snap.empty) setFirstPoolPlanId(snap.docs[0].id);
+      setPoolSeatTotal(snap.docs.reduce((s, d) => s + (Number(d.data().totalSeats) || 0), 0));
     });
 
     // Load full hierarchy for name resolution + assign-batch dialog
@@ -221,6 +223,7 @@ export default function Learners() {
       unsubL();
       unsubSeats();
       unsubEdu();
+      unsubPools();
     };
   }, [educatorId, refreshTick]);
 
@@ -273,11 +276,7 @@ export default function Learners() {
 
   const selectedBatch = batches.find((b) => b.id === selBatch);
 
-  const seatLimit = Math.max(
-    0,
-    Number(educator?.seatLimit || 0),
-    Number(educator?.purchasedSeatLimit || 0)
-  );
+  const seatLimit = poolSeatTotal;
   const usedSeats = useMemo(() => Object.values(seatMap).filter(Boolean).length, [seatMap]);
   const canAssign = seatLimit > 0 && usedSeats < seatLimit;
 

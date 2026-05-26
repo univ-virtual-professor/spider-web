@@ -277,7 +277,6 @@ export default function TestSeries() {
 
   // Data
   const [myTests, setMyTests] = useState<any[]>([]);
-  const [dpps, setDpps] = useState<any[]>([]);
   const [folders, setFolders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   /** testId → true if source template has been updated since test creation */
@@ -482,22 +481,11 @@ export default function TestSeries() {
       }
     );
 
-    const dppsQ = query(
-      collection(db, "educators", uid, "dpps"),
-      orderBy("generatedAt", "desc"),
-      limit(20)
-    );
-    const unsubDpps = onSnapshot(dppsQ, (snap) => {
-      const rows = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any), type: "dpp" }));
-      setDpps(rows);
-    });
-
     return () => {
       unsubEdu();
       unsubFolders();
       unsubTemplates();
       unsubMy();
-      unsubDpps();
     };
   }, [currentUser?.uid]);
 
@@ -963,9 +951,10 @@ export default function TestSeries() {
 
   const filteredTests = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const allItems = [...myTests, ...dpps];
+    const allItems = [...myTests];
     const filtered = allItems.filter((t) => {
       const isDpp =
+        t.type === "from_dpp" ||
         t.type === "dpp" ||
         String(t.title || "")
           .toLowerCase()
@@ -1006,7 +995,6 @@ export default function TestSeries() {
     return filtered;
   }, [
     myTests,
-    dpps,
     search,
     courseFilter,
     subjectFilter,
@@ -1042,7 +1030,8 @@ export default function TestSeries() {
           continue;
         }
       }
-      const subject = test.subject || "Other";
+      const isDppTest = test.type === "from_dpp" || test.type === "dpp";
+      const subject = isDppTest ? "DPP" : (test.subject || "Other");
       if (!subjectMap.has(subject)) subjectMap.set(subject, []);
       subjectMap.get(subject)!.push(test);
     }
@@ -1783,15 +1772,27 @@ export default function TestSeries() {
 
                               const isDpp =
                                 test.type === "dpp" ||
+                                test.type === "from_dpp" ||
                                 String(test.title || "")
                                   .toLowerCase()
                                   .includes("dpp");
+
+                              const dppTopic = (() => {
+                                if (!isDpp) return "";
+                                if (test.topic) return test.topic;
+                                const m = String(test.title || "").match(/^DPP\s*[-–]\s*(.+?)\s*\(/i);
+                                return m ? m[1].trim() : "";
+                              })();
+
+                              const displayTitle = isDpp
+                                ? dppTopic ? `DPP: ${dppTopic}` : "DPP"
+                                : test.title;
 
                               return (
                                 <Card className="relative flex h-full flex-col transition-shadow hover:shadow-md">
                                   <CardHeader>
                                     <CardTitle className="flex items-start justify-between gap-2">
-                                      <span className="truncate text-lg">{test.title}</span>
+                                      <span className="truncate text-lg">{displayTitle}</span>
                                       <div className="flex items-center gap-1">
                                         <DropdownMenu>
                                           <DropdownMenuTrigger asChild>
@@ -1974,6 +1975,19 @@ export default function TestSeries() {
                                         ) : (
                                           <Badge className="h-5 shrink-0 px-2 py-0 text-[10px]">
                                             Custom
+                                          </Badge>
+                                        )}
+                                        {isDpp && test.difficulty && (
+                                          <Badge
+                                            variant="outline"
+                                            className={cn(
+                                              "h-5 shrink-0 px-2 py-0 text-[10px] capitalize",
+                                              test.difficulty === "easy" && "border-green-400 text-green-600 dark:border-green-600 dark:text-green-400",
+                                              test.difficulty === "medium" && "border-amber-400 text-amber-600 dark:border-amber-600 dark:text-amber-400",
+                                              test.difficulty === "hard" && "border-red-400 text-red-600 dark:border-red-600 dark:text-red-400"
+                                            )}
+                                          >
+                                            {test.difficulty}
                                           </Badge>
                                         )}
                                       </div>

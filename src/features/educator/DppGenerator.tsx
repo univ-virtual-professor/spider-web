@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from "react";
-import { collection, getDocs, onSnapshot, orderBy, query, limit } from "firebase/firestore";
+import { collection, getDocs, onSnapshot, query, limit, where } from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@shared/lib/firebase";
@@ -36,8 +36,7 @@ type DppRecord = {
   difficulty: string;
   contentTitles: string[];
   generatedAt: string;
-  status: "generating" | "ready" | "failed";
-  testId: string | null;
+  status: "generating" | "published" | "failed";
   errorMessage?: string;
   sourceMode?: string;
   targetBatches?: string[];
@@ -92,7 +91,7 @@ function StatusBadge({ status }: { status: DppRecord["status"] }) {
         <Loader2 className="h-3 w-3 animate-spin" /> Generating
       </Badge>
     );
-  if (status === "ready")
+  if (status === "published")
     return (
       <Badge variant="default" className="shrink-0 gap-1 bg-green-600">
         <CheckCircle2 className="h-3 w-3" /> Ready
@@ -292,11 +291,20 @@ export default function DppGenerator() {
     if (!educatorUid) return;
     return onSnapshot(
       query(
-        collection(db, "educators", educatorUid, "dpps"),
-        orderBy("generatedAt", "desc"),
+        collection(db, "educators", educatorUid, "my_tests"),
+        where("type", "==", "from_dpp"),
         limit(10)
       ),
-      (snap) => setDpps(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })))
+      (snap) => {
+        const records = snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as any) }))
+          .sort((a: any, b: any) => {
+            const ta = a.createdAt?.seconds ?? 0;
+            const tb = b.createdAt?.seconds ?? 0;
+            return tb - ta;
+          });
+        setDpps(records);
+      }
     );
   }, [educatorUid]);
 
@@ -951,9 +959,9 @@ export default function DppGenerator() {
                         {dpp.status === "failed" && dpp.errorMessage && (
                           <p className="text-[10px] text-destructive">{dpp.errorMessage}</p>
                         )}
-                        {dpp.status === "ready" && dpp.testId && (
+                        {dpp.status === "published" && (
                           <Link
-                            to={`/educator/test-series/${dpp.testId}/questions`}
+                            to={`/educator/test-series/${dpp.id}/questions`}
                             className="mt-1 inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
                           >
                             <ExternalLink className="h-3 w-3" /> View & Edit

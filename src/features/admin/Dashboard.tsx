@@ -9,7 +9,6 @@ import {
   Plus,
   Receipt,
   Activity,
-  IndianRupee,
   RefreshCcw,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
@@ -21,21 +20,12 @@ import { db } from "@shared/lib/firebase";
 import { collection, getCountFromServer, query, where } from "firebase/firestore";
 import { cn } from "@shared/lib/utils";
 
-const API = import.meta.env.VITE_MONKEY_KING_API_URL;
-const ADMIN_KEY = import.meta.env.VITE_MONKEY_KING_ADMIN_KEY;
-
 type Stats = {
   totalEducators: number;
   totalStudents: number;
   totalAttempts: number;
   activeTrials: number;
-  totalRevenue: number;
-  revenueThisMonth: number;
 };
-
-function fmtRevenue(amount: number) {
-  return `₹${amount.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
-}
 
 export default function AdminDashboard() {
   const { firebaseUser, loading: authLoading, role } = useAuth();
@@ -45,8 +35,6 @@ export default function AdminDashboard() {
     totalStudents: 0,
     totalAttempts: 0,
     activeTrials: 0,
-    totalRevenue: 0,
-    revenueThisMonth: 0,
   });
 
   const canView = useMemo(() => {
@@ -68,28 +56,11 @@ export default function AdminDashboard() {
         getCountFromServer(activeTrialsQ),
       ]);
 
-      let totalRevenue = 0;
-      let revenueThisMonth = 0;
-      try {
-        const res = await fetch(`${API}/api/payment/admin/stats`, {
-          headers: { Authorization: `Bearer ${ADMIN_KEY}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          totalRevenue = data.total_revenue ?? 0;
-          revenueThisMonth = data.revenue_this_month ?? 0;
-        }
-      } catch {
-        // revenue is a nice-to-have — silently skip on error
-      }
-
       setStats({
         totalEducators: educatorsCnt.data().count,
         totalStudents: studentsCnt.data().count,
         totalAttempts: attemptsCnt.data().count,
         activeTrials: trialsCnt.data().count,
-        totalRevenue,
-        revenueThisMonth,
       });
     } catch (e) {
       console.error(e);
@@ -130,14 +101,6 @@ export default function AdminDashboard() {
   }
 
   const statCards = [
-    {
-      title: "Total Revenue",
-      value: loading ? "—" : fmtRevenue(stats.totalRevenue),
-      subtitle: loading ? "" : `This month: ${fmtRevenue(stats.revenueThisMonth)}`,
-      icon: IndianRupee,
-      color: "text-emerald-500",
-      bgColor: "bg-emerald-500/10",
-    },
     {
       title: "Total Educators",
       value: loading ? "—" : stats.totalEducators.toLocaleString(),
@@ -205,7 +168,7 @@ export default function AdminDashboard() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {statCards.map((stat) => {
           const cardContent = (
             <CardContent className="p-6">

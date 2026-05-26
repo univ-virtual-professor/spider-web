@@ -16,17 +16,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const admin = getAdmin();
     const db = admin.firestore();
 
-    const educatorSnap = await db.doc(`educators/${educatorId}`).get();
-    const eduData = educatorSnap.data() || {};
-    const seatLimit = Math.max(
-      0,
-      Number(eduData.seatLimit || 0),
-      Number(eduData.purchasedSeatLimit || 0)
-    );
+    const poolsSnap = await db.collection(`educators/${educatorId}/seatPools`).get();
+    const seatLimit = poolsSnap.docs.reduce((s, d) => s + (Number(d.data().totalSeats) || 0), 0);
     if (seatLimit <= 0) {
       return res.status(403).json({
-        error:
-          "No seats assigned to your coaching yet. Contact PrepareKaro support/admin to get seats.",
+        error: "No seats purchased yet. Buy seats in Billing to get started.",
       });
     }
 
