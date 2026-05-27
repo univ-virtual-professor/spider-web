@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import {
   ArrowRight,
   Check,
+  X,
   Star,
   ChevronLeft,
   ChevronRight,
