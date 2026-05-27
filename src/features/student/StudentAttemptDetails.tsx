@@ -149,6 +149,7 @@ export default function StudentAttemptDetails() {
   const { attemptId } = useParams();
   const { firebaseUser, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -402,19 +403,20 @@ export default function StudentAttemptDetails() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 pb-12">
-      {isEducatorView ? (
-        <Button variant="ghost" onClick={() => navigate(-1)}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back
-        </Button>
-      ) : (
-        <Button variant="ghost" asChild>
-          <Link to={`/student/results/${attemptId}`}>
+      {!isApp &&
+        (isEducatorView ? (
+          <Button variant="ghost" onClick={() => navigate(-1)}>
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Results
-          </Link>
-        </Button>
-      )}
+            Back
+          </Button>
+        ) : (
+          <Button variant="ghost" asChild>
+            <Link to={`/student/results/${attemptId}`}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Results
+            </Link>
+          </Button>
+        ))}
 
       <Card className="card-soft border-0 bg-pastel-lavender">
         <CardContent className="p-6">

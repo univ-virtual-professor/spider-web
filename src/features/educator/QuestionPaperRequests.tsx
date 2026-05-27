@@ -100,6 +100,7 @@ function MonthlyUsage({ requests, limit }: { requests: QPRequest[]; limit: numbe
 
 export default function QuestionPaperRequests() {
   const { profile, firebaseUser } = useAuth();
+  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
 
   async function apiFetch(path: string, options: RequestInit = {}) {
     const token = await firebaseUser?.getIdToken();
@@ -276,12 +277,14 @@ export default function QuestionPaperRequests() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center">
-          <div
-            className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
-            onClick={() => navigate("/educator/test-series")}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </div>
+          {!isApp && (
+            <div
+              className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+              onClick={() => navigate("/educator/test-series")}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </div>
+          )}
           <div>
             <h1 className="text-2xl font-semibold">Question Paper Requests</h1>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -553,3 +556,4 @@ export default function QuestionPaperRequests() {
     </div>
   );
 }
+

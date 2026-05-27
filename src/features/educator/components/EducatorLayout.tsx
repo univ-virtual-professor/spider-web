@@ -72,7 +72,7 @@ function EducatorLayoutInner() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1";
+  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { isReady: appTokenReady } = useAppTokenBootstrap();
 
   const { profile } = useAuth();
@@ -676,3 +676,4 @@ export default function EducatorLayout() {
     </EmployeeProvider>
   );
 }
+

@@ -19,6 +19,10 @@ export function useAppTokenBootstrap() {
     if (attempted.current) return;
 
     const params = new URLSearchParams(window.location.search);
+    const isAppWebView = params.get("_app") === "1";
+    if (isAppWebView) {
+      window.sessionStorage.setItem("__PK_APP_WEBVIEW__", "1");
+    }
     const idToken = params.get("__authToken");
     if (!idToken) {
       setStatus("done");

@@ -100,6 +100,7 @@ function confidenceLabel(c: number) {
 }
 
 export default function SubjectiveAttemptGrader() {
+  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { attemptId } = useParams<{ attemptId: string }>();
   const { firebaseUser, profile } = useAuth();
   const educatorId = profile?.educatorId || firebaseUser?.uid || null;
@@ -274,12 +275,14 @@ export default function SubjectiveAttemptGrader() {
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">
       <div className="flex items-center gap-3">
-        <Button asChild variant="ghost" size="sm" className="-ml-1">
-          <Link to="/educator/review-submissions">
-            <ArrowLeft className="mr-1 h-4 w-4" />
-            Back
-          </Link>
-        </Button>
+        {!isApp && (
+          <Button asChild variant="ghost" size="sm" className="-ml-1">
+            <Link to="/educator/review-submissions">
+              <ArrowLeft className="mr-1 h-4 w-4" />
+              Back
+            </Link>
+          </Button>
+        )}
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-xl font-bold">{attempt.testTitle || "Untitled Test"}</h1>
           <p className="text-sm text-muted-foreground">
@@ -494,3 +497,4 @@ export default function SubjectiveAttemptGrader() {
     </div>
   );
 }
+

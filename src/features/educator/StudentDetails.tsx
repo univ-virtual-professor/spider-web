@@ -112,6 +112,7 @@ type StudentStatCard = {
 
 export default function StudentDetails() {
   const nav = useNavigate();
+  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { studentId = "" } = useParams<{ studentId: string }>();
   const { firebaseUser, profile, role, loading: authLoading } = useAuth();
   const educatorId = profile?.educatorId || firebaseUser?.uid || null;
@@ -316,14 +317,16 @@ export default function StudentDetails() {
       {/* Header */}
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="rounded-full"
-            onClick={() => nav("/educator/students")}
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
+          {!isApp && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="rounded-full"
+              onClick={() => nav("/educator/students")}
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+          )}
           <div>
             <h1 className="text-3xl font-bold tracking-tight">{learnerName}</h1>
             <p className="text-muted-foreground">{learner.email}</p>
@@ -545,3 +548,4 @@ export default function StudentDetails() {
     </div>
   );
 }
+

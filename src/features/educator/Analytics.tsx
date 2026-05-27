@@ -262,6 +262,7 @@ export default function Analytics() {
   const { firebaseUser, profile, loading: authLoading } = useAuth();
   const { tenant, loading: tenantLoading } = useTenant();
   const navigate = useNavigate();
+  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
 
   const educatorId = tenant?.educatorId || profile?.educatorId || null;
 
@@ -1041,14 +1042,16 @@ export default function Analytics() {
       >
         <div className="space-y-6">
           <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="rounded-full"
-              onClick={() => navigate("/educator")}
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
+            {!isApp && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-full"
+                onClick={() => navigate("/educator")}
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+            )}
             <div className="space-y-1">
               <h2 className="text-2xl font-semibold tracking-tight">Students Overview</h2>
               <p className="text-sm text-muted-foreground">
@@ -1152,3 +1155,4 @@ export default function Analytics() {
     </div>
   );
 }
+

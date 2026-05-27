@@ -40,6 +40,7 @@ type Batch = { id: string; name: string; courseId: string; branchId: string };
 
 export default function StudentsListing() {
   const navigate = useNavigate();
+  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const [searchParams, setSearchParams] = useSearchParams();
   const { firebaseUser } = useAuth();
   const educatorId = firebaseUser?.uid;
@@ -193,12 +194,14 @@ export default function StudentsListing() {
       {/* Page Header */}
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div className="flex items-center gap-4">
-          <div
-            className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
-            onClick={() => navigate("/educator")}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </div>
+          {!isApp && (
+            <div
+              className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+              onClick={() => navigate("/educator")}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </div>
+          )}
           <div>
             <h1 className="text-2xl font-bold tracking-tight">All Students</h1>
             <p className="mt-1 text-muted-foreground">
@@ -433,3 +436,4 @@ export default function StudentsListing() {
     </div>
   );
 }
+

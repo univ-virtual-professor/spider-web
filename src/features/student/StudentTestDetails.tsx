@@ -119,6 +119,7 @@ function isExpired(expiresAt: any) {
 }
 
 export default function StudentTestDetails() {
+  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { testId } = useParams();
   const navigate = useNavigate();
 
@@ -502,12 +503,14 @@ export default function StudentTestDetails() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <Button variant="ghost" asChild>
-        <Link to="/student/tests">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Tests
-        </Link>
-      </Button>
+      {!isApp && (
+        <Button variant="ghost" asChild>
+          <Link to="/student/tests">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Tests
+          </Link>
+        </Button>
+      )}
 
       <Card
         className={cn(

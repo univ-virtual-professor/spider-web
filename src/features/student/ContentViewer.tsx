@@ -54,6 +54,7 @@ function clampZoom(z: number) {
 }
 
 export default function ContentViewer({ item, studentName, onClose }: Props) {
+  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   // PDF state
   const [pageNum, setPageNum] = useState(1);
   const [numPages, setNumPages] = useState(0);
@@ -298,10 +299,12 @@ export default function ContentViewer({ item, studentName, onClose }: Props) {
     >
       {/* ── Header ── */}
       <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3">
-        <Button variant="ghost" size="sm" onClick={onClose} className="shrink-0 gap-1 px-2">
-          <ChevronLeft className="h-4 w-4" />
-          <span className="hidden text-sm sm:inline">Back</span>
-        </Button>
+        {!isApp && (
+          <Button variant="ghost" size="sm" onClick={onClose} className="shrink-0 gap-1 px-2">
+            <ChevronLeft className="h-4 w-4" />
+            <span className="hidden text-sm sm:inline">Back</span>
+          </Button>
+        )}
 
         <p className="flex-1 truncate px-2 text-center text-sm font-semibold">{item.title}</p>
 

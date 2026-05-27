@@ -115,6 +115,7 @@ function SourceLabel({ mode }: { mode?: string }) {
 export default function DppGenerator() {
   const { firebaseUser } = useAuth();
   const navigate = useNavigate();
+  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const educatorUid = firebaseUser?.uid || "";
   const { features, loading: featuresLoading } = useEducatorFeatures(educatorUid);
   const { subjects, allowedSubjectIds } = useAccessibleCourses(educatorUid);
@@ -584,12 +585,14 @@ export default function DppGenerator() {
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div
-            className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
-            onClick={() => navigate("/educator/test-series")}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </div>
+          {!isApp && (
+            <div
+              className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+              onClick={() => navigate("/educator/test-series")}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </div>
+          )}
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-bold">
               <Zap className="h-6 w-6 text-primary" /> DPP Generator
@@ -1027,3 +1030,4 @@ export default function DppGenerator() {
     </div>
   );
 }
+

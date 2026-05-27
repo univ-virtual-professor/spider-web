@@ -78,7 +78,7 @@ export default function StudentLayout() {
   const { firebaseUser, profile, loading: authLoading } = useAuth();
   const { tenant, tenantSlug, loading: tenantLoading } = useTenant();
 
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1";
+  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { isReady: appTokenReady } = useAppTokenBootstrap();
 
   const uid = firebaseUser?.uid || null;
@@ -568,3 +568,4 @@ export default function StudentLayout() {
     </div>
   );
 }
+
