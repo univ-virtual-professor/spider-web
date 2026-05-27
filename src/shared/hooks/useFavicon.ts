@@ -13,15 +13,14 @@ export function useFavicon(logoUrl?: string | null, coachingName?: string | null
     // --- Favicon ---
     const faviconUrl = logoUrl?.trim() || "/logo-compact.png";
 
-    // Find or create the <link rel="icon"> tag
-    let link = document.querySelector<HTMLLinkElement>("link[rel~='icon']");
-    if (!link) {
-      link = document.createElement("link");
-      link.rel = "icon";
-      document.head.appendChild(link);
-    }
+    // Remove all existing favicon links and insert a fresh one so the browser
+    // actually re-fetches the icon instead of serving the cached platform logo.
+    document.querySelectorAll("link[rel~='icon']").forEach((el) => el.remove());
+    const link = document.createElement("link");
+    link.rel = "icon";
     link.type = faviconUrl.endsWith(".svg") ? "image/svg+xml" : "image/png";
     link.href = faviconUrl;
+    document.head.appendChild(link);
 
     // --- Page title ---
     if (coachingName?.trim()) {
@@ -30,7 +29,12 @@ export function useFavicon(logoUrl?: string | null, coachingName?: string | null
 
     // Restore defaults when the component unmounts (navigating away from tenant page)
     return () => {
-      if (link) link.href = "/logo-compact.png";
+      document.querySelectorAll("link[rel~='icon']").forEach((el) => el.remove());
+      const restore = document.createElement("link");
+      restore.rel = "icon";
+      restore.type = "image/png";
+      restore.href = "/logo-compact.png";
+      document.head.appendChild(restore);
     };
   }, [logoUrl, coachingName]);
 }

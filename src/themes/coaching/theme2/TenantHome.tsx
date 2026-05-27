@@ -181,7 +181,7 @@ export default function TenantHomeTheme2() {
                 </span>
               </div>
             )}
-            <span className="hidden max-w-[11rem] truncate text-base font-bold tracking-tight text-zinc-950 sm:max-w-[20rem] sm:text-xl lg:block">
+            <span className="max-w-[11rem] truncate text-base font-bold tracking-tight text-zinc-950 sm:max-w-[20rem] sm:text-xl">
               {coachingName}
             </span>
           </Link>

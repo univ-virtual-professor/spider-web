@@ -6484,10 +6484,10 @@ export default function InstituteBuilder() {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ fontSize: 16, fontWeight: 800, color: "#111827", marginBottom: 8 }}>
-              Switch back to Theme 2?
+              Switch back to Default Website?
             </div>
             <div style={{ fontSize: 13, color: "#4b5563", lineHeight: 1.6, marginBottom: 18 }}>
-              Your public landing page will switch back to the default Theme 2. Your builder content
+              Your public landing page will switch back to the default preset. Your builder content
               is saved and you can re-publish it any time.
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
