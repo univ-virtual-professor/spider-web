@@ -307,7 +307,8 @@ export default function DppGenerator() {
             const ta = a.createdAt?.seconds ?? 0;
             const tb = b.createdAt?.seconds ?? 0;
             return tb - ta;
-          });
+          })
+          .slice(0, 5);
         setDpps(records);
       }
     );
@@ -974,7 +975,7 @@ export default function DppGenerator() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="max-h-[600px] space-y-2 pr-1">
+              <div className="max-h-[400px] space-y-2 overflow-y-auto pr-1">
                 {dpps.map((dpp) => {
                   const batchNames = (dpp.targetBatches || []).map(
                     (id) => batches.find((b) => b.id === id)?.name || id
