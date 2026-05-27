@@ -1,13 +1,19 @@
-import { useEffect, useMemo, useState, useRef } from "react";
-import { collection, getDocs, onSnapshot, query, limit, where } from "firebase/firestore";
+import { useEffect, useState, useRef } from "react";
+import {
+  collection,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  query,
+  limit,
+  addDoc,
+  serverTimestamp,
+} from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { useEducatorFeatures } from "@shared/hooks/useEducatorFeatures";
-import { useAccessibleCourses } from "@shared/hooks/useAccessibleCourses";
-import { useQBOptions } from "@shared/hooks/useQBOptions";
-import { MultiSelect } from "@shared/ui/MultiSelect";
 import { toast } from "sonner";
 import { Button } from "@shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
@@ -17,6 +23,7 @@ import { Input } from "@shared/ui/input";
 import { Checkbox } from "@shared/ui/checkbox";
 import { AlertCircle, CheckCircle2, ExternalLink, Loader2, Lock, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
+import { uploadToImageKit } from "@shared/lib/imagekitUpload";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,7 +43,8 @@ type DppRecord = {
   difficulty: string;
   contentTitles: string[];
   generatedAt: string;
-  status: "generating" | "published" | "failed";
+  status: "generating" | "ready" | "failed";
+  testId: string | null;
   errorMessage?: string;
   sourceMode?: string;
   targetBatches?: string[];
@@ -63,11 +71,6 @@ type Batch = { id: string; name: string };
 
 type SourceMode = "upload" | "content" | "qb";
 
-function toApiSourceMode(mode: SourceMode): string {
-  if (mode === "qb") return "qb_only";
-  return "ai_only"; // "upload" and "content" both use AI
-}
-
 const MONKEY_KING = import.meta.env.VITE_MONKEY_KING_API_URL || "";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -91,7 +94,7 @@ function StatusBadge({ status }: { status: DppRecord["status"] }) {
         <Loader2 className="h-3 w-3 animate-spin" /> Generating
       </Badge>
     );
-  if (status === "published")
+  if (status === "ready")
     return (
       <Badge variant="default" className="shrink-0 gap-1 bg-green-600">
         <CheckCircle2 className="h-3 w-3" /> Ready
@@ -117,11 +120,6 @@ export default function DppGenerator() {
   const navigate = useNavigate();
   const educatorUid = firebaseUser?.uid || "";
   const { features, loading: featuresLoading } = useEducatorFeatures(educatorUid);
-  const { subjects, allowedSubjectIds } = useAccessibleCourses(educatorUid);
-  const { chapters, topics } = useQBOptions(
-    allowedSubjectIds.length ? allowedSubjectIds : undefined
-  );
-  const subjectOptions = useMemo(() => subjects.map((s) => s.name), [subjects]);
 
   const [content, setContent] = useState<ContentItem[]>([]);
   const [loadingContent, setLoadingContent] = useState(true);
@@ -140,11 +138,13 @@ export default function DppGenerator() {
   const [genSource, setGenSource] = useState<SourceMode>("upload");
   const [genSelectedIds, setGenSelectedIds] = useState<Set<string>>(new Set());
   const [genTopicFilters, setGenTopicFilters] = useState<string[]>([]);
-  const [genSubjects, setGenSubjects] = useState<string[]>([]);
-  const [genChapters, setGenChapters] = useState<string[]>([]);
+  const [genSubject, setGenSubject] = useState("");
+  const [genChapter, setGenChapter] = useState("");
+  const [genTopicInput, setGenTopicInput] = useState("");
   const [genDifficulty, setGenDifficulty] = useState("medium");
   const [genTopicName, setGenTopicName] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [genNumQuestions, setGenNumQuestions] = useState<number>(10);
 
   // File upload state for 'upload' mode
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -154,13 +154,8 @@ export default function DppGenerator() {
 
   // Scheduling state
   const [isScheduled, setIsScheduled] = useState(false);
-  const [schedDays, setSchedDays] = useState<number>(7);
-  const [schedContinuous, setSchedContinuous] = useState(false);
+  const [schedDays, setSchedDays] = useState<number>(1);
   const [schedTime, setSchedTime] = useState("08:00");
-  const [schedStartDate, setSchedStartDate] = useState(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  });
 
   type CourseOption = {
     courseId: string;
@@ -296,20 +291,11 @@ export default function DppGenerator() {
     if (!educatorUid) return;
     return onSnapshot(
       query(
-        collection(db, "educators", educatorUid, "my_tests"),
-        where("type", "==", "from_dpp"),
+        collection(db, "educators", educatorUid, "dpps"),
+        orderBy("generatedAt", "desc"),
         limit(10)
       ),
-      (snap) => {
-        const records = snap.docs
-          .map((d) => ({ id: d.id, ...(d.data() as any) }))
-          .sort((a: any, b: any) => {
-            const ta = a.createdAt?.seconds ?? 0;
-            const tb = b.createdAt?.seconds ?? 0;
-            return tb - ta;
-          });
-        setDpps(records);
-      }
+      (snap) => setDpps(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })))
     );
   }, [educatorUid]);
 
@@ -354,26 +340,16 @@ export default function DppGenerator() {
     usageToday < dailyLimit &&
     ((genSource === "upload" && !!uploadFile) ||
       (genSource === "content" && genSelectedIds.size > 0) ||
-      (genSource === "qb" &&
-        (genTopicFilters.length > 0 || genSubjects.length > 0 || !!genTopicName)));
+      (genSource === "qb" && (genTopicFilters.length > 0 || !!genSubject || !!genTopicName)));
 
-  const performGeneration = async (
-    finalContentIds: string[],
-    finalContentTitles: string[],
-    uploadedContext = ""
-  ) => {
+  const performGeneration = async (finalContentIds: string[], finalContentTitles: string[]) => {
     if (!firebaseUser) return;
 
     if (isScheduled) {
-      // Use local date strings to avoid UTC-offset date shift
-      const startDateStr = schedStartDate;
-      const endDateStr = schedContinuous
-        ? "2099-12-31"
-        : (() => {
-            const d = new Date(schedStartDate + "T00:00:00");
-            d.setDate(d.getDate() + (schedDays - 1));
-            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-          })();
+      // Create a schedule
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setDate(startDate.getDate() + (schedDays - 1));
 
       const batchNames = [...selectedBatchIds].map(
         (id) => batches.find((b) => b.id === id)?.name || id
@@ -388,23 +364,22 @@ export default function DppGenerator() {
           content_ids: finalContentIds,
           content_titles: finalContentTitles,
           course_id: genCourseId,
-          course_name: courseObj?.courseName || "",
-          source_mode: toApiSourceMode(genSource),
+          source_mode: genSource,
           topic_filters: genTopicFilters,
-          subject_filter: genSubjects,
-          chapter_filter: genChapters,
+          subject_filter: genSubject,
+          chapter_filter: genChapter,
           difficulty: genDifficulty,
           target_batches: [...selectedBatchIds],
-          start_date: startDateStr,
-          end_date: endDateStr,
+          start_date: startDate.toISOString().split("T")[0],
+          end_date: endDate.toISOString().split("T")[0],
           time_of_day: schedTime,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           topic_rotation: [],
+          num_questions: genNumQuestions,
           topic_hint: genTopicName.trim(),
           title: customTitle,
           type: "dpp",
           folderId: "dpp_folder",
-          uploaded_context: uploadedContext,
         }),
       });
       const data = await res.json();
@@ -420,8 +395,8 @@ export default function DppGenerator() {
           id: schedId,
           contentTitles: finalContentTitles,
           difficulty: genDifficulty,
-          startDate: startDateStr,
-          endDate: endDateStr,
+          startDate: startDate.toISOString().split("T")[0],
+          endDate: endDate.toISOString().split("T")[0],
           timeOfDay: schedTime,
           targetBatches: [...selectedBatchIds],
           isActive: true,
@@ -436,7 +411,7 @@ export default function DppGenerator() {
         (id) => batches.find((b) => b.id === id)?.name || id
       );
       const customTitle = genTopicName.trim()
-        ? `DPP - ${genTopicName.trim()} (${batchNames.join(", ")})`
+        ? `${genTopicName.trim()}-DPP`
         : `DPP (${batchNames.join(", ")})`;
 
       const res = await apiFetch(firebaseUser, "/api/dpp/generate", {
@@ -446,17 +421,16 @@ export default function DppGenerator() {
           content_titles: finalContentTitles,
           difficulty: genDifficulty,
           course_id: genCourseId,
-          course_name: courseObj?.courseName || "",
           topic_hint: genTopicName.trim(),
-          source_mode: toApiSourceMode(genSource),
+          source_mode: genSource,
           topic_filters: genTopicFilters,
-          subject_filter: genSubjects,
-          chapter_filter: genChapters,
+          subject_filter: genSubject,
+          chapter_filter: genChapter,
           target_batches: [...selectedBatchIds],
+          num_questions: genNumQuestions,
           title: customTitle,
           type: "dpp",
           folderId: "dpp_folder",
-          uploaded_context: uploadedContext,
         }),
       });
       const data = await res.json();
@@ -484,28 +458,47 @@ export default function DppGenerator() {
 
     setGenerating(true);
     try {
-      const finalContentIds = [...genSelectedIds];
+      let finalContentIds = [...genSelectedIds];
       let finalContentTitles = genSelectedContent.map((c) => c.title);
-      let uploadedContext = "";
 
-      if (genSource === "upload" && uploadFile) {
+      if (genSource === "upload" && uploadFile && courseObj) {
         setUploading(true);
-        const token = await firebaseUser.getIdToken();
-        const formData = new FormData();
-        formData.append("file", uploadFile);
-        const extractRes = await fetch(`${MONKEY_KING}/api/chat/extract-upload/educator`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        });
-        if (!extractRes.ok) throw new Error("Failed to extract file content");
-        const { context } = await extractRes.json();
-        uploadedContext = context as string;
+        const result = await uploadToImageKit(
+          uploadFile,
+          uploadFile.name,
+          `/content/educator/${educatorUid}`,
+          "content"
+        );
+        const docRef = await addDoc(
+          collection(
+            db,
+            "educators",
+            educatorUid,
+            "branches",
+            courseObj.branchId,
+            "courses",
+            courseObj.courseId,
+            "content"
+          ),
+          {
+            type: "note",
+            title: uploadTitle.trim() || uploadFile.name,
+            fileUrl: result.url,
+            fileId: result.fileId,
+            fileName: uploadFile.name,
+            fileSize: uploadFile.size,
+            mimeType: uploadFile.type,
+            source: "educator",
+            addedBy: educatorUid,
+            createdAt: serverTimestamp(),
+          }
+        );
+        finalContentIds = [docRef.id];
         finalContentTitles = [uploadTitle.trim() || uploadFile.name];
         setUploading(false);
       }
 
-      await performGeneration(finalContentIds, finalContentTitles, uploadedContext);
+      await performGeneration(finalContentIds, finalContentTitles);
     } catch (e: any) {
       console.log(e.message);
       toast.error(e?.message || "Failed to process DPP");
@@ -750,51 +743,96 @@ export default function DppGenerator() {
                 <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
                   <div className="space-y-1">
                     <Label>Subject filter (optional)</Label>
-                    <MultiSelect
-                      options={subjectOptions}
-                      selected={genSubjects}
-                      onChange={setGenSubjects}
-                      placeholder="Select subjects…"
+                    <Input
+                      placeholder="e.g. Physics"
+                      value={genSubject}
+                      onChange={(e) => setGenSubject(e.target.value)}
                     />
                   </div>
                   <div className="space-y-1">
                     <Label>Chapter filter (optional)</Label>
-                    <MultiSelect
-                      options={chapters}
-                      selected={genChapters}
-                      onChange={setGenChapters}
-                      placeholder="Select chapters…"
+                    <Input
+                      placeholder="e.g. Optics"
+                      value={genChapter}
+                      onChange={(e) => setGenChapter(e.target.value)}
                     />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Topic filters</Label>
-                    <MultiSelect
-                      options={topics}
-                      selected={genTopicFilters}
-                      onChange={setGenTopicFilters}
-                      placeholder="Select topics…"
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="e.g. Thermodynamics"
+                        value={genTopicInput}
+                        onChange={(e) => setGenTopicInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && genTopicInput.trim()) {
+                            setGenTopicFilters((p) => [...p, genTopicInput.trim()]);
+                            setGenTopicInput("");
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (genTopicInput.trim()) {
+                            setGenTopicFilters((p) => [...p, genTopicInput.trim()]);
+                            setGenTopicInput("");
+                          }
+                        }}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                    {genTopicFilters.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {genTopicFilters.map((t) => (
+                          <Badge key={t} variant="secondary" className="gap-1 text-xs">
+                            {t}
+                            <button
+                              onClick={() => setGenTopicFilters((p) => p.filter((x) => x !== t))}
+                              className="hover:text-destructive"
+                            >
+                              ×
+                            </button>
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
 
               {/* Shared Settings */}
-              <div className="space-y-1.5">
-                <Label>Difficulty</Label>
-                <select
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={genDifficulty}
-                  onChange={(e) => setGenDifficulty(e.target.value)}
-                >
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
-                </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Difficulty</Label>
+                  <select
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={genDifficulty}
+                    onChange={(e) => setGenDifficulty(e.target.value)}
+                  >
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Number of Questions</Label>
+                  <Input
+                    type="number"
+                    min={5}
+                    max={50}
+                    value={genNumQuestions}
+                    onChange={(e) => setGenNumQuestions(parseInt(e.target.value) || 10)}
+                  />
+                </div>
               </div>
 
               <div className="space-y-1">
                 <Label>
-                  DPP (topic) Name
+                  Topic Name <span className="font-normal text-muted-foreground">(optional)</span>
                 </Label>
                 <Input
                   placeholder="e.g. Newton's Laws"
@@ -814,47 +852,26 @@ export default function DppGenerator() {
                 </label>
 
                 {isScheduled && (
-                  <div className="space-y-3 pt-2">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <Label>Start from</Label>
-                        <Input
-                          type="date"
-                          value={schedStartDate}
-                          min={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })()}
-                          onChange={(e) => setSchedStartDate(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>At what time?</Label>
-                        <Input
-                          type="time"
-                          value={schedTime}
-                          onChange={(e) => setSchedTime(e.target.value)}
-                        />
-                        <p className="text-[10px] text-muted-foreground">Daily at this time</p>
-                      </div>
+                  <div className="grid grid-cols-2 gap-4 pt-2">
+                    <div className="space-y-1.5">
+                      <Label>For how many days?</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={schedDays}
+                        onChange={(e) => setSchedDays(Math.max(1, parseInt(e.target.value) || 1))}
+                      />
+                      <p className="text-[10px] text-muted-foreground">Continuously published</p>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="flex cursor-pointer items-center gap-2 text-sm">
-                        <Checkbox
-                          checked={schedContinuous}
-                          onCheckedChange={(c) => setSchedContinuous(!!c)}
-                        />
-                        Continuously published
-                      </label>
-                      {!schedContinuous && (
-                        <div className="space-y-1.5">
-                          <Label>For how many days?</Label>
-                          <Input
-                            type="number"
-                            min={1}
-                            max={365}
-                            value={schedDays}
-                            onChange={(e) => setSchedDays(Math.max(1, parseInt(e.target.value) || 1))}
-                          />
-                        </div>
-                      )}
+                      <Label>At what time?</Label>
+                      <Input
+                        type="time"
+                        value={schedTime}
+                        onChange={(e) => setSchedTime(e.target.value)}
+                      />
+                      <p className="text-[10px] text-muted-foreground">Daily at this time</p>
                     </div>
                   </div>
                 )}
@@ -958,7 +975,7 @@ export default function DppGenerator() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="max-h-[600px] space-y-2 pr-1">
+              <div className="max-h-[575px] space-y-2 overflow-y-auto pr-1">
                 {dpps.map((dpp) => {
                   const batchNames = (dpp.targetBatches || []).map(
                     (id) => batches.find((b) => b.id === id)?.name || id
@@ -990,9 +1007,9 @@ export default function DppGenerator() {
                         {dpp.status === "failed" && dpp.errorMessage && (
                           <p className="text-[10px] text-destructive">{dpp.errorMessage}</p>
                         )}
-                        {dpp.status === "published" && (
+                        {dpp.status === "ready" && dpp.testId && (
                           <Link
-                            to={`/educator/test-series/${dpp.id}/questions`}
+                            to={`/educator/test-series/${dpp.testId}/questions`}
                             className="mt-1 inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
                           >
                             <ExternalLink className="h-3 w-3" /> View & Edit

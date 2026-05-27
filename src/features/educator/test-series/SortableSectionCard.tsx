@@ -193,7 +193,23 @@ function SortableSectionCard({
 
             <div className="min-w-0 flex-1 space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <Badge variant="secondary"> {section.name} </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary"> {section.name} </Badge>
+                  {!readOnly ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1 rounded-xl border-primary/20 px-2.5 text-xs text-black hover:bg-primary hover:text-white"
+                        onClick={() => onAddQuestion(section.id)}
+                        disabled={isAtCapacity}
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Add Question
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
                 <div className="flex items-center gap-2">
                   <Button
                     type="button"

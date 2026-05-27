@@ -1,15 +1,6 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import {
-  Target,
-  Trophy,
-  TrendingUp,
-  Play,
-  ArrowRight,
-  Clock,
-  CheckCircle2,
-  Zap,
-} from "lucide-react";
+import { Target, Trophy, TrendingUp, Play, ArrowRight, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Button } from "@shared/ui/button";
 import { Badge } from "@shared/ui/badge";
@@ -68,14 +59,12 @@ type UserDoc = {
   avatar?: string;
 };
 
-type DashTest = {
+type LiveTest = {
   id: string;
   title?: string;
   subject?: string;
   durationMinutes?: number;
   questionsCount?: number;
-  _startsAtMs?: number;
-  _windowExpiresAt?: number | null;
 };
 
 type LeaderboardEntry = {
@@ -106,17 +95,6 @@ function accuracyFrom(score: number, maxScore: number) {
 function formatDateLabel(ms: number) {
   const d = new Date(ms);
   return d.toLocaleDateString(undefined, { day: "2-digit", month: "short" });
-}
-
-function formatCountdown(ms: number): string {
-  if (ms <= 0) return "Starting now";
-  const s = Math.floor(ms / 1000);
-  const d = Math.floor(s / 86400);
-  const h = Math.floor((s % 86400) / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  if (d > 0) return `${d}d ${h}h`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
 }
 
 function normalizeStatus(raw: any): AttemptStatus {
@@ -212,16 +190,17 @@ export default function StudentDashboard() {
       const qTop = query(
         collection(db, "attempts"),
         where("educatorId", "==", educatorId!),
-        orderBy("createdAt", "desc"),
-        limit(500)
+        where("status", "in", ["completed", "submitted", "finished", "done"]),
+        orderBy("score", "desc"),
+        limit(300)
       );
       const snap = await getDocs(qTop);
-      const DONE = new Set(["completed", "submitted", "finished", "done"]);
+
       const best: Record<string, number> = {};
       snap.docs.forEach((d) => {
         const a = d.data() as any;
         const sid = String(a?.studentId || "");
-        if (!sid || !DONE.has(String(a?.status || "").toLowerCase())) return;
+        if (!sid) return;
         const sc = safeNum(a?.score, 0);
         best[sid] = Math.max(best[sid] || 0, sc);
       });
@@ -237,87 +216,32 @@ export default function StudentDashboard() {
 
   const studentBatchId = profile?.batchId;
 
-  // All tests split into running / unlocked (via access code) / upcoming
-  const {
-    data: dashboardTests = {
-      running: [] as DashTest[],
-      unlocked: [] as DashTest[],
-      upcoming: [] as DashTest[],
-    },
-  } = useQuery({
-    queryKey: ["dashboardTests", firebaseUser?.uid, educatorId, studentBatchId],
+  // Live (published) tests — filter by student's batch after fetch (avoids composite index)
+  const { data: liveTests = [] } = useQuery<LiveTest[]>({
+    queryKey: ["liveTests", educatorId, studentBatchId],
     queryFn: async () => {
       const now = Date.now();
-
-      // Fetch student's valid access-code unlocks
-      const unlockSnap = await getDocs(
-        query(
-          collection(db, "testUnlocks"),
-          where("studentId", "==", firebaseUser!.uid),
-          where("educatorId", "==", educatorId!)
-        )
+      const q = query(
+        collection(db, "educators", educatorId!, "my_tests"),
+        where("isPublished", "==", true),
+        orderBy("createdAt", "desc"),
+        limit(20)
       );
-      const unlockedMap = new Map<string, number | null>();
-      unlockSnap.docs.forEach((d) => {
-        const data = d.data() as any;
-        const tid = String(data.testSeriesId || data.testId || "");
-        if (!tid) return;
-        const we = data?.windowExpiresAt;
-        const expMs =
-          data?.windowMinutes === 0 || !we
-            ? null
-            : typeof we?.toMillis === "function"
-              ? we.toMillis()
-              : null;
-        if (expMs !== null && expMs <= now) return; // expired window, skip
-        const existing = unlockedMap.get(tid);
-        if (existing === undefined) unlockedMap.set(tid, expMs);
-        else if (existing !== null && expMs === null) unlockedMap.set(tid, null);
-        else if (existing !== null && expMs !== null && expMs > existing)
-          unlockedMap.set(tid, expMs);
-      });
-
-      const snap = await getDocs(
-        query(
-          collection(db, "educators", educatorId!, "my_tests"),
-          orderBy("createdAt", "desc"),
-          limit(80)
-        )
-      );
-      const all = snap.docs
-        .map((d) => ({ id: d.id, ...(d.data() as any) }))
+      const snap = await getDocs(q);
+      const all = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      return all
         .filter((t: any) =>
           t.targetBatches === undefined || t.targetBatches === null
             ? true
             : studentBatchId
               ? t.targetBatches.includes(studentBatchId)
               : t.targetBatches.length === 0
-        );
-
-      const running: DashTest[] = [];
-      const unlocked: DashTest[] = [];
-      const upcoming: DashTest[] = [];
-
-      all.forEach((t: any) => {
-        const startMs = t.startTime ? toMillis(t.startTime) : null;
-        const endMs = t.endTime ? toMillis(t.endTime) : null;
-        if (startMs && startMs > now && t.isScheduleActive === true) {
-          upcoming.push({ ...t, _startsAtMs: startMs });
-        } else if (startMs && endMs && now >= startMs && now <= endMs) {
-          running.push(t);
-        } else if (unlockedMap.has(t.id)) {
-          unlocked.push({ ...t, _windowExpiresAt: unlockedMap.get(t.id) });
-        }
-      });
-
-      upcoming.sort((a: any, b: any) => a._startsAtMs! - b._startsAtMs!);
-      return {
-        running: running.slice(0, 6),
-        unlocked: unlocked.slice(0, 6),
-        upcoming: upcoming.slice(0, 5),
-      };
+        )
+        .filter((t: any) => toMillis(t.startTime) <= now)
+        .filter((t: any) => toMillis(t.endTime) >= now)
+        .slice(0, 4);
     },
-    enabled: canLoad,
+    enabled: !!educatorId,
     staleTime: 2 * 60 * 1000,
   });
 
@@ -396,29 +320,6 @@ export default function StudentDashboard() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Attempt counts per test (to filter out already-attempted tests)
-  const { data: attemptCounts = {} } = useQuery({
-    queryKey: ["studentAttemptCounts", firebaseUser?.uid, educatorId],
-    queryFn: async () => {
-      const snap = await getDocs(
-        query(
-          collection(db, "attempts"),
-          where("studentId", "==", firebaseUser!.uid),
-          where("educatorId", "==", educatorId!),
-          where("status", "==", "submitted")
-        )
-      );
-      const counts: Record<string, number> = {};
-      snap.docs.forEach((d) => {
-        const tid = String(d.data().testId || "");
-        if (tid) counts[tid] = (counts[tid] || 0) + 1;
-      });
-      return counts;
-    },
-    enabled: canLoad,
-    staleTime: 60 * 1000,
-  });
-
   // Leaderboard top 5
   const { data: leaderboard = [] } = useQuery<LeaderboardEntry[]>({
     queryKey: ["leaderboardPreview", educatorId],
@@ -426,16 +327,16 @@ export default function StudentDashboard() {
       const qTop = query(
         collection(db, "attempts"),
         where("educatorId", "==", educatorId!),
-        orderBy("createdAt", "desc"),
-        limit(500)
+        where("status", "in", ["completed", "submitted", "finished", "done"]),
+        orderBy("score", "desc"),
+        limit(200)
       );
       const snap = await getDocs(qTop);
-      const DONE = new Set(["completed", "submitted", "finished", "done"]);
       const best: Record<string, number> = {};
       snap.docs.forEach((d) => {
         const a = d.data() as any;
         const sid = String(a?.studentId || "");
-        if (!sid || !DONE.has(String(a?.status || "").toLowerCase())) return;
+        if (!sid) return;
         const sc = safeNum(a?.score, 0);
         best[sid] = Math.max(best[sid] || 0, sc);
       });
@@ -501,17 +402,6 @@ export default function StudentDashboard() {
     );
   }, [completedAttempts]);
 
-  const bestAccuracy = useMemo(() => {
-    if (completedAttempts.length === 0) return 0;
-    return Math.max(...completedAttempts.map((a) => a.accuracy));
-  }, [completedAttempts]);
-
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(id);
-  }, []);
-
   const scoreTrend = useMemo(() => {
     return [...completedAttempts]
       .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
@@ -537,71 +427,130 @@ export default function StudentDashboard() {
   }
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Welcome back, {firstName}!</h1>
-          {(enrollment?.courseName ||
-            enrollment?.batchName ||
-            (enrollment?.subjectNames?.length ?? 0) > 0) && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+    <div className="space-y-6">
+      {/* Welcome Banner */}
+      <Card className="card-soft overflow-hidden border-0 bg-gradient-to-r from-pastel-mint to-pastel-lavender">
+        <CardContent className="flex flex-col items-center justify-between gap-4 p-6 md:flex-row">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Welcome back, {firstName}!</h1>
+            <p className="mt-1 text-muted-foreground">Ready to take on today's challenges?</p>
+          </div>
+          <Button className="gradient-bg rounded-xl" asChild>
+            <Link to="/student/tests">
+              <Play className="mr-2 h-4 w-4" />
+              Browse Tests
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Enrollment Details */}
+      {(enrollment?.batchName ||
+        enrollment?.courseName ||
+        (enrollment?.subjectNames?.length ?? 0) > 0) && (
+        <Card className="card-soft border-0 bg-muted/40">
+          <CardContent className="p-4">
+            <div className="flex flex-wrap gap-4 text-sm">
               {enrollment?.courseName && (
-                <span className="flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
-                  <GraduationCap className="h-3 w-3" />
-                  {enrollment.courseName}
-                </span>
+                <div className="flex min-w-0 items-center gap-2">
+                  <GraduationCap className="h-4 w-4 shrink-0 text-primary" />
+                  <span className="shrink-0 text-muted-foreground">Program:</span>
+                  <span className="truncate font-medium">{enrollment.courseName}</span>
+                </div>
               )}
               {enrollment?.batchName && (
-                <span className="flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
-                  <Users2 className="h-3 w-3" />
-                  {enrollment.batchName}
-                </span>
+                <div className="flex min-w-0 items-center gap-2">
+                  <Users2 className="h-4 w-4 shrink-0 text-primary" />
+                  <span className="shrink-0 text-muted-foreground">Batch:</span>
+                  <span className="truncate font-medium">{enrollment.batchName}</span>
+                </div>
               )}
-              {enrollment?.subjectNames?.map((s) => (
-                <span
-                  key={s}
-                  className="flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground"
-                >
-                  <BookOpen className="h-3 w-3" />
-                  {s}
-                </span>
-              ))}
+              {(enrollment?.subjectNames?.length ?? 0) > 0 && (
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <BookOpen className="h-4 w-4 shrink-0 text-primary" />
+                  <span className="shrink-0 text-muted-foreground">Subjects:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {enrollment!.subjectNames.map((s) => (
+                      <Badge key={s} variant="secondary" className="rounded-full text-xs">
+                        {s}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        <Button size="sm" className="gradient-bg shrink-0 rounded-lg" asChild>
-          <Link to="/student/tests">
-            <Play className="mr-1.5 h-3.5 w-3.5" />
-            Browse Tests
-          </Link>
-        </Button>
-      </div>
-
-      {/* Resume In-Progress Test */}
-      {inProgressAttempt && (
-        <div className="flex items-center justify-between gap-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-800/40 dark:bg-amber-950/20">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
-              In Progress
-            </p>
-            <p className="truncate text-sm font-semibold text-foreground">
-              {inProgressAttempt.testTitle}
-            </p>
-            <p className="text-xs text-muted-foreground">{inProgressAttempt.subject}</p>
-          </div>
-          <Button size="sm" className="gradient-bg shrink-0 rounded-lg" asChild>
-            <Link to={`/student/tests/${inProgressAttempt.testId}/attempt`}>Continue</Link>
-          </Button>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
+      {/* Resume In-Progress Test — prominent */}
+      {inProgressAttempt && (
+        <Card className="card-soft border-0 border-l-4 border-l-amber-400 bg-amber-50 dark:bg-amber-950/20">
+          <CardContent className="flex items-center justify-between gap-4 p-5">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                In Progress
+              </p>
+              <p className="mt-0.5 font-semibold text-foreground">{inProgressAttempt.testTitle}</p>
+              <p className="text-sm text-muted-foreground">{inProgressAttempt.subject}</p>
+            </div>
+            <Button className="gradient-bg shrink-0 rounded-xl" asChild>
+              <Link to={`/student/tests/${inProgressAttempt.testId}/attempt`}>Continue Test</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Live Tests */}
+      <section>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-foreground">Today's Tests</h2>
+          <Button variant="ghost" size="sm" asChild>
+            <Link to="/student/tests">
+              View All <ArrowRight className="ml-1 h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+        {liveTests.length === 0 ? (
+          <Card className="card-soft border-0">
+            <CardContent className="p-6 text-center text-sm text-muted-foreground">
+              No tests available right now. Check back soon!
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {liveTests.map((test) => (
+              <Card key={test.id} className="card-soft flex flex-col border-0">
+                <CardContent className="flex flex-1 flex-col gap-3 p-4">
+                  <p className="line-clamp-2 text-sm font-semibold text-foreground">
+                    {test.title || "Untitled Test"}
+                  </p>
+                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    {test.subject && <span>{test.subject}</span>}
+                    {test.durationMinutes && (
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {test.durationMinutes} min
+                      </span>
+                    )}
+                    {test.questionsCount && <span>{test.questionsCount} Qs</span>}
+                  </div>
+                  <Button size="sm" className="gradient-bg mt-auto w-full rounded-lg" asChild>
+                    <Link to={`/student/tests/${test.id}`}>Start Test</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* Key Metrics */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4">
         <StudentMetricCard
-          title="Rank"
+          title="Current Rank"
           value={rank ? `#${rank}` : "—"}
-          subtitle={totalParticipants ? `of ${totalParticipants}` : undefined}
+          subtitle={totalParticipants ? `out of ${totalParticipants}` : "in your coaching"}
           icon={TrendingUp}
           color="peach"
         />
@@ -611,244 +560,51 @@ export default function StudentDashboard() {
           icon={Target}
           color="yellow"
         />
-        <StudentMetricCard
-          title="Tests Done"
-          value={completedAttempts.length}
-          icon={CheckCircle2}
-          color="mint"
-        />
-        <StudentMetricCard
-          title="Best Score"
-          value={bestAccuracy > 0 ? `${bestAccuracy}%` : "—"}
-          icon={Zap}
-          color="lavender"
-        />
       </div>
 
-      {/* Tests Section */}
-      {(() => {
-        const counts = attemptCounts as Record<string, number>;
-        const visibleRunning = dashboardTests.running.filter((t) => !(counts[t.id] > 0));
-        const visibleUnlocked = dashboardTests.unlocked.filter((t) => !(counts[t.id] > 0));
-        const visibleUpcoming = dashboardTests.upcoming;
-        const anyVisible =
-          visibleRunning.length > 0 || visibleUnlocked.length > 0 || visibleUpcoming.length > 0;
-
-        return (
-          <section className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-foreground">Tests</h2>
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" asChild>
-                <Link to="/student/tests">
-                  View All <ArrowRight className="ml-1 h-3 w-3" />
-                </Link>
-              </Button>
-            </div>
-
-            {/* Running now */}
-            {visibleRunning.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
-                  <span className="text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
-                    Live Now
-                  </span>
-                </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {visibleRunning.map((test) => (
-                    <div
-                      key={test.id}
-                      className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md"
-                    >
-                      <div className="h-1 bg-red-500" />
-                      <div className="flex flex-1 flex-col gap-3 p-3.5">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
-                            {test.title || "Untitled Test"}
-                          </p>
-                          <Badge className="shrink-0 rounded-full bg-red-100 px-1.5 py-0 text-[9px] font-bold tracking-wider text-red-600 hover:bg-red-100 dark:bg-red-900/40 dark:text-red-400">
-                            LIVE
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                          {test.subject && <span className="truncate">{test.subject}</span>}
-                          <span className="ml-auto flex shrink-0 items-center gap-2">
-                            {test.durationMinutes && (
-                              <span className="flex items-center gap-0.5">
-                                <Clock className="h-3 w-3" />
-                                {test.durationMinutes}m
-                              </span>
-                            )}
-                            {test.questionsCount && <span>{test.questionsCount}Q</span>}
-                          </span>
-                        </div>
-                        <Button
-                          size="sm"
-                          className="gradient-bg h-7 w-full rounded-lg text-xs font-medium"
-                          asChild
-                        >
-                          <Link to={`/student/tests/${test.id}`}>Start Test</Link>
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Unlocked via access code */}
-            {visibleUnlocked.length > 0 && (
-              <div className="space-y-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Unlocked
-                </span>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {visibleUnlocked.map((test) => {
-                    const expMs = test._windowExpiresAt;
-                    const timeLeft = expMs != null ? expMs - now : null;
-                    return (
-                      <div
-                        key={test.id}
-                        className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md"
-                      >
-                        <div className="h-1 bg-emerald-500" />
-                        <div className="flex flex-1 flex-col gap-3 p-3.5">
-                          <p className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
-                            {test.title || "Untitled Test"}
-                          </p>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                            {test.subject && <span className="truncate">{test.subject}</span>}
-                            <span className="ml-auto flex shrink-0 items-center gap-2">
-                              {test.durationMinutes && (
-                                <span className="flex items-center gap-0.5">
-                                  <Clock className="h-3 w-3" />
-                                  {test.durationMinutes}m
-                                </span>
-                              )}
-                              {test.questionsCount && <span>{test.questionsCount}Q</span>}
-                            </span>
-                          </div>
-                          {timeLeft !== null && (
-                            <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
-                              ⏱ Window closes in {formatCountdown(timeLeft)}
-                            </p>
-                          )}
-                          <Button
-                            size="sm"
-                            className="gradient-bg h-7 w-full rounded-lg text-xs font-medium"
-                            asChild
-                          >
-                            <Link to={`/student/tests/${test.id}`}>Start Test</Link>
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Upcoming */}
-            {visibleUpcoming.length > 0 && (
-              <div className="space-y-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Upcoming
-                </span>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {visibleUpcoming.map((test) => {
-                    const msLeft = test._startsAtMs! - now;
-                    return (
-                      <div
-                        key={test.id}
-                        className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md"
-                      >
-                        <div className="h-1 bg-amber-400" />
-                        <div className="flex flex-1 flex-col gap-3 p-3.5">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
-                              {test.title || "Untitled Test"}
-                            </p>
-                            <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0 text-[9px] font-bold tracking-wider text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
-                              in {formatCountdown(msLeft)}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                            {test.subject && <span className="truncate">{test.subject}</span>}
-                            <span className="ml-auto flex shrink-0 items-center gap-2">
-                              {test.durationMinutes && (
-                                <span className="flex items-center gap-0.5">
-                                  <Clock className="h-3 w-3" />
-                                  {test.durationMinutes}m
-                                </span>
-                              )}
-                              {test.questionsCount && <span>{test.questionsCount}Q</span>}
-                            </span>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 w-full rounded-lg text-xs font-medium"
-                            asChild
-                          >
-                            <Link to={`/student/tests/${test.id}`}>View Details</Link>
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {!anyVisible && (
-              <p className="rounded-xl border border-border bg-muted/30 py-6 text-center text-sm text-muted-foreground">
-                No tests available right now.
-              </p>
-            )}
-          </section>
-        );
-      })()}
-
       {/* Leaderboard Preview + Score Trend */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="card-soft border-0 shadow-md">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4">
-            <CardTitle className="flex items-center gap-1.5 text-sm font-semibold">
-              <Trophy className="h-4 w-4 text-amber-500" />
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Leaderboard */}
+        <Card className="card-soft border-0">
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Trophy className="h-5 w-5 text-amber-500" />
               Top Performers
             </CardTitle>
-            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" asChild>
+            <Button variant="ghost" size="sm" asChild>
               <Link to="/student/rankings">
-                Full <ArrowRight className="ml-1 h-3 w-3" />
+                Full Rankings <ArrowRight className="ml-1 h-3 w-3" />
               </Link>
             </Button>
           </CardHeader>
-          <CardContent className="pb-4">
+          <CardContent>
             {leaderboard.length === 0 ? (
-              <p className="py-3 text-center text-sm text-muted-foreground">No rankings yet.</p>
+              <p className="py-4 text-center text-sm text-muted-foreground">
+                No rankings yet. Be the first!
+              </p>
             ) : (
-              <div className="space-y-1">
+              <div className="space-y-2">
                 {leaderboard.map((entry) => {
                   const isMe = entry.studentId === firebaseUser?.uid;
                   const rankColors: Record<number, string> = {
                     1: "text-amber-500",
-                    2: "text-slate-400",
-                    3: "text-orange-400",
+                    2: "text-slate-500",
+                    3: "text-orange-500",
                   };
                   return (
                     <div
                       key={entry.rank}
-                      className={`flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm ${isMe ? "bg-primary/10 font-semibold" : ""}`}
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2 ${isMe ? "bg-primary/10 font-semibold" : ""}`}
                     >
                       <span
-                        className={`w-5 text-xs font-bold ${rankColors[entry.rank] || "text-muted-foreground"}`}
+                        className={`w-6 text-sm font-bold ${rankColors[entry.rank] || "text-muted-foreground"}`}
                       >
                         #{entry.rank}
                       </span>
                       <span className="flex-1 truncate text-sm">
                         {isMe ? "You" : entry.name.split(" ")[0]}
                       </span>
-                      <Badge variant="secondary" className="rounded-full px-2 py-0 text-xs">
+                      <Badge variant="secondary" className="rounded-full text-xs">
                         {entry.score}
                       </Badge>
                     </div>
@@ -859,48 +615,45 @@ export default function StudentDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="card-soft border-0 shadow-md">
-          <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm font-semibold">Score Trend</CardTitle>
+        {/* Score Trend */}
+        <Card className="card-soft border-0">
+          <CardHeader>
+            <CardTitle className="text-lg">Score Trend</CardTitle>
           </CardHeader>
-          <CardContent className="pb-4">
-            {scoreTrend.length === 0 ? (
-              <p className="py-3 text-center text-sm text-muted-foreground">No attempts yet.</p>
-            ) : (
-              <ResponsiveContainer width="100%" height={180}>
-                <LineChart data={scoreTrend}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 10 }} />
-                  <Tooltip contentStyle={{ borderRadius: "8px", fontSize: "12px" }} />
-                  <Line
-                    type="monotone"
-                    dataKey="score"
-                    stroke="hsl(var(--primary))"
-                    strokeWidth={2}
-                    dot
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
+          <CardContent>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={scoreTrend}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis dataKey="date" className="text-xs" />
+                <YAxis className="text-xs" />
+                <Tooltip contentStyle={{ borderRadius: "12px" }} />
+                <Line
+                  type="monotone"
+                  dataKey="score"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth={2}
+                  dot
+                />
+              </LineChart>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
 
       {/* Subject Performance */}
       {subjectPerformance.length > 0 && (
-        <Card className="card-soft border-0 shadow-md">
-          <CardHeader className="pb-2 pt-4">
-            <CardTitle className="text-sm font-semibold">Subject Performance</CardTitle>
+        <Card className="card-soft border-0">
+          <CardHeader>
+            <CardTitle className="text-lg">Subject Performance</CardTitle>
           </CardHeader>
-          <CardContent className="pb-4">
-            <ResponsiveContainer width="100%" height={180}>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={200}>
               <BarChart data={subjectPerformance}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="subject" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} />
-                <Tooltip contentStyle={{ borderRadius: "8px", fontSize: "12px" }} />
-                <Bar dataKey="score" fill="hsl(var(--primary))" radius={[3, 3, 0, 0]} />
+                <XAxis dataKey="subject" className="text-xs" tick={{ fontSize: 10 }} />
+                <YAxis className="text-xs" />
+                <Tooltip contentStyle={{ borderRadius: "12px" }} />
+                <Bar dataKey="score" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
