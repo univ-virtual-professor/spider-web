@@ -477,7 +477,7 @@ export default function DppGenerator() {
           subject_filter: genSubjects,
           chapter_filter: genChapters,
           target_batches: [...selectedBatchIds],
-          title: customTitle,
+          title: genTopicName.trim(),
           type: "dpp",
           folderId: "dpp_folder",
           uploaded_context: uploadedContext,
@@ -531,7 +531,6 @@ export default function DppGenerator() {
 
       await performGeneration(finalContentIds, finalContentTitles, uploadedContext);
     } catch (e: any) {
-      console.log(e.message);
       toast.error(e?.message || "Failed to process DPP");
       setUploading(false);
     } finally {
