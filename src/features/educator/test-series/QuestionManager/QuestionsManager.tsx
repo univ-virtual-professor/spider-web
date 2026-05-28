@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Search, Loader2, CheckCircle2, FileUp } from "lucide-react";
+import { ArrowLeft, Search, Loader2, CheckCircle2, FileUp, Plus } from "lucide-react";
 
 import {
   DndContext,
@@ -2954,12 +2954,23 @@ const QuestionsManager = ({
                 </div>
               </div>
               <div className="flex items-center justify-between pb-1 text-xs text-muted-foreground">
-                <span>{readOnly ? "Read-only sections" : "Drag sections to reorder"}</span>
-                {reordering ? (
-                  <span className="inline-flex items-center gap-1">
-                    <Loader2 className="h-3 w-3 animate-spin" /> Saving order...
-                  </span>
-                ) : null}
+                <div className="flex items-center gap-2">
+                  <span>{readOnly ? "Read-only sections" : "Drag sections to reorder"}</span>
+                  {reordering ? (
+                    <span className="inline-flex items-center gap-1">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Saving order...
+                    </span>
+                  ) : null}
+                </div>
+                {!readOnly && (
+                  <Button
+                    size="sm"
+                    className="h-7 rounded-xl px-3 text-xs"
+                    onClick={() => openNewInSection(managedSections[0]?.id || "main")}
+                  >
+                    <Plus className="mr-1 h-3.5 w-3.5" /> Add Question
+                  </Button>
+                )}
               </div>
               {loading ? (
                 <div className="flex justify-center py-6">
