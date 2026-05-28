@@ -36,7 +36,7 @@ import { cn } from "@shared/lib/utils";
 const isDppTest = (t: any) => t.type === "from_dpp" || t.type === "dpp";
 
 const getDppDisplayTitle = (t: any) => {
-  if (t.topic) return `DPP: ${t.topic}`;
+  if (t.title) return `${t.title}`;
   const m = String(t.title || "").match(/^DPP\s*[-–]\s*(.+?)\s*\(/i);
   return m ? `DPP: ${m[1].trim()}` : "DPP";
 };
