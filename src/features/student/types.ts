@@ -30,7 +30,7 @@ export type Test = {
   id: string;
   title: string;
   subject: string;
-  duration: number;
+  durationMinutes: number;
   questionsCount: number;
   difficulty: "Easy" | "Medium" | "Hard";
   level?: string;

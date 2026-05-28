@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Clock, FileText, Lock, Unlock, Play, Eye, Timer, CalendarClock } from "lucide-react";
+import { Clock, FileText, Lock, Unlock, Play, Timer, CalendarClock } from "lucide-react";
 import { Badge } from "@shared/ui/badge";
 import { Button } from "@shared/ui/button";
 import { cn } from "@shared/lib/utils";
@@ -9,7 +9,6 @@ import { useTenant } from "@app/providers/TenantProvider";
 interface TestCardProps {
   test: Test & { isLive?: boolean; isUpcoming?: boolean; startsAtMs?: number };
   attemptsUsed?: number;
-  onView: (testId: string) => void;
   onStart: (testId: string) => void;
   onUnlock: (testId: string) => void;
 }
@@ -58,7 +57,7 @@ function safeNum(v: any, fallback: number) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-export function TestCard({ test, attemptsUsed = 0, onView, onStart, onUnlock }: TestCardProps) {
+export function TestCard({ test, attemptsUsed = 0, onStart, onUnlock }: TestCardProps) {
   const { tenant } = useTenant();
 
   const windowExpiresAt = (test as any).windowExpiresAt as number | null | undefined;
@@ -168,7 +167,7 @@ export function TestCard({ test, attemptsUsed = 0, onView, onStart, onUnlock }: 
             className="rounded-full bg-muted/60 px-2.5 py-0.5 text-xs font-medium"
           >
             <Clock className="mr-1 h-3 w-3 text-muted-foreground" />
-            {test.duration} min
+            {test.durationMinutes} min
           </Badge>
           <Badge
             variant="secondary"
@@ -188,22 +187,6 @@ export function TestCard({ test, attemptsUsed = 0, onView, onStart, onUnlock }: 
         </div>
 
         {/* Attempts / Price */}
-        <div className="flex flex-col text-xs text-muted-foreground">
-          {!test.isLocked &&
-            (attemptsRemaining > 0 ? (
-              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                {attemptsRemaining} attempt{attemptsRemaining > 1 ? "s" : ""} left
-              </span>
-            ) : (
-              <span className="font-semibold text-destructive">No attempts left</span>
-            ))}
-          {test.isLocked && test.price > 0 && !test.isLive && (
-            <span className="text-sm font-bold text-primary">₹{test.price}</span>
-          )}
-          {test.isLive && (
-            <span className="text-[10px] font-bold uppercase text-red-500">Free during live</span>
-          )}
-        </div>
       </div>
 
       {/* Right Column: Timing/Countdown & Actions */}
@@ -235,15 +218,6 @@ export function TestCard({ test, attemptsUsed = 0, onView, onStart, onUnlock }: 
           {test.isUpcoming ? (
             <>
               <Button
-                variant="outline"
-                size="sm"
-                className="h-8 rounded-lg bg-background/60 px-3 text-xs font-medium"
-                onClick={() => onView(test.id)}
-              >
-                <Eye className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-                View
-              </Button>
-              <Button
                 size="sm"
                 className="h-8 rounded-lg bg-amber-500 px-3 text-xs font-medium text-white hover:bg-amber-600"
                 disabled
@@ -263,15 +237,6 @@ export function TestCard({ test, attemptsUsed = 0, onView, onStart, onUnlock }: 
             </Button>
           ) : (
             <>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 rounded-lg bg-background/60 px-3 text-xs font-medium"
-                onClick={() => onView(test.id)}
-              >
-                <Eye className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
-                View
-              </Button>
               <Button
                 size="sm"
                 className="gradient-bg h-9 rounded-lg px-4 text-xs font-semibold"
