@@ -195,7 +195,7 @@ export default function StudentsListing() {
         <div className="flex items-center gap-4">
           <div
             className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
-            onClick={() => navigate("/educator")}
+            onClick={() => navigate("/educator/analytics")}
           >
             <ArrowLeft className="h-4 w-4" />
           </div>

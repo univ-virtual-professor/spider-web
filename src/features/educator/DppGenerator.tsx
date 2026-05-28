@@ -436,7 +436,7 @@ export default function DppGenerator() {
         (id) => batches.find((b) => b.id === id)?.name || id
       );
       const customTitle = genTopicName.trim()
-        ? `DPP - ${genTopicName.trim()} (${batchNames.join(", ")})`
+        ? `${genTopicName.trim()}-DPP`
         : `DPP (${batchNames.join(", ")})`;
 
       const res = await apiFetch(firebaseUser, "/api/dpp/generate", {
@@ -793,9 +793,7 @@ export default function DppGenerator() {
               </div>
 
               <div className="space-y-1">
-                <Label>
-                  DPP (topic) Name
-                </Label>
+                <Label>DPP (topic) Name</Label>
                 <Input
                   placeholder="e.g. Newton's Laws"
                   value={genTopicName}
@@ -821,7 +819,10 @@ export default function DppGenerator() {
                         <Input
                           type="date"
                           value={schedStartDate}
-                          min={(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })()}
+                          min={(() => {
+                            const d = new Date();
+                            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                          })()}
                           onChange={(e) => setSchedStartDate(e.target.value)}
                         />
                       </div>
@@ -851,7 +852,9 @@ export default function DppGenerator() {
                             min={1}
                             max={365}
                             value={schedDays}
-                            onChange={(e) => setSchedDays(Math.max(1, parseInt(e.target.value) || 1))}
+                            onChange={(e) =>
+                              setSchedDays(Math.max(1, parseInt(e.target.value) || 1))
+                            }
                           />
                         </div>
                       )}
