@@ -126,7 +126,8 @@ function resolveReferenceImageUrls(req: EvaluationRequest): string[] {
 
 function resolveStudentImageUrls(req: EvaluationRequest): string[] {
   if (req.studentAnswerImageUrls?.length) return req.studentAnswerImageUrls.filter(Boolean);
-  if (req.questionType === "UPLOAD" && req.studentAnswer?.startsWith("https://")) return [req.studentAnswer];
+  if (req.questionType === "UPLOAD" && req.studentAnswer?.startsWith("https://"))
+    return [req.studentAnswer];
   return [];
 }
 
@@ -212,6 +213,33 @@ async function buildRequestParts(req: EvaluationRequest) {
   return parts;
 }
 
+function escapeControlCharsInJsonStrings(raw: string): string {
+  let inString = false;
+  let escaped = false;
+  const chars: string[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
+    if (escaped) {
+      chars.push(c);
+      escaped = false;
+    } else if (c === "\\" && inString) {
+      chars.push(c);
+      escaped = true;
+    } else if (c === '"') {
+      chars.push(c);
+      inString = !inString;
+    } else if (inString && (c === "\n" || c === "\r" || c === "\t")) {
+      chars.push(c === "\n" ? "\\n" : c === "\r" ? "\\r" : "\\t");
+    } else {
+      chars.push(c);
+    }
+  }
+  return chars.join("");
+}
+
+const GEMINI_MAX_RETRIES = 3;
+const GEMINI_RETRY_BASE_MS = 1000;
+
 async function evaluateWithGemini(parts: any[], maxScore: number): Promise<EvaluationResponse> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -233,20 +261,35 @@ async function evaluateWithGemini(parts: any[], maxScore: number): Promise<Evalu
     systemInstruction: SYSTEM_INSTRUCTION,
   });
 
-  const result = await model.generateContent(parts);
-  const text = result.response.text();
-  if (!text) {
-    throw new Error("Gemini returned an empty response");
+  let lastError: unknown;
+  for (let attempt = 0; attempt < GEMINI_MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, GEMINI_RETRY_BASE_MS * 2 ** (attempt - 1)));
+    }
+    try {
+      const result = await model.generateContent(parts);
+      const text = result.response.text();
+      if (!text) throw new Error("Gemini returned an empty response");
+
+      let parsed: EvaluationResponse;
+      try {
+        parsed = JSON.parse(text) as EvaluationResponse;
+      } catch {
+        parsed = JSON.parse(escapeControlCharsInJsonStrings(text)) as EvaluationResponse;
+      }
+
+      parsed.score = Math.max(0, Math.min(maxScore, Number(parsed.score) || 0));
+      parsed.maxScore = maxScore;
+      parsed.confidence = Math.max(0, Math.min(1, Number(parsed.confidence) || 0.5));
+      parsed.evaluatedAt = Date.now();
+
+      return parsed;
+    } catch (err) {
+      lastError = err;
+    }
   }
 
-  const parsed = JSON.parse(text) as EvaluationResponse;
-
-  parsed.score = Math.max(0, Math.min(maxScore, Number(parsed.score) || 0));
-  parsed.maxScore = maxScore;
-  parsed.confidence = Math.max(0, Math.min(1, Number(parsed.confidence) || 0.5));
-  parsed.evaluatedAt = Date.now();
-
-  return parsed;
+  throw lastError;
 }
 
 interface BatchEvaluationRequest {

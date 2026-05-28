@@ -62,7 +62,10 @@ export default function SubjectiveReviewQueue() {
         setAttempts(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
         setLoading(false);
       },
-      () => setLoading(false)
+      (err) => {
+        console.error("[SubjectiveReviewQueue] Firestore query failed:", err);
+        setLoading(false);
+      }
     );
 
     return () => unsub();
