@@ -43,7 +43,7 @@ export default function TenantHomeTheme2() {
   const coachingName = config.coachingName || (tenant as any)?.coachingName || "Your Institute";
   const tagline = config.tagline || (tenant as any)?.tagline || "Learn smarter. Score higher.";
   const heroImage: string | undefined = config.heroImage;
-  const logoUrl: string | undefined = config.logoUrl;
+  const logoUrl: string | undefined = tenant?.instituteLogo || config.logoUrl;
 
   useFavicon(logoUrl, coachingName);
 
@@ -181,7 +181,7 @@ export default function TenantHomeTheme2() {
                 </span>
               </div>
             )}
-            <span className="hidden max-w-[11rem] truncate text-base font-bold tracking-tight text-zinc-950 sm:max-w-[20rem] sm:text-xl lg:block">
+            <span className="max-w-[11rem] truncate text-base font-bold tracking-tight text-zinc-950 sm:max-w-[20rem] sm:text-xl">
               {coachingName}
             </span>
           </Link>

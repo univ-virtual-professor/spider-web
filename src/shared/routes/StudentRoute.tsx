@@ -10,7 +10,9 @@ export default function StudentRoute() {
   const { isTenantDomain, tenantSlug, loading: tenantLoading } = useTenant();
   const location = useLocation();
 
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const {
     isReady: appTokenReady,
     status: appTokenStatus,

@@ -40,6 +40,9 @@ type Batch = { id: string; name: string; courseId: string; branchId: string };
 
 export default function StudentsListing() {
   const navigate = useNavigate();
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const [searchParams, setSearchParams] = useSearchParams();
   const { firebaseUser } = useAuth();
   const educatorId = firebaseUser?.uid;

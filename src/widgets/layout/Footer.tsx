@@ -10,9 +10,9 @@ const footerLinks = {
   ],
   resources: [
     { name: "Contact Us", path: "/contact" },
-    { name: "About Us", path: "/about" },
-    { name: "Terms of Use", path: "/terms" },
+    { name: "Terms & Conditions", path: "/terms" },
     { name: "Privacy Policy", path: "/privacy" },
+    { name: "Refunds & Cancellations", path: "/refunds" },
   ],
 };
 

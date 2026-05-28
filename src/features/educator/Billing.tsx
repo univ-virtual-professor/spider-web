@@ -222,7 +222,7 @@ export default function Billing() {
         educator_name: profile?.displayName || profile?.fullName || "Educator",
         educator_email: profile?.email || firebaseUser?.email || "",
         educator_phone: profile?.phone || "",
-        return_url: `${window.location.origin}/educator/billing?payment=success`,
+        educator_slug: profile?.tenantSlug || "",
       };
 
       const result = await apiFetch("/api/payment/initiate", {

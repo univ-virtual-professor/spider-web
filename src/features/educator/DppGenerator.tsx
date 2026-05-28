@@ -115,6 +115,9 @@ function SourceLabel({ mode }: { mode?: string }) {
 export default function DppGenerator() {
   const { firebaseUser } = useAuth();
   const navigate = useNavigate();
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const educatorUid = firebaseUser?.uid || "";
   const { features, loading: featuresLoading } = useEducatorFeatures(educatorUid);
   const { subjects, allowedSubjectIds } = useAccessibleCourses(educatorUid);
@@ -331,7 +334,8 @@ export default function DppGenerator() {
             const ta = a.createdAt?.seconds ?? 0;
             const tb = b.createdAt?.seconds ?? 0;
             return tb - ta;
-          });
+          })
+          .slice(0, 5);
         setDpps(records);
       }
     );
@@ -357,7 +361,20 @@ export default function DppGenerator() {
     firebaseUser.getIdToken().then((token: string) => {
       fetch(`${MONKEY_KING}/api/dpp/schedules`, { headers: { Authorization: `Bearer ${token}` } })
         .then((r) => r.json())
-        .then((d) => setSchedules(Array.isArray(d) ? d : []))
+        .then(async (d) => {
+          const all: ScheduleRecord[] = Array.isArray(d) ? d : [];
+          const today = new Date().toISOString().slice(0, 10);
+          const expired = all.filter((s) => s.endDate !== "2099-12-31" && s.endDate < today);
+          const active = all.filter((s) => s.endDate === "2099-12-31" || s.endDate >= today);
+          if (expired.length > 0) {
+            await Promise.allSettled(
+              expired.map((s) =>
+                apiFetch(firebaseUser, `/api/dpp/schedules/${s.id}`, { method: "DELETE" })
+              )
+            );
+          }
+          setSchedules(active);
+        })
         .catch(() => {})
         .finally(() => setLoadingSchedules(false));
     });
@@ -593,12 +610,14 @@ export default function DppGenerator() {
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div
-            className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
-            onClick={() => navigate("/educator/test-series")}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </div>
+          {!isApp && (
+            <div
+              className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+              onClick={() => navigate("/educator/test-series")}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </div>
+          )}
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-bold">
               <Zap className="h-6 w-6 text-primary" /> DPP Generator
@@ -984,7 +1003,7 @@ export default function DppGenerator() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="max-h-[600px] space-y-2 pr-1">
+              <div className="max-h-[400px] space-y-2 overflow-y-auto pr-1">
                 {dpps.map((dpp) => {
                   const batchNames = (dpp.targetBatches || []).map(
                     (id) => batches.find((b) => b.id === id)?.name || id

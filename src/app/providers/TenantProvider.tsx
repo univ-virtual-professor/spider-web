@@ -60,7 +60,7 @@ async function fetchTenantProfile(tenantSlug: string | null): Promise<TenantProf
     educatorId,
     tenantSlug,
     coachingName: builderConfig?.instituteName || websiteConfig?.coachingName || data?.coachingName,
-    instituteLogo: builderConfig?.instituteLogo || websiteConfig?.logoUrl,
+    instituteLogo: builderConfig?.instituteLogo || websiteConfig?.logoUrl || data?.photoURL,
     tagline: websiteConfig?.tagline || data?.tagline,
     contact: {
       phone:

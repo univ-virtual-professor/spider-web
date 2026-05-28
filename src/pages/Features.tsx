@@ -1,4 +1,4 @@
-import Layout from "@widgets/layout/Layout";
+import LandingLayout from "@widgets/layout/LandingLayout";
 import SEO from "@shared/components/SEO";
 import { motion } from "framer-motion";
 import { FileText, Users, Brain, Headphones, Gift, CheckCircle } from "lucide-react";
@@ -44,7 +44,7 @@ const features = [
 
 const Features = () => {
   return (
-    <Layout>
+    <LandingLayout>
       <SEO
         title="Features — AI-Powered Test Series & Coaching Management | PrepareKaro"
         description="Explore PrepareKaro features: AI question import, objective & subjective tests, student analytics, AI chatbot tutor, rankings, and support for JEE, NEET, CUET, CBSE and all exams."
@@ -84,7 +84,7 @@ const Features = () => {
           </div>
         </div>
       </section>
-    </Layout>
+    </LandingLayout>
   );
 };
 

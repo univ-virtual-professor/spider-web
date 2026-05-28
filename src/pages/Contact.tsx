@@ -1,4 +1,4 @@
-import Layout from "@widgets/layout/Layout";
+import LandingLayout from "@widgets/layout/LandingLayout";
 import SEO from "@shared/components/SEO";
 import { motion } from "framer-motion";
 import { Mail, Phone, Clock } from "lucide-react";
@@ -30,7 +30,7 @@ const Contact = () => {
   };
 
   return (
-    <Layout>
+    <LandingLayout>
       <SEO
         title="Contact Us — PrepareKaro AI Test Series Platform"
         description="Get in touch with PrepareKaro. Book a demo, ask about pricing, or get support for setting up your coaching institute's AI-powered test series platform."
@@ -226,7 +226,7 @@ const Contact = () => {
           </div>
         </div>
       </section>
-    </Layout>
+    </LandingLayout>
   );
 };
 

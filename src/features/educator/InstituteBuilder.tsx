@@ -5659,6 +5659,8 @@ export default function InstituteBuilder() {
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
+  const [showResetDefaultModal, setShowResetDefaultModal] = useState(false);
+  const [resettingToDefault, setResettingToDefault] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"canvas" | "sections" | "editor">("canvas");
   const [useGradient, setUseGradient] = useState(false);
@@ -5880,6 +5882,27 @@ export default function InstituteBuilder() {
     setSelectedId(null);
     setShowResetModal(false);
     toast.success("Canvas reset successfully.");
+  }
+
+  async function handleResetToDefault() {
+    if (!uid || resettingToDefault) return;
+    setResettingToDefault(true);
+    try {
+      await setDoc(
+        doc(db, "educators", uid),
+        {
+          builderConfig: { publishedAt: null },
+          websiteConfig: { homepageSource: null, themeId: "theme2" },
+        },
+        { merge: true }
+      );
+      setShowResetDefaultModal(false);
+      toast.success("Switched back to Theme 2.");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to reset.");
+    } finally {
+      setResettingToDefault(false);
+    }
   }
 
   const selectedSection = sections.find((s) => s.id === selectedId) || null;
@@ -6158,6 +6181,21 @@ export default function InstituteBuilder() {
             </>
           )}
           <button
+            onClick={() => setShowResetDefaultModal(true)}
+            style={{
+              background: "#fff",
+              color: "#6b7280",
+              border: "1px solid rgba(0,0,0,0.15)",
+              borderRadius: 8,
+              padding: isMobileViewport ? "5px 6px" : "7px 12px",
+              fontSize: isMobileViewport ? 10 : 12,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Reset to Default
+          </button>
+          <button
             onClick={() => setShowResetModal(true)}
             disabled={sections.length === 0}
             style={{
@@ -6415,6 +6453,86 @@ export default function InstituteBuilder() {
                 }}
               >
                 Yes, Reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showResetDefaultModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: 16,
+          }}
+          onClick={() => setShowResetDefaultModal(false)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              background: "#fff",
+              borderRadius: 14,
+              boxShadow: "0 24px 60px rgba(0,0,0,0.25)",
+              padding: 20,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 16, fontWeight: 800, color: "#111827", marginBottom: 8 }}>
+              Switch back to Default Website?
+            </div>
+            <div style={{ fontSize: 13, color: "#4b5563", lineHeight: 1.6, marginBottom: 18 }}>
+              Your public landing page will switch back to the default preset. Your builder content
+              is saved and you can re-publish it any time.
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button
+                onClick={() => setShowResetDefaultModal(false)}
+                disabled={resettingToDefault}
+                style={{
+                  border: "1px solid rgba(0,0,0,0.12)",
+                  background: "#fff",
+                  color: "#111827",
+                  borderRadius: 8,
+                  padding: "8px 12px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  opacity: resettingToDefault ? 0.5 : 1,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleResetToDefault}
+                disabled={resettingToDefault}
+                style={{
+                  border: "none",
+                  background: "#4f46e5",
+                  color: "#fff",
+                  borderRadius: 8,
+                  padding: "8px 12px",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: resettingToDefault ? "not-allowed" : "pointer",
+                  opacity: resettingToDefault ? 0.7 : 1,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                {resettingToDefault ? (
+                  <>
+                    <Loader2 size={12} className="animate-spin" /> Switching…
+                  </>
+                ) : (
+                  "Yes, Switch to Default"
+                )}
               </button>
             </div>
           </div>

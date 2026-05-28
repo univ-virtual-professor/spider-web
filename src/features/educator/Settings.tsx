@@ -61,6 +61,9 @@ type EducatorProfileDoc = {
 };
 
 export default function Settings() {
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const [searchParams, setSearchParams] = useSearchParams();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const { firebaseUser, profile, loading: authLoading, refreshProfile } = useAuth();
@@ -456,13 +459,15 @@ export default function Settings() {
   if (showBuilder) {
     return (
       <div className="space-y-4">
-        <button
-          onClick={() => setSearchParams({})}
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Settings
-        </button>
+        {!isApp && (
+          <button
+            onClick={() => setSearchParams({})}
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Settings
+          </button>
+        )}
         <InstituteBuilder />
       </div>
     );

@@ -41,6 +41,9 @@ type TestMeta = {
 
 export default function ManageQuestionsPage() {
   const navigate = useNavigate();
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { testId } = useParams<{ testId: string }>();
   const { firebaseUser, loading: authLoading } = useAuth();
 
@@ -189,9 +192,11 @@ export default function ManageQuestionsPage() {
       <Card>
         <CardContent className="space-y-4 p-6">
           <p className="text-sm text-muted-foreground">Test not found or you do not have access.</p>
-          <Button variant="outline" onClick={() => navigate("/educator/test-series")}>
-            Back to Test Series
-          </Button>
+          {!isApp && (
+            <Button variant="outline" onClick={() => navigate("/educator/test-series")}>
+              Back to Test Series
+            </Button>
+          )}
         </CardContent>
       </Card>
     );

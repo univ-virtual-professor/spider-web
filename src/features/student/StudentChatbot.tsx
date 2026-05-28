@@ -169,6 +169,9 @@ function SourceCitations({ sources }: { sources: Source[] }) {
 export default function StudentChatbot() {
   const { profile, firebaseUser } = useAuth();
   const educatorId = profile?.educatorId;
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { features, loading: featuresLoading } = useEducatorFeatures(educatorId);
 
   const [screen, setScreen] = useState<Screen>("setup");
@@ -639,13 +642,15 @@ export default function StudentChatbot() {
 
       {/* Chat header */}
       <div className="sticky top-3 z-10 flex items-center gap-3 border-b bg-background/95 px-4 py-3 backdrop-blur-sm">
-        <button
-          onClick={changeContext}
-          className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ChevronLeft className="h-4 w-4" />
-          Change
-        </button>
+        {!isApp && (
+          <button
+            onClick={changeContext}
+            className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Change
+          </button>
+        )}
 
         {/* Gradient AI pill */}
         <span className="shrink-0 rounded-full bg-gradient-to-r from-primary to-accent px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">

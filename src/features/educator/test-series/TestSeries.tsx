@@ -76,7 +76,6 @@ import {
   where,
   writeBatch,
   orderBy,
-  limit,
 } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
@@ -272,6 +271,9 @@ async function appendImageToField(current: string, folder = "/test-questions") {
 
 export default function TestSeries() {
   const navigate = useNavigate();
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { firebaseUser: currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState<"overall" | "dpp" | "test">("overall");
 
@@ -1031,7 +1033,7 @@ export default function TestSeries() {
         }
       }
       const isDppTest = test.type === "from_dpp" || test.type === "dpp";
-      const subject = isDppTest ? "DPP" : (test.subject || "Other");
+      const subject = isDppTest ? "DPP" : test.subject || "Other";
       if (!subjectMap.has(subject)) subjectMap.set(subject, []);
       subjectMap.get(subject)!.push(test);
     }
@@ -1364,12 +1366,14 @@ export default function TestSeries() {
     <div className="space-y-6 p-1">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-2">
-          <div
-            className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
-            onClick={() => navigate("/educator")}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </div>
+          {!isApp && (
+            <div
+              className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+              onClick={() => navigate("/educator")}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </div>
+          )}
           <div>
             <h1 className="text-2xl font-bold">Test Series</h1>
             <p className="text-muted-foreground">
@@ -1777,16 +1781,7 @@ export default function TestSeries() {
                                   .toLowerCase()
                                   .includes("dpp");
 
-                              const dppTopic = (() => {
-                                if (!isDpp) return "";
-                                if (test.topic) return test.topic;
-                                const m = String(test.title || "").match(/^DPP\s*[-–]\s*(.+?)\s*\(/i);
-                                return m ? m[1].trim() : "";
-                              })();
-
-                              const displayTitle = isDpp
-                                ? dppTopic ? `DPP: ${dppTopic}` : "DPP"
-                                : test.title;
+                              const displayTitle = test.title || (isDpp ? "DPP" : "Untitled");
 
                               return (
                                 <Card className="relative flex h-full flex-col transition-shadow hover:shadow-md">
@@ -1982,9 +1977,12 @@ export default function TestSeries() {
                                             variant="outline"
                                             className={cn(
                                               "h-5 shrink-0 px-2 py-0 text-[10px] capitalize",
-                                              test.difficulty === "easy" && "border-green-400 text-green-600 dark:border-green-600 dark:text-green-400",
-                                              test.difficulty === "medium" && "border-amber-400 text-amber-600 dark:border-amber-600 dark:text-amber-400",
-                                              test.difficulty === "hard" && "border-red-400 text-red-600 dark:border-red-600 dark:text-red-400"
+                                              test.difficulty === "easy" &&
+                                                "border-green-400 text-green-600 dark:border-green-600 dark:text-green-400",
+                                              test.difficulty === "medium" &&
+                                                "border-amber-400 text-amber-600 dark:border-amber-600 dark:text-amber-400",
+                                              test.difficulty === "hard" &&
+                                                "border-red-400 text-red-600 dark:border-red-600 dark:text-red-400"
                                             )}
                                           >
                                             {test.difficulty}

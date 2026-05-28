@@ -78,7 +78,9 @@ export default function StudentLayout() {
   const { firebaseUser, profile, loading: authLoading } = useAuth();
   const { tenant, tenantSlug, loading: tenantLoading } = useTenant();
 
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { isReady: appTokenReady } = useAppTokenBootstrap();
 
   const uid = firebaseUser?.uid || null;
@@ -542,7 +544,8 @@ export default function StudentLayout() {
                 <div className="space-y-1">
                   <h2 className="text-xl font-semibold text-foreground">Account Locked</h2>
                   <p className="max-w-sm text-sm text-muted-foreground">
-                    Your seat has not been activated yet. Please contact your educator to get access.
+                    Your seat has not been activated yet. Please contact your educator to get
+                    access.
                   </p>
                 </div>
                 <button

@@ -77,7 +77,7 @@ function isLocalHost(hostname: string): boolean {
 }
 
 function isReservedSubdomain(subdomain: string): boolean {
-  const defaults = ["www", "app", "admin", "api", "dev", "staging", "preview"];
+  const defaults = ["www", "app", "admin", "api", "dev", "staging", "preview", "pay"];
   const extra = String(import.meta.env.VITE_RESERVED_SUBDOMAINS || "")
     .split(",")
     .map((x) => x.trim().toLowerCase())

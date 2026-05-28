@@ -71,6 +71,9 @@ type Subject = { id: string; name: string; courseId?: string };
 
 export default function BatchesListing() {
   const navigate = useNavigate();
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { profile, firebaseUser, loading: authLoading } = useAuth();
   const { tenantSlug: currentTenantSlug } = useTenant();
   const educatorId = profile?.uid || firebaseUser?.uid || "";
@@ -571,12 +574,14 @@ export default function BatchesListing() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <div
-            className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
-            onClick={() => navigate("/educator")}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </div>
+          {!isApp && (
+            <div
+              className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+              onClick={() => navigate("/educator")}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </div>
+          )}
           <div>
             <h1 className="text-2xl font-bold">Batches</h1>
             <p className="text-sm text-muted-foreground">

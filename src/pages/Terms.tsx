@@ -1,9 +1,9 @@
-import Layout from "@widgets/layout/Layout";
+import LandingLayout from "@widgets/layout/LandingLayout";
 import { motion } from "framer-motion";
 
 const Terms = () => {
   return (
-    <Layout>
+    <LandingLayout>
       <section className="section-padding section-1">
         <div className="container-main">
           <motion.div
@@ -12,7 +12,7 @@ const Terms = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <h1 className="mb-4 text-4xl font-bold sm:text-5xl">Terms of Use</h1>
+            <h1 className="mb-4 text-4xl font-bold sm:text-5xl">Terms &amp; Conditions</h1>
             <p className="mb-12 text-muted-foreground">Last updated: 24/01/2026</p>
 
             <div className="prose prose-lg max-w-none">
@@ -62,7 +62,10 @@ const Terms = () => {
                   Pricing is <strong>pay-per-student</strong> and subject to change with prior
                   notice.
                 </li>
-                <li>Payments, once made, are non-refundable unless stated otherwise.</li>
+                <li>
+                  Payments, once made, are non-refundable except as described in our{" "}
+                  <a href="/refunds">Refunds &amp; Cancellations Policy</a>.
+                </li>
               </ul>
 
               <h2>6. Intellectual Property</h2>
@@ -107,7 +110,7 @@ const Terms = () => {
           </motion.div>
         </div>
       </section>
-    </Layout>
+    </LandingLayout>
   );
 };
 

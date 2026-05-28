@@ -145,6 +145,9 @@ const QuestionsManager = ({
   questionSourceTestId?: string;
 }) => {
   const isPageMode = mode === "page";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const [questions, setQuestions] = useState<TestQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [reportedQuestionIds, setReportedQuestionIds] = useState<Set<string>>(new Set());
@@ -2867,9 +2870,11 @@ const QuestionsManager = ({
             </p>
           </div>
           <div className="flex flex-wrap justify-end gap-2 lg:justify-start">
-            <Button variant="outline" onClick={requestCloseManager} className="rounded-xl">
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back
-            </Button>
+            {(!isPageMode || !isApp) && (
+              <Button variant="outline" onClick={requestCloseManager} className="rounded-xl">
+                <ArrowLeft className="mr-2 h-4 w-4" /> Back
+              </Button>
+            )}
             {!readOnly ? (
               <>
                 <Button

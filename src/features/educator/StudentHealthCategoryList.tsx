@@ -9,6 +9,9 @@ import { HealthStudentData } from "./components/StudentHealthOverview";
 export default function StudentHealthCategoryList() {
   const location = useLocation();
   const navigate = useNavigate();
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
 
   const state = location.state as { students?: HealthStudentData[]; title?: string } | null;
   const students = state?.students || [];
@@ -26,14 +29,16 @@ export default function StudentHealthCategoryList() {
   return (
     <div className="mx-auto max-w-5xl space-y-6 py-6 duration-700 animate-in fade-in slide-in-from-bottom-4">
       <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="rounded-full"
-          onClick={() => navigate("/educator/analytics")}
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
+        {!isApp && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="rounded-full"
+            onClick={() => navigate("/educator/analytics")}
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+        )}
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
           <p className="text-sm text-muted-foreground">

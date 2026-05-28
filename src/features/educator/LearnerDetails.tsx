@@ -173,6 +173,9 @@ function getLearnerName(learner: LearnerDoc | null, profile: UserDoc | null) {
 
 export default function LearnerDetails() {
   const nav = useNavigate();
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { studentId = "" } = useParams<{ studentId: string }>();
   const { firebaseUser, profile, role, loading: authLoading } = useAuth();
 
@@ -499,10 +502,12 @@ export default function LearnerDetails() {
             Detailed analytics and progress for this learner.
           </p>
         </div>
-        <Button variant="outline" onClick={() => nav("/educator/learners")}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Learners
-        </Button>
+        {!isApp && (
+          <Button variant="outline" onClick={() => nav("/educator/learners")}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Learners
+          </Button>
+        )}
       </div>
 
       <Card className="overflow-hidden border-0 shadow-lg">

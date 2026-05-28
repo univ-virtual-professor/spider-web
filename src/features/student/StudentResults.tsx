@@ -197,6 +197,9 @@ function computeFromQuestionsAndResponses(
 }
 
 export default function StudentResults() {
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { attemptId } = useParams();
   const { firebaseUser, loading: authLoading } = useAuth();
 
@@ -370,12 +373,14 @@ export default function StudentResults() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <Button variant="ghost" asChild>
-        <Link to="/student/attempts">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Attempts
-        </Link>
-      </Button>
+      {!isApp && (
+        <Button variant="ghost" asChild>
+          <Link to="/student/attempts">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Attempts
+          </Link>
+        </Button>
+      )}
 
       {/* Score Header */}
       <Card className="card-soft border-0 bg-gradient-to-r from-pastel-mint to-pastel-lavender">

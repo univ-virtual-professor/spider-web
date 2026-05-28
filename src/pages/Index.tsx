@@ -1,14 +1,12 @@
 import { useState, useEffect } from "react";
 import {
-  Menu,
-  X,
   ArrowRight,
   Check,
+  X,
   Star,
   ChevronLeft,
   ChevronRight,
   Calendar,
-  Phone,
   Mail,
   Sparkles,
   Brain,
@@ -22,14 +20,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import SEO from "@shared/components/SEO";
+import LandingNavbar from "@widgets/layout/LandingNavbar";
+import LandingFooter from "@widgets/layout/LandingFooter";
 import "./landing.css";
 
 const PRIMARY = "#6C47FF";
 const ACCENT = "#A78BFA";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const NAV_LINKS = ["Features", "How It Works", "Testimonials", "Contact"];
-const FOOTER_LINKS = ["Features", "How It Works", "Testimonials", "Contact"];
 const HERO_TAGS = ["CUET", "JEE", "NEET", "UPSC", "CAT", "CBSE", "State Boards", "Any Exam"];
 const HERO_STATS: [string, string][] = [
   ["500+", "Institutes"],
@@ -164,151 +162,6 @@ const TESTIMONIALS = [
     rating: 5,
   },
 ];
-
-// ─── NAVBAR ───────────────────────────────────────────────────────────────────
-function LandingNavbar() {
-  const [scrolled, setScrolled] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-
-  useEffect(() => {
-    const handler = () => setScrolled(window.scrollY > 40);
-    window.addEventListener("scroll", handler);
-    return () => window.removeEventListener("scroll", handler);
-  }, []);
-
-  return (
-    <nav
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 100,
-        background: scrolled ? "rgba(255,255,255,0.96)" : "rgba(255,255,255,0.85)",
-        backdropFilter: "blur(12px)",
-        borderBottom: scrolled ? "1px solid rgba(108,71,255,0.08)" : "1px solid transparent",
-        transition: "all 0.3s ease",
-        boxShadow: scrolled ? "0 2px 24px rgba(108,71,255,0.07)" : "none",
-      }}
-    >
-      <div
-        style={{
-          maxWidth: 1200,
-          margin: "0 auto",
-          padding: "0 24px 0 8px",
-          height: 68,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <a
-          href="/"
-          style={{ display: "flex", alignItems: "center", gap: 6, textDecoration: "none" }}
-        >
-          <img src="/logo.png" alt="preparekaro.in" style={{ height: 68, width: "auto" }} />
-        </a>
-
-        <div className="desktop-nav" style={{ display: "flex", alignItems: "center", gap: 36 }}>
-          {NAV_LINKS.map((l) => (
-            <a
-              key={l}
-              href={`#${l.toLowerCase().replace(/\s+/g, "-")}`}
-              style={{
-                fontFamily: "'Inter', sans-serif",
-                fontSize: 14,
-                fontWeight: 500,
-                color: "#3d3c47",
-                textDecoration: "none",
-                letterSpacing: "0.01em",
-                transition: "color 0.2s",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = PRIMARY)}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "#3d3c47")}
-            >
-              {l}
-            </a>
-          ))}
-          <a
-            href="#interest-widget"
-            style={{
-              padding: "9px 22px",
-              background: PRIMARY,
-              color: "#fff",
-              borderRadius: 100,
-              fontFamily: "'DM Sans',sans-serif",
-              fontWeight: 600,
-              fontSize: 14,
-              textDecoration: "none",
-              transition: "opacity 0.2s",
-              boxShadow: `0 4px 16px ${PRIMARY}40`,
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.88")}
-            onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
-          >
-            Book a Demo
-          </a>
-        </div>
-
-        <button
-          onClick={() => setMobileOpen((o) => !o)}
-          className="mobile-menu-btn"
-          style={{
-            display: "none",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            padding: 4,
-            color: "#0f0e17",
-          }}
-        >
-          {mobileOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
-      </div>
-
-      {mobileOpen && (
-        <div
-          style={{
-            background: "#fff",
-            borderTop: "1px solid #f0eeff",
-            padding: "16px 24px 24px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 16,
-          }}
-        >
-          <img src="/logo-compact.png" alt="Preparekaro.in" style={{ height: 40, width: 40 }} />
-          {NAV_LINKS.map((l) => (
-            <a
-              key={l}
-              href={`#${l.toLowerCase().replace(/\s+/g, "-")}`}
-              onClick={() => setMobileOpen(false)}
-              style={{ fontSize: 16, fontWeight: 500, color: "#3d3c47", textDecoration: "none" }}
-            >
-              {l}
-            </a>
-          ))}
-          <a
-            href="#interest-widget"
-            onClick={() => setMobileOpen(false)}
-            style={{
-              padding: "12px 22px",
-              background: PRIMARY,
-              color: "#fff",
-              borderRadius: 100,
-              fontWeight: 600,
-              fontSize: 15,
-              textDecoration: "none",
-              textAlign: "center",
-            }}
-          >
-            Book a Demo
-          </a>
-        </div>
-      )}
-    </nav>
-  );
-}
 
 // ─── HERO ─────────────────────────────────────────────────────────────────────
 function HeroSection() {
@@ -1951,117 +1804,6 @@ function InterestWidgetSection() {
         </div>
       </div>
     </section>
-  );
-}
-
-// ─── FOOTER ───────────────────────────────────────────────────────────────────
-function LandingFooter() {
-  return (
-    <footer
-      id="contact"
-      style={{ background: "#0a0917", padding: "48px 24px 32px", borderTop: "1px solid #1a1830" }}
-    >
-      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: 24,
-            marginBottom: 36,
-          }}
-        >
-          <div>
-            <span
-              style={{
-                fontFamily: "'DM Sans', sans-serif",
-                fontWeight: 700,
-                fontSize: 22,
-                color: "#fff",
-                letterSpacing: "-0.5px",
-              }}
-            >
-              preparekaro<span style={{ color: PRIMARY }}>.</span>in
-            </span>
-            <p style={{ fontSize: 13, color: "#5a5970", marginTop: 8, maxWidth: 300 }}>
-              Empowering coaching institutes across India with intelligent test platforms.
-            </p>
-          </div>
-          <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
-            {FOOTER_LINKS.map((l) => (
-              <a
-                key={l}
-                href={`#${l.toLowerCase().replace(/\s+/g, "-")}`}
-                style={{
-                  fontSize: 14,
-                  color: "#5a5970",
-                  textDecoration: "none",
-                  transition: "color 0.2s",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
-                onMouseLeave={(e) => (e.currentTarget.style.color = "#5a5970")}
-              >
-                {l}
-              </a>
-            ))}
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 28, flexWrap: "wrap", marginBottom: 32 }}>
-          <a
-            href="mailto:support@univlive"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 14,
-              color: "#9b9aae",
-              textDecoration: "none",
-              transition: "color 0.2s",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "#9b9aae")}
-          >
-            <Mail size={15} color={PRIMARY} />
-            support@univ.live
-          </a>
-          <a
-            href="tel:+918319937769"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 14,
-              color: "#9b9aae",
-              textDecoration: "none",
-              transition: "color 0.2s",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "#9b9aae")}
-          >
-            <Phone size={15} color={PRIMARY} />
-            +91 831 993 7769
-          </a>
-        </div>
-        <div
-          style={{
-            borderTop: "1px solid #1a1830",
-            paddingTop: 24,
-            display: "flex",
-            justifyContent: "space-between",
-            flexWrap: "wrap",
-            gap: 16,
-          }}
-        >
-          <span style={{ fontSize: 12, color: "#3d3c4a" }}>
-            © {new Date().getFullYear()} Preparekaro.in. All rights reserved.
-          </span>
-          <span style={{ fontSize: 12, color: "#3d3c4a" }}>
-            Made for India's coaching institutes ���🇳
-          </span>
-        </div>
-      </div>
-    </footer>
   );
 }
 

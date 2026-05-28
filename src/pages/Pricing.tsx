@@ -1,4 +1,4 @@
-import Layout from "@widgets/layout/Layout";
+import LandingLayout from "@widgets/layout/LandingLayout";
 import SEO from "@shared/components/SEO";
 import { motion } from "framer-motion";
 import { Check, X } from "lucide-react";
@@ -64,7 +64,7 @@ const comparisonData = [
 
 const Pricing = () => {
   return (
-    <Layout>
+    <LandingLayout>
       <SEO
         title="Pricing Plans — Affordable AI Test Series Platform for Coaching | PrepareKaro"
         description="Choose the right plan for your coaching institute. PrepareKaro offers affordable pricing for AI-powered test series covering JEE, NEET, CUET, CBSE and more."
@@ -216,7 +216,7 @@ const Pricing = () => {
           </motion.div>
         </div>
       </section>
-    </Layout>
+    </LandingLayout>
   );
 };
 

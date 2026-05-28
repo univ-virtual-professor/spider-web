@@ -729,6 +729,9 @@ const QuestionsManager = ({
   questionSourceTestId?: string;
 }) => {
   const isPageMode = mode === "page";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const [questions, setQuestions] = useState<TestQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [reordering, setReordering] = useState(false);
@@ -2356,9 +2359,11 @@ const QuestionsManager = ({
             </p>
           </div>
           {isPageMode ? (
-            <Button variant="outline" onClick={requestCloseManager} className="rounded-xl">
-              <ArrowLeft className="mr-2 h-4 w-4" /> Back
-            </Button>
+            !isApp ? (
+              <Button variant="outline" onClick={requestCloseManager} className="rounded-xl">
+                <ArrowLeft className="mr-2 h-4 w-4" /> Back
+              </Button>
+            ) : null
           ) : (
             <Button
               variant="ghost"

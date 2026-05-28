@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import Layout from "@widgets/layout/Layout";
+import LandingLayout from "@widgets/layout/LandingLayout";
 import SEO from "@shared/components/SEO";
 import { UserPlus, Palette, Wand2, Clock, Rocket, Settings, ArrowRight } from "lucide-react";
 import { Button } from "@shared/ui/button";
@@ -55,7 +55,7 @@ const steps: Step[] = [
 
 export default function HowItWorks() {
   return (
-    <Layout>
+    <LandingLayout>
       <SEO
         title="How It Works — Launch Any Test Series in Minutes | PrepareKaro"
         description="See how PrepareKaro works: set up your coaching portal, create test series for JEE, NEET, CUET, CBSE and more, and track student performance — all in minutes with AI."
@@ -134,6 +134,6 @@ export default function HowItWorks() {
           </motion.div>
         </section>
       </div>
-    </Layout>
+    </LandingLayout>
   );
 }

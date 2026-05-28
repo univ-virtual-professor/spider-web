@@ -109,7 +109,9 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
 ## Payments
 
 - **Cashfree** via `monkey-king` FastAPI backend (replaced Razorpay)
-- Educator self-service: `POST /api/payment/initiate` → Cashfree checkout → `POST /api/payment/verify/{orderId}`
+- Educator self-service: `POST /api/payment/initiate` → Cashfree checkout → Cashfree redirects to `pay.preparekaro.in/callback` → back to `/educator/billing?payment=success` → `POST /api/payment/verify/{orderId}`
+- `pay.preparekaro.in` is a fixed Cashfree-whitelisted domain; `/callback` route served by the same Vercel deployment; "pay" is a reserved subdomain in `tenant.ts`
+- `return_url` is built server-side by `payment_manager.initiate_payment()` using educator's `tenantSlug` — not passed from frontend
 - Admin payment link: `POST /api/payment/admin/create-payment-link`
 - Cashfree webhook: `POST /api/payment/webhook` (handled by monkey-king, not Vercel)
 - `api/razorpay/webhook.ts` — legacy Razorpay handler; kept for existing subscriptions only
