@@ -495,7 +495,7 @@ export default function StudentReports() {
     <div className="flex items-start justify-between gap-4">
       <div>
         <h1 className="text-2xl font-bold">My Reports</h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="hidden text-sm text-muted-foreground md:block">
           Personalised performance analysis based on your test history
         </p>
       </div>
@@ -511,7 +511,7 @@ export default function StudentReports() {
           Refresh
         </Button>
         {report?.computed_at && (
-          <span className="text-xs text-muted-foreground">
+          <span className="hidden text-xs text-muted-foreground md:block">
             {report.is_stale ? "Updating…" : `Updated ${timeAgo(report.computed_at)}`}
           </span>
         )}

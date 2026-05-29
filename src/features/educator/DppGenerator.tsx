@@ -335,7 +335,7 @@ export default function DppGenerator() {
             const tb = b.createdAt?.seconds ?? 0;
             return tb - ta;
           })
-          .slice(0, 5);
+          .slice(0, 6);
         setDpps(records);
       }
     );
@@ -703,7 +703,7 @@ export default function DppGenerator() {
               <div className="space-y-1.5">
                 <Label>Source</Label>
                 <div className="flex gap-2">
-                  {(["upload", "content", "qb"] as SourceMode[]).map((m) => (
+                  {(["upload", "content"] as SourceMode[]).map((m) => (
                     <button
                       key={m}
                       type="button"
@@ -717,7 +717,7 @@ export default function DppGenerator() {
                           : "border-border hover:bg-muted"
                       }`}
                     >
-                      {m === "upload" ? "Upload" : m === "content" ? "Content" : "Question Bank"}
+                      {m === "upload" ? "Upload" : "Content"}
                     </button>
                   ))}
                 </div>

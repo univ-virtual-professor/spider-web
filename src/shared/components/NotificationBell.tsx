@@ -189,7 +189,10 @@ export default function NotificationBell({
                       <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" />
                     )}
                     <div className={cn("min-w-0 flex-1", n.read && "pl-3.5")}>
-                      <p className="truncate text-sm font-medium">{n.title}</p>
+                      <p className="truncate text-sm font-medium md:hidden">
+                        {n.title.includes(":") ? n.title.split(":")[0].trim() : n.title}
+                      </p>
+                      <p className="hidden truncate text-sm font-medium md:block">{n.title}</p>
                       <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{n.body}</p>
                       <p className="mt-1 text-[10px] text-muted-foreground">
                         {relativeTime(n.createdAt)}

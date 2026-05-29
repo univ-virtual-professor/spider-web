@@ -466,7 +466,7 @@ export default function StudentTests() {
       </div>
 
       {/* Optional unlock UI (keep if you want) */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex hidden flex-wrap items-center gap-2 md:block">
         <Input
           placeholder="Enter access code to unlock..."
           className="max-w-sm"

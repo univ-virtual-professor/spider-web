@@ -7,10 +7,13 @@ import {
   UploadCloud,
   ExternalLink,
   ArrowLeft,
+  FileText,
+  Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
+import { cn } from "@shared/lib/utils";
 import { useAuth } from "@app/providers/AuthProvider";
 import { Button } from "@shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
@@ -124,13 +127,15 @@ function MonthlyUsage({ requests, limit }: { requests: QPRequest[]; limit: numbe
   const full = used >= limit;
 
   return (
-    <div className="flex items-center gap-2 rounded-lg bg-muted/60 px-3 py-1.5 text-sm">
-      <span className="text-muted-foreground">This month:</span>
-      <span className={`font-semibold ${full ? "text-destructive" : "text-foreground"}`}>
-        {used}
-      </span>
-      <span className="text-muted-foreground">/ {limit}</span>
-      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-border">
+    <div className="flex w-full items-center justify-between gap-2.5 rounded-lg bg-muted/60 px-3 py-1.5 text-sm sm:w-auto sm:justify-start">
+      <div className="flex items-center gap-1.5">
+        <span className="text-muted-foreground">This month:</span>
+        <span className={`font-semibold ${full ? "text-destructive" : "text-foreground"}`}>
+          {used}
+        </span>
+        <span className="text-muted-foreground">/ {limit}</span>
+      </div>
+      <div className="h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-border sm:w-20">
         <div
           className={`h-full rounded-full transition-all ${full ? "bg-destructive" : pct >= 80 ? "bg-yellow-500" : "bg-primary"}`}
           style={{ width: `${pct}%` }}
@@ -360,11 +365,11 @@ export default function QuestionPaperRequests() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center">
           {!isApp && (
             <div
-              className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+              className="flex hidden cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white md:block"
               onClick={() => navigate("/educator/test-series")}
             >
               <ArrowLeft className="h-4 w-4" />
@@ -377,9 +382,9 @@ export default function QuestionPaperRequests() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:items-center">
           <MonthlyUsage requests={requests} limit={monthlyLimit} />
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button onClick={() => setCreateOpen(true)} className="w-full sm:w-auto">
             <FileUp className="mr-2 h-4 w-4" />
             New Request
           </Button>
@@ -401,95 +406,197 @@ export default function QuestionPaperRequests() {
               <p className="text-sm">No requests yet. Click "New Request" to get started.</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>File</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Admin Note</TableHead>
-                  <TableHead>Submitted</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* Desktop View (Table) */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Title</TableHead>
+                      <TableHead>File</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Admin Note</TableHead>
+                      <TableHead>Submitted</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {requests.map((req) => (
+                      <TableRow key={req.id}>
+                        <TableCell className="max-w-[200px] font-medium">
+                          <div className="truncate">{req.title}</div>
+                          {req.description && (
+                            <div
+                              className="mt-0.5 truncate text-xs text-muted-foreground"
+                              title={req.description}
+                            >
+                              {req.description}
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <a
+                            href={req.file_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex max-w-[140px] items-center gap-1 truncate text-xs text-primary hover:underline"
+                          >
+                            {req.file_name}
+                            <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                          </a>
+                        </TableCell>
+                        <TableCell>
+                          <span
+                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${STATUS_CLASS[req.status]}`}
+                          >
+                            {STATUS_LABEL[req.status]}
+                          </span>
+                        </TableCell>
+                        <TableCell className="max-w-[160px] truncate text-sm text-muted-foreground">
+                          {req.admin_note || "—"}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                          {fmtDate(req.created_at)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {req.status === "PENDING" && (
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                title="Edit"
+                                onClick={() => openEdit(req)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                title="Replace file"
+                                onClick={() => {
+                                  setReuploadTarget(req);
+                                  setReuploadFile(null);
+                                }}
+                              >
+                                <UploadCloud className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-destructive hover:text-destructive"
+                                title="Cancel"
+                                onClick={() => setCancelTarget(req)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile View (Cards) */}
+              <div className="space-y-4 md:hidden">
                 {requests.map((req) => (
-                  <TableRow key={req.id}>
-                    <TableCell className="max-w-[200px] font-medium">
-                      <div className="truncate">{req.title}</div>
-                      {req.description && (
-                        <div
-                          className="mt-0.5 truncate text-xs text-muted-foreground"
-                          title={req.description}
-                        >
-                          {req.description}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
+                  <div
+                    key={req.id}
+                    className="space-y-3 rounded-xl border border-border/80 bg-card p-4 shadow-sm transition-all hover:border-primary/20"
+                  >
+                    {/* Header: Title + Status */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="break-words text-sm font-semibold text-foreground">
+                          {req.title}
+                        </h4>
+                        {req.description && (
+                          <p className="mt-1 line-clamp-2 break-words text-xs text-muted-foreground">
+                            {req.description}
+                          </p>
+                        )}
+                      </div>
+                      <span
+                        className={cn(
+                          "inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                          STATUS_CLASS[req.status]
+                        )}
+                      >
+                        {STATUS_LABEL[req.status]}
+                      </span>
+                    </div>
+
+                    {/* Meta info (File + Date) */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      {/* File Link */}
                       <a
                         href={req.file_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex max-w-[140px] items-center gap-1 truncate text-xs text-primary hover:underline"
+                        className="inline-flex max-w-[180px] items-center gap-1.5 rounded-lg border border-border/80 bg-muted/20 px-2.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-muted/40"
                       >
-                        {req.file_name}
+                        <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="truncate">{req.file_name}</span>
                         <ExternalLink className="h-3 w-3 flex-shrink-0" />
                       </a>
-                    </TableCell>
-                    <TableCell>
-                      <span
-                        className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${STATUS_CLASS[req.status]}`}
-                      >
-                        {STATUS_LABEL[req.status]}
-                      </span>
-                    </TableCell>
-                    <TableCell className="max-w-[160px] truncate text-sm text-muted-foreground">
-                      {req.admin_note || "—"}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                      {fmtDate(req.created_at)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {req.status === "PENDING" && (
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            title="Edit"
-                            onClick={() => openEdit(req)}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            title="Replace file"
-                            onClick={() => {
-                              setReuploadTarget(req);
-                              setReuploadFile(null);
-                            }}
-                          >
-                            <UploadCloud className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive"
-                            title="Cancel"
-                            onClick={() => setCancelTarget(req)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
+
+                      {/* Date */}
+                      <div className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                        <Calendar className="h-3 w-3" />
+                        {fmtDate(req.created_at)}
+                      </div>
+                    </div>
+
+                    {/* Admin Note if exists */}
+                    {req.admin_note && (
+                      <div className="rounded-lg border border-border/40 bg-muted/50 p-2.5 text-xs text-muted-foreground">
+                        <span className="font-semibold text-foreground">Admin Note: </span>
+                        {req.admin_note}
+                      </div>
+                    )}
+
+                    {/* Actions if Pending */}
+                    {req.status === "PENDING" && (
+                      <div className="flex items-center gap-2 border-t border-border/40 pt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 flex-1 gap-1 text-xs"
+                          onClick={() => openEdit(req)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 flex-1 gap-1 text-xs"
+                          onClick={() => {
+                            setReuploadTarget(req);
+                            setReuploadFile(null);
+                          }}
+                        >
+                          <UploadCloud className="h-3.5 w-3.5" />
+                          Replace File
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 flex-1 gap-1 text-xs text-destructive hover:bg-destructive/5 hover:text-destructive"
+                          onClick={() => setCancelTarget(req)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Cancel
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

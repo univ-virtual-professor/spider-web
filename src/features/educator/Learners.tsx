@@ -520,7 +520,7 @@ export default function Learners() {
         <div className="flex items-center gap-2">
           {!isApp && (
             <div
-              className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+              className="flex hidden cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white md:block"
               onClick={() => nav("/educator")}
             >
               <ArrowLeft className="h-4 w-4" />
@@ -884,7 +884,7 @@ export default function Learners() {
                   {l.name || "Student"}
                   {inactive && <span className="ml-2 text-xs text-red-500">(INACTIVE)</span>}
                 </div>
-                <div className="text-sm text-muted-foreground transition-colors group-hover:text-foreground">
+                <div className="text-xs text-muted-foreground transition-colors group-hover:text-foreground md:text-sm">
                   {l.email || l.id}
                 </div>
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
@@ -900,9 +900,7 @@ export default function Learners() {
                     <span>
                       Batch:{" "}
                       <span className="font-medium text-foreground">
-                        {branchName && `${branchName} › `}
-                        {courseName && `${courseName} › `}
-                        {batchName}
+                        {branchName && `${branchName} `}
                       </span>
                     </span>
                   ) : (
@@ -913,7 +911,7 @@ export default function Learners() {
 
               <div className="flex flex-wrap gap-2">
                 <Button variant="secondary" onClick={() => nav(`/educator/students/${l.id}`)}>
-                  View Details <ArrowRight className="ml-2 h-4 w-4" />
+                  View Details <ArrowRight className="ml-1 h-4 w-4" />
                 </Button>
                 <Button variant="outline" onClick={() => openAssignBatch(l)}>
                   <Pencil className="mr-2 h-4 w-4" />

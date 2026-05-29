@@ -16,7 +16,6 @@ import {
   ChevronDown,
   BookOpen,
   Zap,
-  Database,
   BarChart3,
   ClipboardList,
   Users,
@@ -185,13 +184,13 @@ function EducatorLayoutInner() {
 
     // Build Test Series children based on permissions
     const testChildren: SubItem[] = [];
-    if (!isEmployee || hasPermission(PERMISSIONS.QB_VIEW)) {
-      testChildren.push({
-        icon: Database,
-        label: "Question Bank",
-        href: "/educator/question-bank",
-      });
-    }
+    // if (!isEmployee || hasPermission(PERMISSIONS.QB_VIEW)) {
+    //   testChildren.push({
+    //     icon: Database,
+    //     label: "Question Bank",
+    //     href: "/educator/question-bank",
+    //   });
+    // }
     if (!isEmployee || hasPermission(PERMISSIONS.TESTS_CREATE)) {
       testChildren.push({
         icon: ClipboardList,

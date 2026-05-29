@@ -471,17 +471,6 @@ export default function StudentLayout() {
                 {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </Button>
 
-              {/* Settings */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate("/student/settings")}
-                title="Settings"
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <Settings className="h-5 w-5" />
-              </Button>
-
               {/* Notifications */}
               {profile?.uid && (
                 <NotificationBell
@@ -522,6 +511,12 @@ export default function StudentLayout() {
                         <LifeBuoy className="mr-2 h-4 w-4" />
                         Help
                       </div>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/student/settings" className="flex w-full items-center">
+                      <Settings className="mr-2 h-4 w-4" />
+                      Settings
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />

@@ -120,7 +120,7 @@ export default function RecentActivityFeed({
   };
 
   return (
-    <Card className="card-hover w-full border-border shadow-sm">
+    <Card className="card-hover hidden w-full border-border shadow-sm md:block">
       <CardHeader className="flex flex-col justify-between gap-4 border-b border-border/50 pb-4 sm:flex-row sm:items-center">
         <div>
           <CardTitle className="flex items-center gap-2 text-xl">

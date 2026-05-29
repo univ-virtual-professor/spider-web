@@ -16,9 +16,13 @@ export default {
       padding: "2rem",
       screens: {
         "2xl": "1400px",
+        xs: "424px",
       },
     },
     extend: {
+      screens: {
+        xs: "424px",
+      },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],
         display: ["Nunito", "Inter", "system-ui", "sans-serif"],
