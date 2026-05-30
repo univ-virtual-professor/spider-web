@@ -11,7 +11,16 @@ import {
   Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
-import { doc, getDoc } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  collection,
+  getDocs,
+  query,
+  where,
+  writeBatch,
+  serverTimestamp,
+} from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { cn } from "@shared/lib/utils";
 import { useAuth } from "@app/providers/AuthProvider";
@@ -262,6 +271,31 @@ export default function QuestionPaperRequests() {
 
       const newReq = await apiUpload("/api/question-upload/", fd);
       setRequests((prev) => [newReq, ...prev]);
+
+      // Notify Admin
+      try {
+        const adminsSnap = await getDocs(
+          query(collection(db, "users"), where("role", "==", "ADMIN"))
+        );
+        if (!adminsSnap.empty) {
+          const batch = writeBatch(db);
+          adminsSnap.forEach((adminDoc) => {
+            const notifRef = doc(collection(db, "users", adminDoc.id, "notifications"));
+            batch.set(notifRef, {
+              title: "📄 New Question Paper Request",
+              body: `${profile?.displayName || profile?.fullName || "An educator"} requested upload of "${title}"`,
+              read: false,
+              type: "qp_request",
+              createdAt: serverTimestamp(),
+              createdByRole: "EDUCATOR",
+            });
+          });
+          await batch.commit();
+        }
+      } catch (err) {
+        console.error("Error creating admin notifications for QP request:", err);
+      }
+
       setCreateOpen(false);
       setSubject("");
       setChapterName("");

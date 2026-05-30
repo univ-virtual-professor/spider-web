@@ -104,6 +104,7 @@ export default function QuestionReportModal({
               title: "Question Reported",
               body: `Question flagged as "${category}" by ${reportedByName}. Details: ${description.trim().substring(0, 100)}${description.trim().length > 100 ? "..." : ""}`,
               read: false,
+              type: "question_reported",
               createdAt: serverTimestamp(),
               createdByRole: "EDUCATOR",
             });

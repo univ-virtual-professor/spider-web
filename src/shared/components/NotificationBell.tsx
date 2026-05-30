@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Bell, Pencil, Check, Trash2 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@shared/ui/popover";
@@ -16,6 +16,7 @@ import {
 import { cn } from "@shared/lib/utils";
 import { formatDistanceToNowStrict } from "date-fns";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 type AppNotification = {
   id: string;
@@ -25,6 +26,8 @@ type AppNotification = {
   read: boolean;
   createdAt: any;
   createdByRole: "ADMIN" | "EDUCATOR";
+  type?: string;
+  attemptId?: string;
 };
 
 interface NotificationBellProps {
@@ -34,6 +37,9 @@ interface NotificationBellProps {
   supportThreadCount?: number;
   supportThreadLink?: string;
 }
+
+// Global cache of played notification IDs to prevent duplicate sound/toast triggers across multiple bell instances (e.g., mobile + desktop)
+const playedNotifications = new Set<string>();
 
 export default function NotificationBell({
   uid,
@@ -45,25 +51,7 @@ export default function NotificationBell({
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!uid) return;
-    const q = query(
-      collection(db, "users", uid, "notifications"),
-      orderBy("createdAt", "desc"),
-      limit(30)
-    );
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        setNotifications(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
-      },
-      () => setNotifications([])
-    );
-    return () => unsub();
-  }, [uid]);
-
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const isFirstLoadRef = useRef(true);
 
   const markRead = useCallback(
     async (notifId: string) => {
@@ -75,6 +63,124 @@ export default function NotificationBell({
     },
     [uid]
   );
+
+  const handleNotificationClick = useCallback(
+    async (n: AppNotification) => {
+      setOpen(false);
+      await markRead(n.id);
+
+      if (n.type === "review_needed") {
+        if (n.attemptId) {
+          navigate(`/educator/review-submissions/${n.attemptId}`);
+        } else {
+          navigate("/educator/review-submissions");
+        }
+      } else if (n.type === "qp_status_update") {
+        navigate("/educator/question-papers");
+      } else if (n.type === "qp_request") {
+        navigate("/admin/question-paper-requests");
+      } else if (n.type === "question_reported" || n.title === "Question Reported") {
+        navigate("/admin/reported-questions");
+      }
+    },
+    [navigate, markRead]
+  );
+
+  // Play a gentle dual-tone notification sound using browser AudioContext
+  const playNotificationSound = useCallback(() => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const audioCtx = new AudioContextClass();
+
+      const playTone = (freq: number, start: number, duration: number, volume: number) => {
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, start);
+
+        gainNode.gain.setValueAtTime(volume, start);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+
+        osc.start(start);
+        osc.stop(start + duration);
+      };
+
+      const triggerChime = () => {
+        console.log("[NotificationBell] Playing synthetic chime sound...");
+        const now = audioCtx.currentTime;
+        playTone(1046.5, now, 0.3, 0.18); // C6 (Higher)
+        playTone(1318.51, now + 0.1, 0.4, 0.18); // E6 (Higher)
+      };
+
+      if (audioCtx.state === "suspended") {
+        audioCtx
+          .resume()
+          .then(triggerChime)
+          .catch((err) => {
+            console.warn("[NotificationBell] AudioContext resume failed:", err);
+          });
+      } else {
+        triggerChime();
+      }
+    } catch (e) {
+      console.warn("[NotificationBell] Failed to play synthetic chime sound:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!uid) return;
+    const q = query(
+      collection(db, "users", uid, "notifications"),
+      orderBy("createdAt", "desc"),
+      limit(30)
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const newNotifs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+        setNotifications(newNotifs);
+
+        if (isFirstLoadRef.current) {
+          isFirstLoadRef.current = false;
+          return;
+        }
+
+        // Subsequent updates: check for newly added notifications
+        snap.docChanges().forEach((change) => {
+          if (change.type === "added") {
+            const docData = change.doc.data() as AppNotification;
+            const notifId = change.doc.id;
+
+            // Only trigger sound/banner for notifications that are unread and haven't been played/shown yet
+            if (!docData.read && !playedNotifications.has(notifId)) {
+              playedNotifications.add(notifId);
+              playNotificationSound();
+
+              const notif = { id: notifId, ...docData };
+              toast(notif.title, {
+                id: notifId, // Use notification ID to prevent sonner from creating duplicate toast banners
+                description: notif.body,
+                duration: 8000,
+                action: {
+                  label: "View",
+                  onClick: () => handleNotificationClick(notif),
+                },
+              });
+            }
+          }
+        });
+      },
+      () => setNotifications([])
+    );
+    return () => unsub();
+  }, [uid, playNotificationSound, handleNotificationClick]);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   const markAllRead = useCallback(async () => {
     const unread = notifications.filter((n) => !n.read);
@@ -182,7 +288,7 @@ export default function NotificationBell({
                     "w-full border-b border-border px-4 py-3 text-left transition-colors last:border-0 hover:bg-muted/50",
                     !n.read && "bg-primary/5"
                   )}
-                  onClick={() => markRead(n.id)}
+                  onClick={() => handleNotificationClick(n)}
                 >
                   <div className="flex items-start gap-2">
                     {!n.read && (
