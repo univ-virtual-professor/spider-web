@@ -142,6 +142,10 @@ export default function ContentViewer({ item, studentName, onClose }: Props) {
   }, []);
 
   const toggleFullscreen = () => {
+    if (isApp) {
+      setIsFullscreen((prev) => !prev);
+      return;
+    }
     if (!document.fullscreenElement) {
       viewerRootRef.current?.requestFullscreen();
     } else {
@@ -300,30 +304,43 @@ export default function ContentViewer({ item, studentName, onClose }: Props) {
       onContextMenu={(e) => e.preventDefault()}
     >
       {/* ── Header ── */}
-      <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3">
-        {!isApp && (
-          <Button variant="ghost" size="sm" onClick={onClose} className="shrink-0 gap-1 px-2">
-            <ChevronLeft className="h-4 w-4" />
-            <span className="hidden text-sm sm:inline">Back</span>
-          </Button>
-        )}
+      {!(isApp && isFullscreen) && (
+        <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3">
+          {!isApp && (
+            <Button variant="ghost" size="sm" onClick={onClose} className="shrink-0 gap-1 px-2">
+              <ChevronLeft className="h-4 w-4" />
+              <span className="hidden text-sm sm:inline">Back</span>
+            </Button>
+          )}
 
-        <p className="flex-1 truncate px-2 text-center text-sm font-semibold">{item.title}</p>
+          <p className="flex-1 truncate px-2 text-center text-sm font-semibold">{item.title}</p>
 
-        <div className="flex shrink-0 items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleFullscreen}
-            title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-          >
-            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-          </Button>
-          <Button variant="ghost" size="icon" onClick={onClose} title="Close">
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            >
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </Button>
+            <Button variant="ghost" size="icon" onClick={onClose} title="Close">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Floating exit-fullscreen button (WebView only) */}
+      {isApp && isFullscreen && (
+        <button
+          onClick={toggleFullscreen}
+          className="absolute right-3 top-3 z-10 rounded-full bg-black/50 p-1.5 text-white"
+          title="Exit fullscreen"
+        >
+          <Minimize2 className="h-4 w-4" />
+        </button>
+      )}
 
       {/* PDF progress bar */}
       {isPdf && numPages > 0 && (
