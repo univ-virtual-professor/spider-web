@@ -39,7 +39,7 @@ export default function LandingFooter() {
               preparekaro<span style={{ color: PRIMARY }}>.</span>in
             </span>
             <p style={{ fontSize: 13, color: "#5a5970", marginTop: 8, maxWidth: 300 }}>
-              Empowering coaching institutes across India with intelligent test platforms.
+              Tayaari Exam Ki
             </p>
           </div>
           <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>

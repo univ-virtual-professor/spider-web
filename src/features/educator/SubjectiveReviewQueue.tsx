@@ -85,9 +85,9 @@ export default function SubjectiveReviewQueue() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
-      <div className="flex items-center gap-3">
-        <ClipboardCheck className="h-6 w-6 text-amber-600" />
+    <div className="mx-auto max-w-4xl space-y-6 p-4 md:p-6">
+      <div className="flex items-center gap-2">
+        <ClipboardCheck className="hidden h-6 w-6 text-amber-600 md:block" />
         <div>
           <h1 className="text-2xl font-bold">Review Submissions</h1>
           <p className="text-sm text-muted-foreground">
@@ -95,7 +95,7 @@ export default function SubjectiveReviewQueue() {
           </p>
         </div>
         {attempts.length > 0 && (
-          <Badge className="ml-auto bg-amber-100 text-amber-700">{attempts.length} pending</Badge>
+          <Badge className="bg-amber-100 text-amber-700">{attempts.length} pending</Badge>
         )}
       </div>
 

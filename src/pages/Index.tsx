@@ -11,11 +11,8 @@ import {
   Sparkles,
   Brain,
   BarChart3,
-  BookOpen,
   FileText,
-  Lightbulb,
   Share2,
-  Globe,
   Pen,
   type LucideIcon,
 } from "lucide-react";
@@ -28,39 +25,24 @@ const PRIMARY = "#6C47FF";
 const ACCENT = "#A78BFA";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const HERO_TAGS = ["CUET", "JEE", "NEET", "UPSC", "CAT", "CBSE", "State Boards", "Any Exam"];
-const HERO_STATS: [string, string][] = [
-  ["500+", "Institutes"],
-  ["2L+", "Students"],
-  ["10+", "Exams Supported"],
-];
+const HERO_TAGS = ["CUET", "CBSE", "State Boards", "Any Exam"];
 const DEMO_PERKS = [
   "Personalised walkthrough of all features",
   "Platform configured for your exam type",
   "Live Q&A with our academic team",
   "No commitment required",
 ];
-const EXAM_OPTIONS = [
-  "JEE (Main + Advanced)",
-  "NEET",
-  "CUET",
-  "UPSC / Civil Services",
-  "CAT / MBA",
-  "State Board Exams",
-  "CBSE Board Exams",
-  "CA Foundation",
-  "Other",
-];
+const EXAM_OPTIONS = ["CUET", "State Board Exams", "CBSE Board Exams", "Other"];
 
 // ─── FEATURES DATA ────────────────────────────────────────────────────────────
 type FeatureItem = { icon: LucideIcon; title: string; desc: string; color: string };
 
 const FEATURES: FeatureItem[] = [
   {
-    icon: BookOpen,
-    title: "Question Bank",
-    desc: "Both subjective and objective question sets, organized by topic and difficulty level.",
-    color: "#6C47FF",
+    icon: Sparkles,
+    title: "Personalised Test Papers",
+    desc: "AI generates unique test papers per student based on their weak areas.",
+    color: "#EC4899",
   },
   {
     icon: FileText,
@@ -69,10 +51,10 @@ const FEATURES: FeatureItem[] = [
     color: "#8B5CF6",
   },
   {
-    icon: Lightbulb,
-    title: "Content Library",
-    desc: "Curated short notes and study material shared directly with students.",
-    color: "#EC4899",
+    icon: Pen,
+    title: "AI Subjective Checking",
+    desc: "AI evaluates written answers with feedback, saving teachers hours of work.",
+    color: "#6C47FF",
   },
   {
     icon: Share2,
@@ -81,28 +63,10 @@ const FEATURES: FeatureItem[] = [
     color: "#F59E0B",
   },
   {
-    icon: Globe,
-    title: "Pan-India Test Series",
-    desc: "Monthly all-India competitive test series to benchmark students nationally.",
-    color: "#10B981",
-  },
-  {
     icon: Mail,
     title: "Monthly Parent Reports",
     desc: "Automated performance reports sent to parents every month — no manual effort.",
     color: "#3B82F6",
-  },
-  {
-    icon: Pen,
-    title: "AI Subjective Checking",
-    desc: "AI evaluates written answers with feedback, saving teachers hours of work.",
-    color: "#6C47FF",
-  },
-  {
-    icon: Sparkles,
-    title: "Personalised Test Papers",
-    desc: "AI generates unique test papers per student based on their weak areas.",
-    color: "#EC4899",
   },
   {
     icon: Brain,
@@ -120,9 +84,11 @@ const FEATURES: FeatureItem[] = [
 
 // ─── COMPARISON DATA ──────────────────────────────────────────────────────────
 const COMPARISON_ROWS = [
-  { feature: "Test Delivery", old: "Physical OMR sheets", univ: "Digital CBT — any device" },
-  { feature: "Paper Checking", old: "Manual — hours of effort", univ: "AI-automated in seconds" },
-  { feature: "Exam Coverage", old: "Single exam focus", univ: "Any exam — JEE, NEET, CUET, UPSC…" },
+  {
+    feature: "Paper Checking",
+    old: "Manual — hours of effort",
+    univ: "AI-automated in seconds (Subjective + Objective)",
+  },
   { feature: "Question Types", old: "MCQ only", univ: "Subjective + Objective" },
   { feature: "Student Analytics", old: "Not available", univ: "AI-powered deep analytics" },
   { feature: "Doubt Support", old: "Limited to class hours", univ: "24/7 AI Doubt Support" },
@@ -161,11 +127,97 @@ const TESTIMONIALS = [
     text: "AI doubt support means I don't have to answer WhatsApp messages at midnight anymore. Students get instant answers and I get my life back!",
     rating: 5,
   },
+  {
+    name: "Vikram Singh",
+    role: "Academic Coordinator, Success Point Classes",
+    initials: "VS",
+    text: "Before Preparekaro.in, preparing weekly tests and checking answer sheets took hours. Now we can create tests in minutes and spend more time actually teaching students.",
+    rating: 5,
+  },
+  {
+    name: "Anjali Verma",
+    role: "Owner, Aspire Commerce Academy",
+    initials: "AV",
+    text: "The platform is simple enough that even our teachers who were not very comfortable with technology started using it within a few days. Test management, attendance, and performance tracking are all in one place.",
+    rating: 5,
+  },
 ];
+
+type FormState = {
+  name: string;
+  phone: string;
+  exam: string;
+  date: string;
+};
+type FormErrors = Partial<Record<keyof FormState, string>>;
 
 // ─── HERO ─────────────────────────────────────────────────────────────────────
 function HeroSection() {
   const [activeTag, setActiveTag] = useState(0);
+  const [form, setForm] = useState<FormState>({
+    name: "",
+    phone: "",
+    exam: "",
+    date: "",
+  });
+  const [step, setStep] = useState<1 | 2>(1);
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [submitting, setSubmitting] = useState(false);
+
+  const validate = (): FormErrors => {
+    const e: FormErrors = {};
+    if (!form.name.trim()) e.name = "Required";
+    if (!form.phone.trim() || !/^[6-9]\d{9}$/.test(form.phone.replace(/\s/g, "")))
+      e.phone = "Enter valid 10-digit mobile";
+    if (!form.exam) e.exam = "Please select";
+    return e;
+  };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const errs = validate();
+    if (Object.keys(errs).length) {
+      setErrors(errs);
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_MONKEY_KING_API_URL}/api/contact`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setStep(2);
+    } catch {
+      alert("Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const inputStyle = (key: keyof FormState): React.CSSProperties => ({
+    width: "100%",
+    padding: "12px 14px",
+    border: `1.5px solid ${errors[key] ? "#ef4444" : "#e5e2f5"}`,
+    borderRadius: 10,
+    fontSize: 14,
+    fontFamily: "'Plus Jakarta Sans', sans-serif",
+    color: "#0f0e17",
+    background: "#fff",
+    outline: "none",
+    transition: "border-color 0.2s",
+    boxSizing: "border-box",
+  });
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#3d3c47",
+    marginBottom: 6,
+    display: "block",
+    fontFamily: "'Plus Jakarta Sans','Inter', sans-serif",
+  };
 
   useEffect(() => {
     const t = setInterval(() => setActiveTag((p) => (p + 1) % HERO_TAGS.length), 1800);
@@ -224,15 +276,15 @@ function HeroSection() {
                 color: PRIMARY,
                 letterSpacing: "0.06em",
                 textTransform: "uppercase",
-                fontFamily: "'Inter', sans-serif",
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
               }}
             >
-              For Coaching Institutes
+              For Educators
             </span>
           </div>
           <h1
             style={{
-              fontFamily: "'DM Sans', sans-serif",
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
               fontSize: "clamp(36px, 4.5vw, 58px)",
               fontWeight: 700,
               lineHeight: 1.12,
@@ -241,10 +293,22 @@ function HeroSection() {
               letterSpacing: "-1.5px",
             }}
           >
-            Launch Your Own Institute
+            Launch Your Coaching
             <br />
             <span style={{ color: PRIMARY }}>Platform in Minutes</span>
           </h1>
+          <p
+            style={{
+              fontSize: 18,
+              lineHeight: 1.7,
+              color: "#5a5970",
+              marginBottom: 24,
+              fontFamily: "'Plus Jakarta Sans','Inter', sans-serif",
+              maxWidth: 480,
+            }}
+          >
+            with Test, Student Materials & Student Management
+          </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 24 }}>
             {HERO_TAGS.map((tag, i) => (
               <span
@@ -254,7 +318,7 @@ function HeroSection() {
                   borderRadius: 100,
                   fontSize: 12,
                   fontWeight: 600,
-                  fontFamily: "'Inter', sans-serif",
+                  fontFamily: "'Plus Jakarta Sans','Inter', sans-serif",
                   background: activeTag === i ? PRIMARY : `${PRIMARY}0f`,
                   color: activeTag === i ? "#fff" : PRIMARY,
                   border: `1px solid ${activeTag === i ? PRIMARY : PRIMARY + "28"}`,
@@ -271,12 +335,13 @@ function HeroSection() {
               lineHeight: 1.7,
               color: "#5a5970",
               marginBottom: 36,
-              fontFamily: "'Inter', sans-serif",
+              fontFamily: "'Plus Jakarta Sans','Inter', sans-serif",
               maxWidth: 480,
             }}
           >
-            Preparekaro.in empowers coaching institutes to run their own branded exam platform for
-            any competitive exam with AI-powered tools, question banks, and real-time analytics.
+            Prepare Karo helps educators launch their branded platform, create personalized tests
+            and DPPs, evaluate subjective answers with AI, and automatically share reports with
+            parents.
           </p>
           <div className="hero-cta" style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
             <a
@@ -289,7 +354,7 @@ function HeroSection() {
                 background: PRIMARY,
                 color: "#fff",
                 borderRadius: 100,
-                fontFamily: "'DM Sans',sans-serif",
+                fontFamily: "'Plus Jakarta Sans','DM Sans',sans-serif",
                 fontWeight: 600,
                 fontSize: 15,
                 textDecoration: "none",
@@ -317,7 +382,7 @@ function HeroSection() {
                 background: "#fff",
                 color: "#0f0e17",
                 borderRadius: 100,
-                fontFamily: "'DM Sans',sans-serif",
+                fontFamily: "'Plus Jakarta Sans','DM Sans',sans-serif",
                 fontWeight: 600,
                 fontSize: 15,
                 textDecoration: "none",
@@ -330,275 +395,257 @@ function HeroSection() {
               Explore Features
             </a>
           </div>
-          <div
-            style={{
-              display: "flex",
-              gap: 28,
-              marginTop: 44,
-              paddingTop: 32,
-              borderTop: "1px solid #e5e2f5",
-              flexWrap: "wrap",
-            }}
-          >
-            {HERO_STATS.map(([num, label]) => (
-              <div key={label}>
-                <div
-                  style={{
-                    fontFamily: "'DM Sans', sans-serif",
-                    fontWeight: 700,
-                    fontSize: 26,
-                    color: "#0f0e17",
-                    letterSpacing: "-1px",
-                  }}
-                >
-                  {num}
-                </div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "#8b8aa0",
-                    fontFamily: "'Inter', sans-serif",
-                    marginTop: 2,
-                  }}
-                >
-                  {label}
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
 
         {/* Dashboard mockup */}
-        <div className="hero-right" style={{ position: "relative" }}>
-          <div
-            style={{
-              background: "#fff",
-              borderRadius: 20,
-              boxShadow: "0 32px 80px rgba(108,71,255,0.18), 0 4px 20px rgba(0,0,0,0.06)",
-              overflow: "hidden",
-              border: "1px solid rgba(108,71,255,0.1)",
-            }}
-          >
-            <div
-              style={{
-                background: PRIMARY,
-                padding: "14px 20px",
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-              }}
-            >
-              <div style={{ display: "flex", gap: 6 }}>
-                {[0, 1, 2].map((i) => (
-                  <div
-                    key={i}
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: "50%",
-                      background: "rgba(255,255,255,0.4)",
+        <div
+          style={{
+            background: "#fff",
+            borderRadius: 24,
+            padding: "36px 32px",
+            boxShadow: "0 24px 80px rgba(0,0,0,0.4)",
+          }}
+        >
+          {step === 1 ? (
+            <>
+              <h3
+                style={{
+                  fontFamily: "'Plus Jakarta Sans','DM Sans', sans-serif",
+                  fontWeight: 700,
+                  fontSize: 22,
+                  color: "#0f0e17",
+                  marginBottom: 6,
+                }}
+              >
+                Show Your Interest
+              </h3>
+              <p style={{ fontSize: 13, color: "#8b8aa0", marginBottom: 28 }}>
+                Fill in your details and we'll reach out to schedule your demo.
+              </p>
+              <form onSubmit={submit}>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={labelStyle}>
+                    Your Name <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <input
+                    style={inputStyle("name")}
+                    placeholder="Rahul Gupta"
+                    value={form.name}
+                    onChange={(e) => {
+                      setForm((p) => ({ ...p, name: e.target.value }));
+                      setErrors((p) => ({ ...p, name: "" }));
                     }}
-                  ></div>
-                ))}
-              </div>
-              <div
-                style={{
-                  flex: 1,
-                  background: "rgba(255,255,255,0.15)",
-                  borderRadius: 6,
-                  padding: "4px 12px",
-                  fontSize: 11,
-                  color: "rgba(255,255,255,0.85)",
-                  fontFamily: "monospace",
-                }}
-              >
-                yourcoaching.preparekaro.in
-              </div>
-            </div>
-            <div style={{ padding: 20 }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 16,
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      fontFamily: "'DM Sans', sans-serif",
-                      fontWeight: 700,
-                      fontSize: 15,
-                      color: "#0f0e17",
-                    }}
-                  >
-                    Dashboard
-                  </div>
-                  <div style={{ fontSize: 11, color: "#8b8aa0" }}>Welcome back, Rahul Sir</div>
-                </div>
-                <div
-                  style={{
-                    background: `${PRIMARY}12`,
-                    padding: "4px 12px",
-                    borderRadius: 100,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: PRIMARY,
-                  }}
-                >
-                  ● Live
-                </div>
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3,1fr)",
-                  gap: 10,
-                  marginBottom: 16,
-                }}
-              >
-                {[
-                  ["1,240", "Students", "#6C47FF"],
-                  ["48", "Tests Live", "#22c55e"],
-                  ["94%", "Avg. Score", "#f59e0b"],
-                ].map(([val, lbl, clr]) => (
-                  <div
-                    key={lbl}
-                    style={{ background: "#f8f7ff", borderRadius: 10, padding: "10px 12px" }}
-                  >
-                    <div
-                      style={{
-                        fontFamily: "'DM Sans', sans-serif",
-                        fontWeight: 700,
-                        fontSize: 18,
-                        color: clr,
-                      }}
-                    >
-                      {val}
+                    onFocus={(e) => (e.target.style.borderColor = PRIMARY)}
+                    onBlur={(e) =>
+                      (e.target.style.borderColor = errors.name ? "#ef4444" : "#e5e2f5")
+                    }
+                  />
+                  {errors.name && (
+                    <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4 }}>
+                      {errors.name}
                     </div>
-                    <div style={{ fontSize: 10, color: "#8b8aa0", marginTop: 2 }}>{lbl}</div>
-                  </div>
-                ))}
+                  )}
+                </div>
+
+                <div style={{ marginBottom: 14 }}>
+                  <label style={labelStyle}>
+                    Mobile Number <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <input
+                    style={inputStyle("phone")}
+                    placeholder="9876543210"
+                    value={form.phone}
+                    type="tel"
+                    onChange={(e) => {
+                      setForm((p) => ({ ...p, phone: e.target.value }));
+                      setErrors((p) => ({ ...p, phone: "" }));
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = PRIMARY)}
+                    onBlur={(e) =>
+                      (e.target.style.borderColor = errors.phone ? "#ef4444" : "#e5e2f5")
+                    }
+                  />
+                  {errors.phone && (
+                    <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4 }}>
+                      {errors.phone}
+                    </div>
+                  )}
+                </div>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={labelStyle}>
+                    Exam Focus <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <select
+                    style={
+                      {
+                        ...inputStyle("exam"),
+                        appearance: "none",
+                        cursor: "pointer",
+                      } as React.CSSProperties
+                    }
+                    value={form.exam}
+                    onChange={(e) => {
+                      setForm((p) => ({ ...p, exam: e.target.value }));
+                      setErrors((p) => ({ ...p, exam: "" }));
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = PRIMARY)}
+                    onBlur={(e) =>
+                      (e.target.style.borderColor = errors.exam ? "#ef4444" : "#e5e2f5")
+                    }
+                  >
+                    <option value="">Select your primary exam</option>
+                    {EXAM_OPTIONS.map((ex) => (
+                      <option key={ex} value={ex}>
+                        {ex}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.exam && (
+                    <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4 }}>
+                      {errors.exam}
+                    </div>
+                  )}
+                </div>
+                <div style={{ marginBottom: 24 }}>
+                  <label style={labelStyle}>Preferred Demo Date (optional)</label>
+                  <input
+                    style={inputStyle("date")}
+                    type="date"
+                    value={form.date}
+                    onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))}
+                    onFocus={(e) => (e.target.style.borderColor = PRIMARY)}
+                    onBlur={(e) => (e.target.style.borderColor = "#e5e2f5")}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  style={{
+                    width: "100%",
+                    padding: "14px",
+                    background: submitting ? `${PRIMARY}88` : PRIMARY,
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 12,
+                    fontFamily: "'Plus Jakarta Sans','DM Sans', sans-serif",
+                    fontWeight: 700,
+                    fontSize: 15,
+                    cursor: submitting ? "not-allowed" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 10,
+                    boxShadow: `0 8px 24px ${PRIMARY}40`,
+                    transition: "opacity 0.2s",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!submitting) e.currentTarget.style.opacity = "0.9";
+                  }}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+                >
+                  {submitting ? (
+                    <>
+                      <div className="submit-spinner" />
+                      Submitting…
+                    </>
+                  ) : (
+                    <>
+                      <Calendar size={16} /> Schedule My Demo
+                    </>
+                  )}
+                </button>
+              </form>
+            </>
+          ) : (
+            <div style={{ textAlign: "center", padding: "20px 0" }}>
+              <div
+                style={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: "50%",
+                  background: "#f0fdf4",
+                  border: "2px solid #22c55e",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 20px",
+                }}
+              >
+                <Check size={32} color="#22c55e" />
               </div>
-              <div style={{ background: "#f8f7ff", borderRadius: 10, padding: 12 }}>
+              <h3
+                style={{
+                  fontFamily: "'Plus Jakarta Sans','DM Sans', sans-serif",
+                  fontWeight: 700,
+                  fontSize: 22,
+                  color: "#0f0e17",
+                  marginBottom: 10,
+                }}
+              >
+                We've received your interest!
+              </h3>
+              <p style={{ fontSize: 14, color: "#6b6a7e", lineHeight: 1.65, marginBottom: 28 }}>
+                Thank you, <strong>{form.name}</strong>! Our team will reach out to you within 24
+                hours to schedule your personalised demo.
+              </p>
+              <div
+                style={{
+                  background: "#f8f7ff",
+                  borderRadius: 12,
+                  padding: "16px 20px",
+                  marginBottom: 20,
+                  textAlign: "left",
+                }}
+              >
                 <div
                   style={{
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: 600,
                     color: "#8b8aa0",
-                    marginBottom: 8,
-                    letterSpacing: "0.05em",
+                    marginBottom: 12,
                     textTransform: "uppercase",
+                    letterSpacing: "0.05em",
                   }}
                 >
-                  Recent Tests
+                  Your Details
                 </div>
-                {[
-                  { name: "Physics DPP #12", exam: "JEE", status: "Live", clr: "#22c55e" },
-                  { name: "Polity Mock #5", exam: "UPSC", status: "Scheduled", clr: "#f59e0b" },
-                  { name: "Quant Practice", exam: "CAT", status: "Completed", clr: "#8b8aa0" },
-                ].map((t, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      padding: "7px 0",
-                      borderBottom: i < 2 ? "1px solid #ede8ff" : "none",
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "#0f0e17" }}>
-                        {t.name}
-                      </div>
-                      <div style={{ fontSize: 10, color: "#8b8aa0" }}>{t.exam}</div>
-                    </div>
+                {(["name", "coaching", "phone", "exam"] as const)
+                  .filter((k) => form[k])
+                  .map((k) => (
                     <div
+                      key={k}
                       style={{
-                        fontSize: 10,
-                        fontWeight: 600,
-                        color: t.clr,
-                        background: t.clr + "18",
-                        padding: "3px 8px",
-                        borderRadius: 100,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: 13,
+                        marginBottom: 6,
                       }}
                     >
-                      {t.status}
+                      <span style={{ color: "#8b8aa0", textTransform: "capitalize" }}>
+                        {k === "coaching" ? "Coaching" : k.charAt(0).toUpperCase() + k.slice(1)}
+                      </span>
+                      <span style={{ color: "#0f0e17", fontWeight: 500 }}>{form[k]}</span>
                     </div>
-                  </div>
-                ))}
+                  ))}
               </div>
+              <button
+                onClick={() => {
+                  setStep(1);
+                  setForm({ name: "", phone: "", exam: "", date: "" });
+                }}
+                style={{
+                  fontSize: 13,
+                  color: PRIMARY,
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontFamily: "'Plus Jakarta Sans','Inter', sans-serif",
+                  textDecoration: "underline",
+                }}
+              >
+                Submit another response
+              </button>
             </div>
-          </div>
-          {/* Floating badges */}
-          <div
-            style={{
-              position: "absolute",
-              top: -16,
-              right: -20,
-              background: "#fff",
-              borderRadius: 14,
-              padding: "10px 16px",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              border: "1px solid #f0eeff",
-            }}
-          >
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
-                background: "#f0fdf4",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Sparkles size={16} color="#22c55e" />
-            </div>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#0f0e17" }}>AI Checking</div>
-              <div style={{ fontSize: 10, color: "#8b8aa0" }}>Subjective papers</div>
-            </div>
-          </div>
-          <div
-            style={{
-              position: "absolute",
-              bottom: 20,
-              left: -24,
-              background: "#fff",
-              borderRadius: 14,
-              padding: "10px 16px",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              border: "1px solid #f0eeff",
-            }}
-          >
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
-                background: "#fdf4ff",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <BarChart3 size={16} color={PRIMARY} />
-            </div>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#0f0e17" }}>Live Analytics</div>
-              <div style={{ fontSize: 10, color: "#8b8aa0" }}>Real-time insights</div>
-            </div>
-          </div>
+          )}
         </div>
       </div>
     </section>
@@ -637,7 +684,7 @@ function FeaturesSection() {
           </div>
           <h2
             style={{
-              fontFamily: "'DM Sans', sans-serif",
+              fontFamily: "'Plus Jakarta Sans','DM Sans', sans-serif",
               fontWeight: 700,
               fontSize: "clamp(28px,4vw,44px)",
               color: "#0f0e17",
@@ -701,7 +748,7 @@ function FeaturesSection() {
               </div>
               <h3
                 style={{
-                  fontFamily: "'DM Sans', sans-serif",
+                  fontFamily: "'Plus Jakarta Sans','DM Sans', sans-serif",
                   fontWeight: 700,
                   fontSize: 16,
                   color: "#0f0e17",
@@ -921,7 +968,7 @@ function HowItWorksSection() {
           </div>
           <h2
             style={{
-              fontFamily: "'DM Sans', sans-serif",
+              fontFamily: "'Plus Jakarta Sans','DM Sans', sans-serif",
               fontWeight: 700,
               fontSize: "clamp(28px,4vw,44px)",
               color: "#0f0e17",
@@ -965,7 +1012,7 @@ function HowItWorksSection() {
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      fontFamily: "'DM Sans', sans-serif",
+                      fontFamily: "'Plus Jakarta Sans','DM Sans', sans-serif",
                       fontWeight: 700,
                       fontSize: 13,
                       flexShrink: 0,
@@ -975,7 +1022,7 @@ function HowItWorksSection() {
                   </div>
                   <h3
                     style={{
-                      fontFamily: "'DM Sans', sans-serif",
+                      fontFamily: "'Plus Jakarta Sans','DM Sans', sans-serif",
                       fontWeight: 700,
                       fontSize: 15,
                       color: "#0f0e17",
@@ -1029,7 +1076,7 @@ function ComparisonSection() {
           </div>
           <h2
             style={{
-              fontFamily: "'DM Sans', sans-serif",
+              fontFamily: "'Plus Jakarta Sans','DM Sans', sans-serif",
               fontWeight: 700,
               fontSize: "clamp(28px,4vw,44px)",
               color: "#0f0e17",
@@ -1060,7 +1107,7 @@ function ComparisonSection() {
               className="comparison-cell"
               style={{
                 padding: "16px 24px",
-                fontFamily: "'DM Sans', sans-serif",
+                fontFamily: "'Plus Jakarta Sans','DM Sans', sans-serif",
                 fontWeight: 600,
                 fontSize: 13,
                 color: "#8b8aa0",
@@ -1072,7 +1119,7 @@ function ComparisonSection() {
               className="comparison-cell"
               style={{
                 padding: "16px 24px",
-                fontFamily: "'DM Sans', sans-serif",
+                fontFamily: "'Plus Jakarta Sans','DM Sans', sans-serif",
                 fontWeight: 700,
                 fontSize: 14,
                 color: "#ef4444",
@@ -1086,7 +1133,7 @@ function ComparisonSection() {
               className="comparison-cell"
               style={{
                 padding: "16px 24px",
-                fontFamily: "'DM Sans', sans-serif",
+                fontFamily: "'Plus Jakarta Sans','DM Sans', sans-serif",
                 fontWeight: 700,
                 fontSize: 14,
                 color: PRIMARY,
@@ -1199,7 +1246,7 @@ function TestimonialsSection() {
           </div>
           <h2
             style={{
-              fontFamily: "'DM Sans', sans-serif",
+              fontFamily: "'Plus Jakarta Sans','DM Sans', sans-serif",
               fontWeight: 700,
               fontSize: "clamp(28px,4vw,44px)",
               color: "#0f0e17",
@@ -1231,7 +1278,7 @@ function TestimonialsSection() {
               position: "absolute",
               top: 28,
               right: 36,
-              fontFamily: "Georgia, serif",
+              fontFamily: "'Plus Jakarta Sans','DM Sans', sans-serif",
               fontSize: 80,
               color: `${PRIMARY}14`,
               lineHeight: 1,
@@ -1251,7 +1298,7 @@ function TestimonialsSection() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontFamily: "'DM Sans', sans-serif",
+                fontFamily: "'Plus Jakarta Sans','DM Sans', sans-serif",
                 fontWeight: 700,
                 fontSize: 15,
                 flexShrink: 0,
@@ -1262,7 +1309,7 @@ function TestimonialsSection() {
             <div>
               <div
                 style={{
-                  fontFamily: "'DM Sans', sans-serif",
+                  fontFamily: "'Plus Jakarta Sans','DM Sans', sans-serif",
                   fontWeight: 700,
                   fontSize: 16,
                   color: "#0f0e17",
@@ -1357,85 +1404,8 @@ function TestimonialsSection() {
 }
 
 // ─── INTEREST WIDGET ──────────────────────────────────────────────────────────
-type FormState = {
-  name: string;
-  coaching: string;
-  phone: string;
-  email: string;
-  exam: string;
-  date: string;
-};
-type FormErrors = Partial<Record<keyof FormState, string>>;
 
 function InterestWidgetSection() {
-  const [form, setForm] = useState<FormState>({
-    name: "",
-    coaching: "",
-    phone: "",
-    email: "",
-    exam: "",
-    date: "",
-  });
-  const [step, setStep] = useState<1 | 2>(1);
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [submitting, setSubmitting] = useState(false);
-
-  const validate = (): FormErrors => {
-    const e: FormErrors = {};
-    if (!form.name.trim()) e.name = "Required";
-    if (!form.coaching.trim()) e.coaching = "Required";
-    if (!form.phone.trim() || !/^[6-9]\d{9}$/.test(form.phone.replace(/\s/g, "")))
-      e.phone = "Enter valid 10-digit mobile";
-    if (!form.exam) e.exam = "Please select";
-    return e;
-  };
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const errs = validate();
-    if (Object.keys(errs).length) {
-      setErrors(errs);
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const res = await fetch(`${import.meta.env.VITE_MONKEY_KING_API_URL}/api/contact`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      if (!res.ok) throw new Error("Failed");
-      setStep(2);
-    } catch {
-      alert("Something went wrong. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const inputStyle = (key: keyof FormState): React.CSSProperties => ({
-    width: "100%",
-    padding: "12px 14px",
-    border: `1.5px solid ${errors[key] ? "#ef4444" : "#e5e2f5"}`,
-    borderRadius: 10,
-    fontSize: 14,
-    fontFamily: "'Inter', sans-serif",
-    color: "#0f0e17",
-    background: "#fff",
-    outline: "none",
-    transition: "border-color 0.2s",
-    boxSizing: "border-box",
-  });
-
-  const labelStyle: React.CSSProperties = {
-    fontSize: 13,
-    fontWeight: 600,
-    color: "#3d3c47",
-    marginBottom: 6,
-    display: "block",
-    fontFamily: "'Inter', sans-serif",
-  };
-
   return (
     <section id="interest-widget" style={{ padding: "100px 24px", background: "#0f0e17" }}>
       <div style={{ maxWidth: 900, margin: "0 auto" }}>
@@ -1468,7 +1438,7 @@ function InterestWidgetSection() {
             </div>
             <h2
               style={{
-                fontFamily: "'DM Sans', sans-serif",
+                fontFamily: "'Plus Jakarta Sans', sans-serif",
                 fontWeight: 700,
                 fontSize: "clamp(28px,3.5vw,42px)",
                 color: "#fff",
@@ -1507,300 +1477,6 @@ function InterestWidgetSection() {
               ))}
             </div>
           </div>
-
-          <div
-            style={{
-              background: "#fff",
-              borderRadius: 24,
-              padding: "36px 32px",
-              boxShadow: "0 24px 80px rgba(0,0,0,0.4)",
-            }}
-          >
-            {step === 1 ? (
-              <>
-                <h3
-                  style={{
-                    fontFamily: "'DM Sans', sans-serif",
-                    fontWeight: 700,
-                    fontSize: 22,
-                    color: "#0f0e17",
-                    marginBottom: 6,
-                  }}
-                >
-                  Show Your Interest
-                </h3>
-                <p style={{ fontSize: 13, color: "#8b8aa0", marginBottom: 28 }}>
-                  Fill in your details and we'll reach out to schedule your demo.
-                </p>
-                <form onSubmit={submit}>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 14,
-                      marginBottom: 14,
-                    }}
-                  >
-                    <div>
-                      <label style={labelStyle}>
-                        Your Name <span style={{ color: "#ef4444" }}>*</span>
-                      </label>
-                      <input
-                        style={inputStyle("name")}
-                        placeholder="Rahul Gupta"
-                        value={form.name}
-                        onChange={(e) => {
-                          setForm((p) => ({ ...p, name: e.target.value }));
-                          setErrors((p) => ({ ...p, name: "" }));
-                        }}
-                        onFocus={(e) => (e.target.style.borderColor = PRIMARY)}
-                        onBlur={(e) =>
-                          (e.target.style.borderColor = errors.name ? "#ef4444" : "#e5e2f5")
-                        }
-                      />
-                      {errors.name && (
-                        <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4 }}>
-                          {errors.name}
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <label style={labelStyle}>
-                        Coaching Name <span style={{ color: "#ef4444" }}>*</span>
-                      </label>
-                      <input
-                        style={inputStyle("coaching")}
-                        placeholder="Bright Future Academy"
-                        value={form.coaching}
-                        onChange={(e) => {
-                          setForm((p) => ({ ...p, coaching: e.target.value }));
-                          setErrors((p) => ({ ...p, coaching: "" }));
-                        }}
-                        onFocus={(e) => (e.target.style.borderColor = PRIMARY)}
-                        onBlur={(e) =>
-                          (e.target.style.borderColor = errors.coaching ? "#ef4444" : "#e5e2f5")
-                        }
-                      />
-                      {errors.coaching && (
-                        <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4 }}>
-                          {errors.coaching}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ marginBottom: 14 }}>
-                    <label style={labelStyle}>
-                      Mobile Number <span style={{ color: "#ef4444" }}>*</span>
-                    </label>
-                    <input
-                      style={inputStyle("phone")}
-                      placeholder="9876543210"
-                      value={form.phone}
-                      type="tel"
-                      onChange={(e) => {
-                        setForm((p) => ({ ...p, phone: e.target.value }));
-                        setErrors((p) => ({ ...p, phone: "" }));
-                      }}
-                      onFocus={(e) => (e.target.style.borderColor = PRIMARY)}
-                      onBlur={(e) =>
-                        (e.target.style.borderColor = errors.phone ? "#ef4444" : "#e5e2f5")
-                      }
-                    />
-                    {errors.phone && (
-                      <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4 }}>
-                        {errors.phone}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ marginBottom: 14 }}>
-                    <label style={labelStyle}>Email (optional)</label>
-                    <input
-                      style={inputStyle("email")}
-                      placeholder="rahul@brightfuture.in"
-                      value={form.email}
-                      type="email"
-                      onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
-                      onFocus={(e) => (e.target.style.borderColor = PRIMARY)}
-                      onBlur={(e) => (e.target.style.borderColor = "#e5e2f5")}
-                    />
-                  </div>
-                  <div style={{ marginBottom: 14 }}>
-                    <label style={labelStyle}>
-                      Exam Focus <span style={{ color: "#ef4444" }}>*</span>
-                    </label>
-                    <select
-                      style={
-                        {
-                          ...inputStyle("exam"),
-                          appearance: "none",
-                          cursor: "pointer",
-                        } as React.CSSProperties
-                      }
-                      value={form.exam}
-                      onChange={(e) => {
-                        setForm((p) => ({ ...p, exam: e.target.value }));
-                        setErrors((p) => ({ ...p, exam: "" }));
-                      }}
-                      onFocus={(e) => (e.target.style.borderColor = PRIMARY)}
-                      onBlur={(e) =>
-                        (e.target.style.borderColor = errors.exam ? "#ef4444" : "#e5e2f5")
-                      }
-                    >
-                      <option value="">Select your primary exam</option>
-                      {EXAM_OPTIONS.map((ex) => (
-                        <option key={ex} value={ex}>
-                          {ex}
-                        </option>
-                      ))}
-                    </select>
-                    {errors.exam && (
-                      <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4 }}>
-                        {errors.exam}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ marginBottom: 24 }}>
-                    <label style={labelStyle}>Preferred Demo Date (optional)</label>
-                    <input
-                      style={inputStyle("date")}
-                      type="date"
-                      value={form.date}
-                      onChange={(e) => setForm((p) => ({ ...p, date: e.target.value }))}
-                      onFocus={(e) => (e.target.style.borderColor = PRIMARY)}
-                      onBlur={(e) => (e.target.style.borderColor = "#e5e2f5")}
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    style={{
-                      width: "100%",
-                      padding: "14px",
-                      background: submitting ? `${PRIMARY}88` : PRIMARY,
-                      color: "#fff",
-                      border: "none",
-                      borderRadius: 12,
-                      fontFamily: "'DM Sans', sans-serif",
-                      fontWeight: 700,
-                      fontSize: 15,
-                      cursor: submitting ? "not-allowed" : "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 10,
-                      boxShadow: `0 8px 24px ${PRIMARY}40`,
-                      transition: "opacity 0.2s",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!submitting) e.currentTarget.style.opacity = "0.9";
-                    }}
-                    onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
-                  >
-                    {submitting ? (
-                      <>
-                        <div className="submit-spinner" />
-                        Submitting…
-                      </>
-                    ) : (
-                      <>
-                        <Calendar size={16} /> Schedule My Demo
-                      </>
-                    )}
-                  </button>
-                </form>
-              </>
-            ) : (
-              <div style={{ textAlign: "center", padding: "20px 0" }}>
-                <div
-                  style={{
-                    width: 72,
-                    height: 72,
-                    borderRadius: "50%",
-                    background: "#f0fdf4",
-                    border: "2px solid #22c55e",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    margin: "0 auto 20px",
-                  }}
-                >
-                  <Check size={32} color="#22c55e" />
-                </div>
-                <h3
-                  style={{
-                    fontFamily: "'DM Sans', sans-serif",
-                    fontWeight: 700,
-                    fontSize: 22,
-                    color: "#0f0e17",
-                    marginBottom: 10,
-                  }}
-                >
-                  We've received your interest!
-                </h3>
-                <p style={{ fontSize: 14, color: "#6b6a7e", lineHeight: 1.65, marginBottom: 28 }}>
-                  Thank you, <strong>{form.name}</strong>! Our team will reach out to{" "}
-                  <strong>{form.coaching}</strong> within 24 hours to schedule your personalised
-                  demo.
-                </p>
-                <div
-                  style={{
-                    background: "#f8f7ff",
-                    borderRadius: 12,
-                    padding: "16px 20px",
-                    marginBottom: 20,
-                    textAlign: "left",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: "#8b8aa0",
-                      marginBottom: 12,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.05em",
-                    }}
-                  >
-                    Your Details
-                  </div>
-                  {(["name", "coaching", "phone", "exam"] as const)
-                    .filter((k) => form[k])
-                    .map((k) => (
-                      <div
-                        key={k}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          fontSize: 13,
-                          marginBottom: 6,
-                        }}
-                      >
-                        <span style={{ color: "#8b8aa0", textTransform: "capitalize" }}>
-                          {k === "coaching" ? "Coaching" : k.charAt(0).toUpperCase() + k.slice(1)}
-                        </span>
-                        <span style={{ color: "#0f0e17", fontWeight: 500 }}>{form[k]}</span>
-                      </div>
-                    ))}
-                </div>
-                <button
-                  onClick={() => {
-                    setStep(1);
-                    setForm({ name: "", coaching: "", phone: "", email: "", exam: "", date: "" });
-                  }}
-                  style={{
-                    fontSize: 13,
-                    color: PRIMARY,
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    fontFamily: "'Inter', sans-serif",
-                    textDecoration: "underline",
-                  }}
-                >
-                  Submit another response
-                </button>
-              </div>
-            )}
-          </div>
         </div>
       </div>
     </section>
@@ -1822,7 +1498,6 @@ export default function Index() {
       <HowItWorksSection />
       <ComparisonSection />
       <TestimonialsSection />
-      <InterestWidgetSection />
       <LandingFooter />
     </>
   );
