@@ -32,17 +32,7 @@ const DEMO_PERKS = [
   "Live Q&A with our academic team",
   "No commitment required",
 ];
-const EXAM_OPTIONS = [
-  "JEE (Main + Advanced)",
-  "NEET",
-  "CUET",
-  "UPSC / Civil Services",
-  "CAT / MBA",
-  "State Board Exams",
-  "CBSE Board Exams",
-  "CA Foundation",
-  "Other",
-];
+const EXAM_OPTIONS = ["CUET", "State Board Exams", "CBSE Board Exams", "Other"];
 
 // ─── FEATURES DATA ────────────────────────────────────────────────────────────
 type FeatureItem = { icon: LucideIcon; title: string; desc: string; color: string };
@@ -155,9 +145,7 @@ const TESTIMONIALS = [
 
 type FormState = {
   name: string;
-  coaching: string;
   phone: string;
-  email: string;
   exam: string;
   date: string;
 };
@@ -168,9 +156,7 @@ function HeroSection() {
   const [activeTag, setActiveTag] = useState(0);
   const [form, setForm] = useState<FormState>({
     name: "",
-    coaching: "",
     phone: "",
-    email: "",
     exam: "",
     date: "",
   });
@@ -181,7 +167,6 @@ function HeroSection() {
   const validate = (): FormErrors => {
     const e: FormErrors = {};
     if (!form.name.trim()) e.name = "Required";
-    if (!form.coaching.trim()) e.coaching = "Required";
     if (!form.phone.trim() || !/^[6-9]\d{9}$/.test(form.phone.replace(/\s/g, "")))
       e.phone = "Enter valid 10-digit mobile";
     if (!form.exam) e.exam = "Please select";
@@ -294,7 +279,7 @@ function HeroSection() {
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
               }}
             >
-              For Coaching Institutes
+              For Educators
             </span>
           </div>
           <h1
@@ -308,10 +293,22 @@ function HeroSection() {
               letterSpacing: "-1.5px",
             }}
           >
-            Launch Your Own Institute
+            Launch Your Coaching
             <br />
             <span style={{ color: PRIMARY }}>Platform in Minutes</span>
           </h1>
+          <p
+            style={{
+              fontSize: 18,
+              lineHeight: 1.7,
+              color: "#5a5970",
+              marginBottom: 24,
+              fontFamily: "'Plus Jakarta Sans','Inter', sans-serif",
+              maxWidth: 480,
+            }}
+          >
+            with Test, Student Materials & Student Management
+          </p>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 24 }}>
             {HERO_TAGS.map((tag, i) => (
               <span
@@ -426,61 +423,30 @@ function HeroSection() {
                 Fill in your details and we'll reach out to schedule your demo.
               </p>
               <form onSubmit={submit}>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 14,
-                    marginBottom: 14,
-                  }}
-                >
-                  <div>
-                    <label style={labelStyle}>
-                      Your Name <span style={{ color: "#ef4444" }}>*</span>
-                    </label>
-                    <input
-                      style={inputStyle("name")}
-                      placeholder="Rahul Gupta"
-                      value={form.name}
-                      onChange={(e) => {
-                        setForm((p) => ({ ...p, name: e.target.value }));
-                        setErrors((p) => ({ ...p, name: "" }));
-                      }}
-                      onFocus={(e) => (e.target.style.borderColor = PRIMARY)}
-                      onBlur={(e) =>
-                        (e.target.style.borderColor = errors.name ? "#ef4444" : "#e5e2f5")
-                      }
-                    />
-                    {errors.name && (
-                      <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4 }}>
-                        {errors.name}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label style={labelStyle}>
-                      Coaching Name <span style={{ color: "#ef4444" }}>*</span>
-                    </label>
-                    <input
-                      style={inputStyle("coaching")}
-                      placeholder="Bright Future Academy"
-                      value={form.coaching}
-                      onChange={(e) => {
-                        setForm((p) => ({ ...p, coaching: e.target.value }));
-                        setErrors((p) => ({ ...p, coaching: "" }));
-                      }}
-                      onFocus={(e) => (e.target.style.borderColor = PRIMARY)}
-                      onBlur={(e) =>
-                        (e.target.style.borderColor = errors.coaching ? "#ef4444" : "#e5e2f5")
-                      }
-                    />
-                    {errors.coaching && (
-                      <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4 }}>
-                        {errors.coaching}
-                      </div>
-                    )}
-                  </div>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={labelStyle}>
+                    Your Name <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <input
+                    style={inputStyle("name")}
+                    placeholder="Rahul Gupta"
+                    value={form.name}
+                    onChange={(e) => {
+                      setForm((p) => ({ ...p, name: e.target.value }));
+                      setErrors((p) => ({ ...p, name: "" }));
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = PRIMARY)}
+                    onBlur={(e) =>
+                      (e.target.style.borderColor = errors.name ? "#ef4444" : "#e5e2f5")
+                    }
+                  />
+                  {errors.name && (
+                    <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4 }}>
+                      {errors.name}
+                    </div>
+                  )}
                 </div>
+
                 <div style={{ marginBottom: 14 }}>
                   <label style={labelStyle}>
                     Mobile Number <span style={{ color: "#ef4444" }}>*</span>
@@ -504,18 +470,6 @@ function HeroSection() {
                       {errors.phone}
                     </div>
                   )}
-                </div>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={labelStyle}>Email (optional)</label>
-                  <input
-                    style={inputStyle("email")}
-                    placeholder="rahul@brightfuture.in"
-                    value={form.email}
-                    type="email"
-                    onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
-                    onFocus={(e) => (e.target.style.borderColor = PRIMARY)}
-                    onBlur={(e) => (e.target.style.borderColor = "#e5e2f5")}
-                  />
                 </div>
                 <div style={{ marginBottom: 14 }}>
                   <label style={labelStyle}>
@@ -630,8 +584,8 @@ function HeroSection() {
                 We've received your interest!
               </h3>
               <p style={{ fontSize: 14, color: "#6b6a7e", lineHeight: 1.65, marginBottom: 28 }}>
-                Thank you, <strong>{form.name}</strong>! Our team will reach out to{" "}
-                <strong>{form.coaching}</strong> within 24 hours to schedule your personalised demo.
+                Thank you, <strong>{form.name}</strong>! Our team will reach out to you within 24
+                hours to schedule your personalised demo.
               </p>
               <div
                 style={{
@@ -676,7 +630,7 @@ function HeroSection() {
               <button
                 onClick={() => {
                   setStep(1);
-                  setForm({ name: "", coaching: "", phone: "", email: "", exam: "", date: "" });
+                  setForm({ name: "", phone: "", exam: "", date: "" });
                 }}
                 style={{
                   fontSize: 13,
