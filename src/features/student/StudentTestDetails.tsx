@@ -27,6 +27,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   increment,
   onSnapshot,
   orderBy,
@@ -243,9 +244,34 @@ export default function StudentTestDetails() {
 
         const syllabus = Array.isArray(data?.syllabus) ? data.syllabus.map(String) : [];
 
-        // Schedule comes from the educator's specific test doc, even if linked to admin
-        const startTime = localTestData?.startTime ? toMillis(localTestData.startTime) : null;
-        const endTime = localTestData?.endTime ? toMillis(localTestData.endTime) : null;
+        // Schedule: prefer per-batch assignment, fall back to test doc (legacy)
+        let startTime = localTestData?.startTime ? toMillis(localTestData.startTime) : null;
+        let endTime = localTestData?.endTime ? toMillis(localTestData.endTime) : null;
+
+        const studentBatchId = profile?.batchId;
+        if (studentBatchId) {
+          try {
+            const assignSnap = await getDocs(
+              query(
+                collection(db, "educators", educatorId!, "batchAssignments"),
+                where("testId", "==", testId!),
+                where("batchId", "==", studentBatchId)
+              )
+            );
+            if (!assignSnap.empty) {
+              const assignment = assignSnap.docs[0].data() as any;
+              if (assignment.accessType === "scheduled") {
+                startTime = assignment.startTime ? toMillis(assignment.startTime) : null;
+                endTime = assignment.endTime ? toMillis(assignment.endTime) : null;
+              } else if (assignment.accessType === "access_code") {
+                startTime = null;
+                endTime = null;
+              }
+            }
+          } catch {
+            // non-fatal — fall back to test doc fields
+          }
+        }
 
         if (!mounted) return;
 

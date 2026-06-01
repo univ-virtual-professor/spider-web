@@ -1,72 +1,88 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { FileText, Clock, FilePlus, Play, CheckCircle2 } from "lucide-react";
-
-import { collection, onSnapshot, Timestamp } from "firebase/firestore";
-
+import { FileText, Clock, Key, Play, CheckCircle2, CalendarClock } from "lucide-react";
+import { collection, onSnapshot, query, orderBy, Timestamp } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { useTenant } from "@app/providers/TenantProvider";
-
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@shared/ui/card";
-
 import { Badge } from "@shared/ui/badge";
 import { Skeleton } from "@shared/ui/skeleton";
-
 import { cn } from "@shared/lib/utils";
 
-type TestStatus = "draft" | "running" | "completed";
+type AssignStatus = "live" | "upcoming" | "code_active" | "past" | "code_expired";
 
-interface ActiveTest {
+interface AssignRow {
   id: string;
-  title: string;
-  subject: string;
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
-  startTime?: Timestamp;
-  endTime?: Timestamp;
+  testTitle: string;
+  batchName: string;
+  accessType: "scheduled" | "access_code";
+  accessCode: string | null;
   isDpp: boolean;
-  status: TestStatus;
+  startTime: Timestamp | null;
+  endTime: Timestamp | null;
+  expiresAt: Timestamp | null;
+  createdAt: Timestamp | null;
+  status: AssignStatus;
 }
 
-function getTestStatus(startTime?: Timestamp, endTime?: Timestamp): TestStatus {
+function toMs(ts: any): number | null {
+  if (!ts) return null;
+  if (typeof ts.toMillis === "function") return ts.toMillis();
+  if (typeof ts.seconds === "number") return ts.seconds * 1000;
+  return null;
+}
+
+function getStatus(accessType: string, startTime: any, endTime: any, expiresAt: any): AssignStatus {
   const now = Date.now();
-
-  if (!startTime) return "draft";
-
-  const startMs = startTime.toMillis();
-
-  if (startMs > now) return "draft";
-
-  if (!endTime) return "running";
-
-  return now > endTime.toMillis() ? "completed" : "running";
+  if (accessType === "access_code") {
+    const expMs = toMs(expiresAt);
+    return !expMs || expMs > now ? "code_active" : "code_expired";
+  }
+  const startMs = toMs(startTime);
+  const endMs = toMs(endTime);
+  if (!startMs) return "upcoming";
+  if (endMs && endMs < now) return "past";
+  if (startMs <= now && (!endMs || endMs >= now)) return "live";
+  return "upcoming";
 }
 
-function getStatusStyles(status: TestStatus) {
+function StatusConfig(status: AssignStatus) {
   switch (status) {
-    case "completed":
-      return {
-        icon: <CheckCircle2 className="h-4 w-4" />,
-        iconClass: "bg-muted text-muted-foreground",
-        badgeClass: "bg-muted text-muted-foreground",
-        label: "Completed",
-      };
-
-    case "running":
+    case "live":
       return {
         icon: <Play className="h-4 w-4" />,
         iconClass: "bg-green-500/10 text-green-600",
-        badgeClass: "bg-green-500/10 text-green-600 hover:bg-green-500/20 dark:text-green-400",
-        label: "Running",
+        label: "Live",
+        badgeClass: "bg-green-500/10 text-green-600",
       };
-
+    case "upcoming":
+      return {
+        icon: <CalendarClock className="h-4 w-4" />,
+        iconClass: "bg-primary/10 text-primary",
+        label: "Upcoming",
+        badgeClass: "bg-primary/10 text-primary",
+      };
+    case "code_active":
+      return {
+        icon: <Key className="h-4 w-4" />,
+        iconClass: "bg-amber-500/10 text-amber-600",
+        label: "Code",
+        badgeClass: "bg-amber-500/10 text-amber-700",
+      };
+    case "past":
+      return {
+        icon: <CheckCircle2 className="h-4 w-4" />,
+        iconClass: "bg-muted text-muted-foreground",
+        label: "Past",
+        badgeClass: "bg-muted text-muted-foreground",
+      };
     default:
       return {
-        icon: <FilePlus className="h-4 w-4" />,
+        icon: <FileText className="h-4 w-4" />,
         iconClass: "bg-muted text-muted-foreground",
+        label: "Expired",
         badgeClass: "bg-muted text-muted-foreground",
-        label: "Draft",
       };
   }
 }
@@ -74,69 +90,64 @@ function getStatusStyles(status: TestStatus) {
 export default function ActiveTestsFeed() {
   const { profile } = useAuth();
   const { tenant } = useTenant();
-
   const educatorId = tenant?.educatorId || profile?.educatorId || null;
 
-  const [tests, setTests] = useState<ActiveTest[]>([]);
+  const [rows, setRows] = useState<AssignRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!educatorId) return;
-
-    const q = collection(db, "educators", educatorId, "my_tests");
-
+    const q = query(
+      collection(db, "educators", educatorId, "batchAssignments"),
+      orderBy("createdAt", "desc")
+    );
     const unsub = onSnapshot(
       q,
-      (snapshot) => {
-        const parsedTests: ActiveTest[] = snapshot.docs
-          .map((doc) => {
-            const data = doc.data();
+      (snap) => {
+        const now = Date.now();
+        const parsed: AssignRow[] = snap.docs.map((doc) => {
+          const data = doc.data() as any;
+          const title = String(data.testTitle || "Untitled");
+          const isDpp =
+            title.toLowerCase().includes("dpp") || title.toLowerCase().includes("practice");
+          const accessType = data.accessType === "access_code" ? "access_code" : "scheduled";
+          const status = getStatus(accessType, data.startTime, data.endTime, data.expiresAt);
+          return {
+            id: doc.id,
+            testTitle: title,
+            batchName: String(data.batchName || ""),
+            accessType,
+            accessCode: data.accessCode ? String(data.accessCode) : null,
+            isDpp,
+            startTime: data.startTime || null,
+            endTime: data.endTime || null,
+            expiresAt: data.expiresAt || null,
+            createdAt: data.createdAt || null,
+            status,
+          };
+        });
 
-            const title = data.title || "Untitled Test";
+        // Sort: live first, then upcoming, then code_active, then past/expired; secondary by createdAt desc
+        const order: Record<AssignStatus, number> = {
+          live: 0,
+          upcoming: 1,
+          code_active: 2,
+          past: 3,
+          code_expired: 4,
+        };
+        parsed.sort((a, b) => {
+          const diff = order[a.status] - order[b.status];
+          if (diff !== 0) return diff;
+          return (toMs(b.createdAt) ?? 0) - (toMs(a.createdAt) ?? 0);
+        });
 
-            const isDpp =
-              title.toLowerCase().includes("dpp") || title.toLowerCase().includes("practice");
-
-            const status = getTestStatus(data.startTime, data.endTime);
-
-            return {
-              id: doc.id,
-              title,
-              subject: data.subject || "General",
-              createdAt: data.createdAt,
-              updatedAt: data.updatedAt,
-              startTime: data.startTime,
-              endTime: data.endTime,
-              isDpp,
-              status,
-            };
-          })
-          .filter((test) => {
-            if (!test.startTime) return true;
-
-            return test.startTime.toMillis() <= Date.now();
-          })
-          .sort((a, b) => {
-            if (a.status === "running" && b.status !== "running") return -1;
-            if (b.status === "running" && a.status !== "running") return 1;
-
-            const aTime = a.updatedAt?.toMillis() || a.createdAt?.toMillis() || 0;
-
-            const bTime = b.updatedAt?.toMillis() || b.createdAt?.toMillis() || 0;
-
-            return bTime - aTime;
-          })
-          .slice(0, 6);
-
-        setTests(parsedTests);
+        setRows(
+          parsed.filter((r) => r.status !== "past" && r.status !== "code_expired").slice(0, 8)
+        );
         setLoading(false);
       },
-      (error) => {
-        console.error("Error fetching tests:", error);
-        setLoading(false);
-      }
+      () => setLoading(false)
     );
-
     return () => unsub();
   }, [educatorId]);
 
@@ -154,74 +165,54 @@ export default function ActiveTestsFeed() {
       );
     }
 
-    if (tests.length === 0) {
+    if (rows.length === 0) {
       return (
         <div className="flex h-full flex-col items-center justify-center bg-muted/5 py-12 text-muted-foreground">
           <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-primary/5">
             <FileText className="h-5 w-5 text-primary/40" />
           </div>
-
-          <p className="text-sm font-medium text-foreground">No recent assessments</p>
-
-          <p className="mt-1 text-xs">Create a test or DPP to see it here.</p>
+          <p className="text-sm font-medium text-foreground">No active assignments</p>
+          <p className="mt-1 text-xs">Assign tests to batches to see them here.</p>
         </div>
       );
     }
 
     return (
       <div className="divide-y divide-border/40">
-        {tests.map((test) => {
-          const statusConfig = getStatusStyles(test.status);
-
-          const timeRef = test.updatedAt || test.createdAt;
-
-          const timeAgo = timeRef?.toMillis
-            ? formatDistanceToNow(timeRef.toMillis(), {
-                addSuffix: true,
-              })
+        {rows.map((row) => {
+          const cfg = StatusConfig(row.status);
+          const timeAgo = row.createdAt?.toMillis
+            ? formatDistanceToNow(row.createdAt.toMillis(), { addSuffix: true })
             : "Recently";
 
           return (
             <div
-              key={test.id}
+              key={row.id}
               className="flex items-start gap-4 p-4 transition-colors hover:bg-muted/30"
             >
-              <div
-                className={cn("mt-1 rounded-full p-2", statusConfig.iconClass)}
-                title={statusConfig.label}
-              >
-                {statusConfig.icon}
+              <div className={cn("mt-1 rounded-full p-2", cfg.iconClass)} title={cfg.label}>
+                {cfg.icon}
               </div>
-
               <div className="min-w-0 flex-1">
                 <div className="mb-1 flex items-start justify-between gap-2">
-                  <p className="line-clamp-1 text-sm font-semibold text-foreground">{test.title}</p>
-
+                  <p className="line-clamp-1 text-sm font-semibold text-foreground">
+                    {row.testTitle}
+                  </p>
                   <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[10px] text-muted-foreground">
                     <Clock className="h-3 w-3" />
                     {timeAgo}
                   </span>
                 </div>
-
-                <div className="mt-2 flex items-center gap-2">
-                  <Badge
-                    variant="outline"
-                    className="h-5 bg-background px-1.5 py-0 text-[10px] font-medium text-muted-foreground"
-                  >
-                    {test.subject}
-                  </Badge>
-
+                <p className="mb-2 text-xs text-muted-foreground">{row.batchName}</p>
+                <div className="flex items-center gap-2">
                   <Badge variant="secondary" className="h-5 px-1.5 py-0 text-[10px]">
-                    {test.isDpp ? "DPP" : "Test"}
+                    {row.isDpp ? "DPP" : "Test"}
                   </Badge>
-
-                  <Badge
-                    className={cn(
-                      "h-5 border-none px-1.5 py-0 text-[10px]",
-                      statusConfig.badgeClass
+                  <Badge className={cn("h-5 border-none px-1.5 py-0 text-[10px]", cfg.badgeClass)}>
+                    {cfg.label}
+                    {row.status === "code_active" && row.accessCode && (
+                      <span className="ml-1 font-mono opacity-70">{row.accessCode}</span>
                     )}
-                  >
-                    {statusConfig.label}
                   </Badge>
                 </div>
               </div>
@@ -230,7 +221,7 @@ export default function ActiveTestsFeed() {
         })}
       </div>
     );
-  }, [loading, tests]);
+  }, [loading, rows]);
 
   return (
     <Card className="flex h-[450px] w-full flex-col border-border/50 shadow-sm">
@@ -239,19 +230,16 @@ export default function ActiveTestsFeed() {
           <div className="rounded-md bg-primary/10 p-1.5 text-primary">
             <FileText className="h-5 w-5" />
           </div>
-
           <div>
             <CardTitle className="text-base font-semibold text-foreground">
-              Recent Assessments
+              Active Assignments
             </CardTitle>
-
             <CardDescription className="mt-0.5 text-xs">
-              Recently created or active tests & DPPs
+              Live, upcoming, and access-code batch assignments
             </CardDescription>
           </div>
         </div>
       </CardHeader>
-
       <CardContent className="flex-1 overflow-hidden p-0">
         <div className="scrollbar-thin scrollbar-thumb-muted-foreground/20 hover:scrollbar-thumb-primary/30 h-full overflow-y-auto">
           {content}

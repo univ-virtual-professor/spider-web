@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, getDocs } from "firebase/firestore";
+import { collection, onSnapshot, getDocs, query, where } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { Card } from "@shared/ui/card";
@@ -9,16 +9,15 @@ import { Tabs, TabsList, TabsTrigger } from "@shared/ui/tabs";
 import { Badge } from "@shared/ui/badge";
 import { Skeleton } from "@shared/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@shared/ui/table";
-import { CalendarRange, Clock, BookOpen, AlertCircle, ExternalLink } from "lucide-react";
+import { CalendarRange, Clock, BookOpen, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-interface AssessmentDoc {
+interface AssignmentDoc {
   id: string;
-  title?: string;
-  subject?: string;
-  courseId?: string;
-  targetBatches?: string[];
-  durationMinutes?: number;
+  testId: string;
+  testTitle: string;
+  batchId: string;
+  batchName: string;
   startTime?: any;
   endTime?: any;
   isScheduleActive?: boolean;
@@ -50,23 +49,20 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
   const educatorId = profile?.educatorId || firebaseUser?.uid || "";
 
   const [loading, setLoading] = useState(true);
-  const [assessments, setAssessments] = useState<AssessmentDoc[]>([]);
-  const [activeTab, setActiveTab] = useState<"upcoming" | "past">("upcoming");
+  const [assignments, setAssignments] = useState<AssignmentDoc[]>([]);
+  const [activeTab, setActiveTab] = useState<"live" | "upcoming" | "past">("live");
 
-  // Hierarchy Data
   const [allBranches, setAllBranches] = useState<BranchDoc[]>([]);
   const [allCourses, setAllCourses] = useState<CourseDoc[]>([]);
   const [allBatches, setAllBatches] = useState<BatchDoc[]>([]);
 
-  // Filter State
-  const [selectedBranch, setSelectedBranch] = useState("");
+  const [selectedBranch, setSelectedBranch] = useState("all");
   const [selectedCourse, setSelectedCourse] = useState("All");
   const [selectedBatch, setSelectedBatch] = useState("All");
 
   useEffect(() => {
     if (!educatorId) return;
 
-    // Fetch Hierarchy
     const loadHierarchy = async () => {
       try {
         const branchSnap = await getDocs(collection(db, "educators", educatorId, "branches"));
@@ -104,28 +100,44 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
         }
         setAllCourses(coursesData);
         setAllBatches(batchesData);
+
+        // Auto-select if only one branch
+        if (branchesData.length === 1) setSelectedBranch(branchesData[0].name);
       } catch (err) {
         console.error("Failed to load hierarchy", err);
       }
     };
     loadHierarchy();
 
-    // Fetch Assessments
-    const q = collection(db, "educators", educatorId, "my_tests");
+    // Read from batchAssignments (scheduled only)
+    const q = query(
+      collection(db, "educators", educatorId, "batchAssignments"),
+      where("accessType", "==", "scheduled")
+    );
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as AssessmentDoc);
+        const data = snap.docs.map((d) => {
+          const dd = d.data() as any;
+          return {
+            id: d.id,
+            testId: String(dd.testId || ""),
+            testTitle: String(dd.testTitle || "Untitled"),
+            batchId: String(dd.batchId || ""),
+            batchName: String(dd.batchName || ""),
+            startTime: dd.startTime || null,
+            endTime: dd.endTime || null,
+            isScheduleActive: Boolean(dd.isScheduleActive),
+          } as AssignmentDoc;
+        });
 
-        const scheduledOnly = data.filter((a) => !!a.startTime);
-
-        const filteredByType = scheduledOnly.filter((a) => {
-          const title = (a.title || "").toLowerCase();
+        const filtered = data.filter((a) => {
+          const title = a.testTitle.toLowerCase();
           const isDpp = title.includes("dpp") || title.includes("practice");
           return type === "dpps" ? isDpp : !isDpp;
         });
 
-        setAssessments(filteredByType);
+        setAssignments(filtered);
         setLoading(false);
       },
       () => setLoading(false)
@@ -134,153 +146,109 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
     return () => unsub();
   }, [educatorId, type]);
 
-  // Derived Filter Options
   const uniqueBranches = useMemo(
     () => Array.from(new Set(allBranches.map((b) => b.name))).sort(),
     [allBranches]
   );
 
   const uniqueCourses = useMemo(() => {
-    if (!selectedBranch) return [];
-    return Array.from(
-      new Set(
-        allCourses
-          .filter((c) => {
+    const courses =
+      selectedBranch === "all"
+        ? allCourses
+        : allCourses.filter((c) => {
             const b = allBranches.find((br) => br.name === selectedBranch);
             return b && c.branchId === b.id;
-          })
-          .map((c) => c.name)
-      )
-    ).sort();
+          });
+    return Array.from(new Set(courses.map((c) => c.name))).sort();
   }, [allCourses, allBranches, selectedBranch]);
 
   const uniqueBatches = useMemo(() => {
-    if (!selectedCourse) return [];
     return Array.from(
       new Set(
         allBatches
           .filter((b) => {
-            let valid = true;
-            if (selectedBranch) {
+            if (selectedBranch && selectedBranch !== "all") {
               const branch = allBranches.find((br) => br.name === selectedBranch);
-              if (!branch || b.branchId !== branch.id) valid = false;
+              if (!branch || b.branchId !== branch.id) return false;
             }
             if (selectedCourse && selectedCourse !== "All") {
               const course = allCourses.find((c) => c.name === selectedCourse);
-              if (!course || b.courseId !== course.id) valid = false;
+              if (!course || b.courseId !== course.id) return false;
             }
-            return valid;
+            return true;
           })
           .map((b) => b.name)
       )
     ).sort();
   }, [allBatches, allBranches, allCourses, selectedBranch, selectedCourse]);
 
-  // Reset dependent filters when parent changes
+  // Reset child filters when parent changes
   useEffect(() => {
-    if (uniqueBranches.length === 1 && !selectedBranch) {
-      setSelectedBranch(uniqueBranches[0]);
-    }
-  }, [uniqueBranches, selectedBranch]);
-  useEffect(() => {
-    if (uniqueCourses.length === 1) {
-      if (selectedCourse !== uniqueCourses[0]) setSelectedCourse(uniqueCourses[0]);
-    } else if (
-      selectedCourse &&
-      selectedCourse !== "All" &&
-      !uniqueCourses.includes(selectedCourse)
-    ) {
+    if (selectedCourse !== "All" && !uniqueCourses.includes(selectedCourse))
       setSelectedCourse("All");
-    }
   }, [uniqueCourses, selectedCourse]);
-
   useEffect(() => {
-    if (uniqueBatches.length === 1) {
-      if (selectedBatch !== uniqueBatches[0]) setSelectedBatch(uniqueBatches[0]);
-    } else if (selectedBatch !== "All" && !uniqueBatches.includes(selectedBatch)) {
-      setSelectedBatch("All");
-    }
+    if (selectedBatch !== "All" && !uniqueBatches.includes(selectedBatch)) setSelectedBatch("All");
   }, [uniqueBatches, selectedBatch]);
 
-  // Filter + Sort Data
-  const displayedAssessments = useMemo(() => {
-    if (!selectedBranch) return [];
+  const displayedAssignments = useMemo(() => {
+    const now = Date.now();
 
-    const now = new Date().getTime();
-
-    return assessments
+    return assignments
       .filter((a) => {
-        const startTime = a.startTime?.toMillis?.() ?? 0;
-        // Fallback to startTime if endTime is missing
-        const endTime = a.endTime?.toMillis?.() ?? startTime;
+        const startMs = a.startTime?.toMillis?.() ?? 0;
+        const endMs = a.endTime?.toMillis?.() ?? 0;
 
-        // Upcoming: only tests whose startTime is strictly in the future (not yet started)
-        if (activeTab === "upcoming" && startTime <= now) return false;
-
-        // Past: only tests that have fully ended
-        if (activeTab === "past" && endTime > now) return false;
+        if (activeTab === "live" && !(startMs <= now && endMs >= now)) return false;
+        if (activeTab === "upcoming" && startMs <= now) return false;
+        if (activeTab === "past" && endMs > now) return false;
 
         // Hierarchy filters
-        const aCourse = allCourses.find((c) => c.id === a.courseId);
-        const aBranch = allBranches.find((b) => b.id === aCourse?.branchId);
-        const aBatches = allBatches.filter((b) => (a.targetBatches || []).includes(b.id));
+        const batch = allBatches.find((b) => b.id === a.batchId);
 
-        // Branch filter
-        if (selectedBranch) {
-          const matchesCourseBranch = aBranch?.name === selectedBranch;
-          const matchesAnyBatchBranch = aBatches.some((b) => {
-            const br = allBranches.find((brn) => brn.id === b.branchId);
-            return br?.name === selectedBranch;
-          });
-          if (!matchesCourseBranch && !matchesAnyBatchBranch) return false;
+        if (selectedBranch && selectedBranch !== "all") {
+          const branch = allBranches.find((br) => br.name === selectedBranch);
+          if (!branch || batch?.branchId !== branch.id) return false;
         }
-
-        // Course filter
         if (selectedCourse && selectedCourse !== "All") {
-          const matchesCourse = aCourse?.name === selectedCourse;
-          const matchesAnyBatchCourse = aBatches.some((b) => {
-            const c = allCourses.find((crs) => crs.id === b.courseId);
-            return c?.name === selectedCourse;
-          });
-          if (!matchesCourse && !matchesAnyBatchCourse) return false;
+          const course = allCourses.find((c) => c.name === selectedCourse);
+          if (!course || batch?.courseId !== course.id) return false;
         }
-
-        // Batch filter
         if (selectedBatch && selectedBatch !== "All") {
-          const matchesBatch = aBatches.some((b) => b.name === selectedBatch);
-          if (!matchesBatch) return false;
+          if (batch?.name !== selectedBatch) return false;
         }
 
         return true;
       })
       .sort((a, b) => {
-        const timeA = a.startTime?.toMillis?.() ?? 0;
-        const timeB = b.startTime?.toMillis?.() ?? 0;
-        return activeTab === "upcoming" ? timeA - timeB : timeB - timeA;
+        const aStart = a.startTime?.toMillis?.() ?? 0;
+        const bStart = b.startTime?.toMillis?.() ?? 0;
+        if (activeTab === "upcoming") return aStart - bStart;
+        if (activeTab === "live")
+          return (a.endTime?.toMillis?.() ?? 0) - (b.endTime?.toMillis?.() ?? 0);
+        return bStart - aStart;
       });
   }, [
-    assessments,
+    assignments,
     activeTab,
     selectedBranch,
     selectedCourse,
     selectedBatch,
-    allCourses,
     allBranches,
+    allCourses,
     allBatches,
   ]);
 
-  // Helpers
   const formatTime = (ts: any) => {
     if (!ts) return "—";
     const d = typeof ts?.toDate === "function" ? ts.toDate() : new Date(ts);
     return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
   };
 
-  const getStatusBadge = (a: AssessmentDoc) => {
-    const now = new Date().getTime();
-    const end = a.endTime?.toMillis?.() ?? 0;
+  const getStatusBadge = (a: AssignmentDoc) => {
+    const now = Date.now();
     const start = a.startTime?.toMillis?.() ?? 0;
-
+    const end = a.endTime?.toMillis?.() ?? 0;
     if (end < now && end !== 0)
       return (
         <Badge variant="secondary" className="bg-muted text-muted-foreground">
@@ -290,7 +258,7 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
     if (start <= now && (end === 0 || end >= now))
       return (
         <Badge className="border-green-500/20 bg-green-500/10 text-green-500 hover:bg-green-500/20">
-          Active Now
+          Live
         </Badge>
       );
     return (
@@ -313,13 +281,13 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
           </Button>
         </div>
         <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
-          {/* Global Filters */}
           <div className="flex w-full flex-wrap items-center gap-3 md:w-auto">
             <Select value={selectedBranch} onValueChange={setSelectedBranch}>
               <SelectTrigger className="h-9 w-[140px] bg-background">
-                <SelectValue placeholder="Select Branch" />
+                <SelectValue placeholder="All Branches" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">All Branches</SelectItem>
                 {uniqueBranches.map((b) => (
                   <SelectItem key={b} value={b}>
                     {b}
@@ -330,10 +298,10 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
 
             <Select value={selectedCourse} onValueChange={setSelectedCourse}>
               <SelectTrigger className="h-9 w-[140px] bg-background">
-                <SelectValue placeholder="Select Program" />
+                <SelectValue placeholder="All Programs" />
               </SelectTrigger>
               <SelectContent>
-                {uniqueCourses.length !== 1 && <SelectItem value="All">All Programs</SelectItem>}
+                <SelectItem value="All">All Programs</SelectItem>
                 {uniqueCourses.map((c) => (
                   <SelectItem key={c} value={c}>
                     {c}
@@ -357,13 +325,15 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
             </Select>
           </div>
 
-          {/* Time Filter */}
           <Tabs
             value={activeTab}
-            onValueChange={(v) => setActiveTab(v as any)}
+            onValueChange={(v) => setActiveTab(v as typeof activeTab)}
             className="w-full md:w-auto"
           >
-            <TabsList className="grid h-10 w-full grid-cols-2 border bg-background p-1 md:w-auto">
+            <TabsList className="grid h-10 w-full grid-cols-3 border bg-background p-1 md:w-auto">
+              <TabsTrigger value="live" className="text-xs">
+                Live
+              </TabsTrigger>
               <TabsTrigger value="upcoming" className="text-xs">
                 Upcoming
               </TabsTrigger>
@@ -383,9 +353,8 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
                 <TableHead className="font-semibold">
                   {type === "tests" ? "Test Name" : "DPP Title"}
                 </TableHead>
-                <TableHead className="font-semibold">Subject</TableHead>
+                <TableHead className="font-semibold">Batch</TableHead>
                 <TableHead className="font-semibold">Schedule</TableHead>
-                <TableHead className="font-semibold">Duration</TableHead>
                 <TableHead className="font-semibold">Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -397,67 +366,42 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
                       <Skeleton className="h-4 w-[200px]" />
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-4 w-[100px]" />
+                      <Skeleton className="h-4 w-[120px]" />
                     </TableCell>
                     <TableCell>
                       <Skeleton className="h-4 w-[150px]" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-[60px]" />
                     </TableCell>
                     <TableCell>
                       <Skeleton className="h-6 w-[80px] rounded-full" />
                     </TableCell>
                   </TableRow>
                 ))
-              ) : !selectedBranch ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-64 text-center">
-                    <div className="flex flex-col items-center justify-center space-y-3 text-muted-foreground">
-                      <AlertCircle className="h-10 w-10 opacity-20" />
-                      <p className="text-base font-medium">Select a Branch</p>
-                      <p className="max-w-[300px] text-center text-sm opacity-80">
-                        Please select a specific Branch from the filters above to view{" "}
-                        {type === "tests" ? "scheduled tests" : "scheduled DPPs"}.
-                      </p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : displayedAssessments.length > 0 ? (
-                displayedAssessments.map((a) => (
-                  <TableRow key={a.id} className="group transition-colors hover:bg-muted/10">
+              ) : displayedAssignments.length > 0 ? (
+                displayedAssignments.map((a) => (
+                  <TableRow key={a.id} className="transition-colors hover:bg-muted/10">
                     <TableCell>
-                      <div className="font-medium text-foreground">{a.title || "Untitled"}</div>
-                      <div className="mt-1 max-w-[200px] truncate text-xs text-muted-foreground">
-                        {a.targetBatches && a.targetBatches.length > 0
-                          ? allBatches
-                              .filter((b) => a.targetBatches!.includes(b.id))
-                              .map((b) => b.name)
-                              .join(", ") || `${a.targetBatches.length} batch(es)`
-                          : "All Students"}
-                      </div>
+                      <div className="font-medium text-foreground">{a.testTitle}</div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{a.subject || "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">{a.batchName}</TableCell>
                     <TableCell>
                       <div className="flex flex-col gap-1 text-sm">
                         <span className="flex items-center gap-1.5">
-                          <CalendarRange className="h-3 w-3 text-muted-foreground" />{" "}
+                          <CalendarRange className="h-3 w-3 text-muted-foreground" />
                           {formatTime(a.startTime)}
                         </span>
-                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Clock className="h-3 w-3" /> Until {formatTime(a.endTime)}
-                        </span>
+                        {a.endTime && (
+                          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <Clock className="h-3 w-3" /> Until {formatTime(a.endTime)}
+                          </span>
+                        )}
                       </div>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {a.durationMinutes ? `${a.durationMinutes} min` : "—"}
                     </TableCell>
                     <TableCell>{getStatusBadge(a)}</TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-64 text-center">
+                  <TableCell colSpan={4} className="h-64 text-center">
                     <div className="flex flex-col items-center justify-center space-y-3 text-muted-foreground">
                       {type === "tests" ? (
                         <CalendarRange className="h-10 w-10 opacity-20" />
@@ -465,13 +409,14 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
                         <BookOpen className="h-10 w-10 opacity-20" />
                       )}
                       <p className="text-base font-medium">
-                        {activeTab === "upcoming"
-                          ? `No upcoming ${type} scheduled.`
-                          : `No past ${type} found.`}
+                        {activeTab === "live"
+                          ? `No ${type} live right now.`
+                          : activeTab === "upcoming"
+                            ? `No upcoming ${type} scheduled.`
+                            : `No past ${type} found.`}
                       </p>
                       <p className="max-w-[300px] text-center text-sm opacity-80">
-                        Adjust your filters or head to the Test Series section to schedule new
-                        assessments.
+                        Assign tests to batches from the Test Series section.
                       </p>
                     </div>
                   </TableCell>

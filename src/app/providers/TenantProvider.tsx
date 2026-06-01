@@ -28,6 +28,8 @@ export type TenantProfile = {
   testDefaults?: {
     attemptsAllowed?: number;
   };
+  welcomeMessage?: { message?: string; isActive?: boolean };
+  quotes?: string[];
 };
 
 type TenantContextValue = {
@@ -81,6 +83,8 @@ async function fetchTenantProfile(tenantSlug: string | null): Promise<TenantProf
     websiteConfig,
     builderConfig: data?.builderConfig || null,
     testDefaults: data?.testDefaults || {},
+    welcomeMessage: data?.welcomeMessage || null,
+    quotes: Array.isArray(data?.quotes) ? data.quotes : [],
   };
 }
 

@@ -111,20 +111,49 @@ export default function StudentTests() {
   const { data: tests = [] } = useQuery({
     queryKey: ["studentTests", educatorId, studentBatchId],
     queryFn: async () => {
+      // Fetch per-batch schedule assignments for student's batch
+      const assignMap = new Map<string, any>();
+      if (studentBatchId) {
+        const assignSnap = await getDocs(
+          query(
+            collection(db, "educators", educatorId, "batchAssignments"),
+            where("batchId", "==", studentBatchId)
+          )
+        );
+        assignSnap.docs.forEach((d) => {
+          const data = d.data() as any;
+          assignMap.set(String(data.testId || ""), data);
+        });
+      }
+
       const qTests = query(
         collection(db, "educators", educatorId, "my_tests"),
         orderBy("createdAt", "desc")
       );
       const snap = await getDocs(qTests);
       const all = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-      // Show test if: legacy (no targetBatches field) OR student's batch is in targetBatches
-      return all.filter((t: any) =>
+      const visible = all.filter((t: any) =>
         t.targetBatches === undefined || t.targetBatches === null
           ? true
           : studentBatchId
             ? t.targetBatches.includes(studentBatchId)
             : t.targetBatches.length === 0
       );
+
+      return visible.map((t: any) => {
+        const assignment = assignMap.get(t.id);
+        if (!assignment) return t;
+        if (assignment.accessType === "scheduled") {
+          return {
+            ...t,
+            startTime: assignment.startTime,
+            endTime: assignment.endTime,
+            isScheduleActive: assignment.isScheduleActive,
+          };
+        }
+        // access_code: no time-based schedule; test is visible but locked until code entered
+        return { ...t, startTime: null, endTime: null, isScheduleActive: false };
+      });
     },
     enabled: allowed && !!educatorId,
     staleTime: 2 * 60 * 1000,

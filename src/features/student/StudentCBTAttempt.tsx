@@ -582,16 +582,43 @@ export default function StudentCBTAttempt() {
           }
         }
 
-        const startTime = localTestData?.startTime
+        let startTime: number | null = localTestData?.startTime
           ? typeof localTestData.startTime.toMillis === "function"
             ? localTestData.startTime.toMillis()
             : localTestData.startTime
           : null;
-        const endTime = localTestData?.endTime
+        let endTime: number | null = localTestData?.endTime
           ? typeof localTestData.endTime.toMillis === "function"
             ? localTestData.endTime.toMillis()
             : localTestData.endTime
           : null;
+
+        // Overlay with per-batch assignment schedule (new model); fall back to test doc (legacy)
+        const studentBatchId = profile?.batchId;
+        if (studentBatchId) {
+          try {
+            const assignSnap = await getDocs(
+              query(
+                collection(db, "educators", educatorId, "batchAssignments"),
+                where("testId", "==", testId),
+                where("batchId", "==", studentBatchId)
+              )
+            );
+            if (!assignSnap.empty) {
+              const assignment = assignSnap.docs[0].data() as any;
+              if (assignment.accessType === "scheduled") {
+                startTime = assignment.startTime?.toMillis?.() ?? assignment.startTime ?? null;
+                endTime = assignment.endTime?.toMillis?.() ?? assignment.endTime ?? null;
+              } else if (assignment.accessType === "access_code") {
+                startTime = null;
+                endTime = null;
+              }
+            }
+          } catch {
+            // non-fatal — fall back to test doc fields
+          }
+        }
+
         const isLive = startTime && endTime && Date.now() >= startTime && Date.now() <= endTime;
         const isFree = (meta as any).price <= 0;
 

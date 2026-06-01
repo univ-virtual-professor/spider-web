@@ -25,6 +25,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { StudentMetricCard } from "@features/student/components/StudentMetricCard";
+import { DailyQuoteCard } from "@features/student/components/DailyQuoteCard";
 
 import { useAuth } from "@app/providers/AuthProvider";
 import { useTenant } from "@app/providers/TenantProvider";
@@ -277,6 +278,21 @@ export default function StudentDashboard() {
           unlockedMap.set(tid, expMs);
       });
 
+      // Fetch per-batch assignments for student's batch
+      const assignMap = new Map<string, any>();
+      if (studentBatchId) {
+        const assignSnap = await getDocs(
+          query(
+            collection(db, "educators", educatorId!, "batchAssignments"),
+            where("batchId", "==", studentBatchId)
+          )
+        );
+        assignSnap.docs.forEach((d) => {
+          const data = d.data() as any;
+          assignMap.set(String(data.testId || ""), data);
+        });
+      }
+
       const snap = await getDocs(
         query(
           collection(db, "educators", educatorId!, "my_tests"),
@@ -299,14 +315,32 @@ export default function StudentDashboard() {
       const upcoming: DashTest[] = [];
 
       all.forEach((t: any) => {
-        const startMs = t.startTime ? toMillis(t.startTime) : null;
-        const endMs = t.endTime ? toMillis(t.endTime) : null;
-        if (startMs && startMs > now && t.isScheduleActive === true) {
-          upcoming.push({ ...t, _startsAtMs: startMs });
-        } else if (startMs && endMs && now >= startMs && now <= endMs) {
-          running.push(t);
-        } else if (unlockedMap.has(t.id)) {
-          unlocked.push({ ...t, _windowExpiresAt: unlockedMap.get(t.id) });
+        const assignment = assignMap.get(t.id);
+        if (assignment) {
+          if (assignment.accessType === "scheduled") {
+            const startMs = assignment.startTime ? toMillis(assignment.startTime) : null;
+            const endMs = assignment.endTime ? toMillis(assignment.endTime) : null;
+            if (startMs && startMs > now && assignment.isScheduleActive) {
+              upcoming.push({ ...t, _startsAtMs: startMs });
+            } else if (startMs && endMs && now >= startMs && now <= endMs) {
+              running.push(t);
+            }
+          } else if (assignment.accessType === "access_code") {
+            if (unlockedMap.has(t.id)) {
+              unlocked.push({ ...t, _windowExpiresAt: unlockedMap.get(t.id) });
+            }
+          }
+        } else {
+          // Legacy: use test doc fields for tests assigned before this model change
+          const startMs = t.startTime ? toMillis(t.startTime) : null;
+          const endMs = t.endTime ? toMillis(t.endTime) : null;
+          if (startMs && startMs > now && t.isScheduleActive === true) {
+            upcoming.push({ ...t, _startsAtMs: startMs });
+          } else if (startMs && endMs && now >= startMs && now <= endMs) {
+            running.push(t);
+          } else if (unlockedMap.has(t.id)) {
+            unlocked.push({ ...t, _windowExpiresAt: unlockedMap.get(t.id) });
+          }
         }
       });
 
@@ -577,6 +611,17 @@ export default function StudentDashboard() {
           </Link>
         </Button>
       </div>
+
+      {/* Daily Quote */}
+      {tenant?.quotes && tenant.quotes.length > 0 && (
+        <DailyQuoteCard
+          quotes={tenant.quotes}
+          instituteName={
+            tenant.builderConfig?.instituteName || tenant.coachingName || "Your Institute"
+          }
+          primaryColor={tenant.builderConfig?.customColor || "#6366f1"}
+        />
+      )}
 
       {/* Resume In-Progress Test */}
       {inProgressAttempt && (

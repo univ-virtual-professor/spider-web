@@ -16,6 +16,9 @@ import {
   Globe,
   ExternalLink,
   ArrowLeft,
+  Quote,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { Input } from "@shared/ui/input";
 import { Button } from "@shared/ui/button";
@@ -34,7 +37,15 @@ import {
   reauthenticateWithCredential,
   updatePassword,
 } from "firebase/auth";
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  serverTimestamp,
+  arrayUnion,
+  arrayRemove,
+} from "firebase/firestore";
 import { auth, db } from "@shared/lib/firebase";
 import { uploadToImageKit } from "@shared/lib/imagekitUpload";
 import { useAuth } from "@app/providers/AuthProvider";
@@ -58,6 +69,8 @@ type EducatorProfileDoc = {
   tenantSlug?: string;
   coachingName?: string;
   websiteConfig?: any;
+  welcomeMessage?: { message?: string; isActive?: boolean };
+  quotes?: string[];
 };
 
 export default function Settings() {
@@ -115,6 +128,16 @@ export default function Settings() {
   });
   const [savingPrefs, setSavingPrefs] = useState(false);
 
+  // Welcome message
+  const [welcomeMessage, setWelcomeMessage] = useState("");
+  const [welcomeActive, setWelcomeActive] = useState(false);
+  const [savingWelcome, setSavingWelcome] = useState(false);
+
+  // Daily quotes
+  const [quotes, setQuotes] = useState<string[]>([]);
+  const [newQuote, setNewQuote] = useState("");
+  const [savingQuotes, setSavingQuotes] = useState(false);
+
   // Sync local state with AuthProvider's profile
   useEffect(() => {
     if (profile) {
@@ -145,6 +168,13 @@ export default function Settings() {
             sms: data.prefs.notifications.sms ?? false,
             push: data.prefs.notifications.push ?? true,
           });
+        }
+        if (data.welcomeMessage) {
+          setWelcomeMessage(data.welcomeMessage.message || "");
+          setWelcomeActive(data.welcomeMessage.isActive ?? false);
+        }
+        if (Array.isArray(data.quotes)) {
+          setQuotes(data.quotes);
         }
       } catch (e) {
         logError(e, "Settings/loadExtraData");
@@ -422,6 +452,75 @@ export default function Settings() {
       });
     } finally {
       setUpdatingPassword(false);
+    }
+  }
+
+  async function saveWelcomeMessage() {
+    if (!firebaseUser?.uid) return;
+    setSavingWelcome(true);
+    try {
+      await setDoc(
+        doc(db, "educators", firebaseUser.uid),
+        {
+          welcomeMessage: { message: welcomeMessage.trim(), isActive: welcomeActive },
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      toast({ title: "Saved", description: "Welcome message updated." });
+    } catch (e) {
+      logError(e, "Settings/saveWelcomeMessage");
+      toast({
+        title: "Failed",
+        description: "Could not save welcome message.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingWelcome(false);
+    }
+  }
+
+  async function addQuote() {
+    const q = newQuote.trim();
+    if (!q || !firebaseUser?.uid) return;
+    if (quotes.length >= 30) {
+      toast({
+        title: "Limit reached",
+        description: "Max 30 quotes allowed.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSavingQuotes(true);
+    try {
+      await setDoc(
+        doc(db, "educators", firebaseUser.uid),
+        { quotes: arrayUnion(q), updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+      setQuotes((prev) => [...prev, q]);
+      setNewQuote("");
+      toast({ title: "Quote added" });
+    } catch (e) {
+      logError(e, "Settings/addQuote");
+      toast({ title: "Failed", description: "Could not add quote.", variant: "destructive" });
+    } finally {
+      setSavingQuotes(false);
+    }
+  }
+
+  async function removeQuote(q: string) {
+    if (!firebaseUser?.uid) return;
+    try {
+      await setDoc(
+        doc(db, "educators", firebaseUser.uid),
+        { quotes: arrayRemove(q), updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+      setQuotes((prev) => prev.filter((x) => x !== q));
+    } catch (e) {
+      logError(e, "Settings/removeQuote");
+      toast({ title: "Failed", description: "Could not remove quote.", variant: "destructive" });
     }
   }
 
@@ -807,6 +906,119 @@ export default function Settings() {
                   )}
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Welcome Message */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+        >
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Bell className="h-5 w-5" />
+                Welcome Message
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Shown to students once per session as a popup when they open the app.
+              </p>
+              <div className="space-y-2">
+                <Label>Message</Label>
+                <Input
+                  value={welcomeMessage}
+                  onChange={(e) => setWelcomeMessage(e.target.value)}
+                  placeholder="e.g. Welcome back! Keep pushing your limits."
+                  maxLength={300}
+                />
+                <p className="text-xs text-muted-foreground">{welcomeMessage.length}/300</p>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                <div>
+                  <p className="text-sm font-medium">Show to students</p>
+                  <p className="text-xs text-muted-foreground">
+                    Toggle to enable or disable the popup
+                  </p>
+                </div>
+                <Switch checked={welcomeActive} onCheckedChange={setWelcomeActive} />
+              </div>
+              <Button variant="outline" onClick={saveWelcomeMessage} disabled={savingWelcome}>
+                {savingWelcome ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  "Save"
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {/* Daily Motivational Quotes */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Quote className="h-5 w-5" />
+                Daily Motivational Quotes
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Students see one quote per day (rotated by date). Max 30 quotes. {quotes.length}/30
+                added.
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  value={newQuote}
+                  onChange={(e) => setNewQuote(e.target.value)}
+                  placeholder="Enter a motivational quote..."
+                  maxLength={300}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") addQuote();
+                  }}
+                />
+                <Button
+                  onClick={addQuote}
+                  disabled={savingQuotes || !newQuote.trim() || quotes.length >= 30}
+                >
+                  {savingQuotes ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+              {quotes.length > 0 && (
+                <div className="max-h-60 space-y-2 overflow-y-auto rounded-lg border border-border p-2">
+                  {quotes.map((q, i) => (
+                    <div
+                      key={i}
+                      className="flex items-start justify-between gap-2 rounded-md bg-muted/50 px-3 py-2"
+                    >
+                      <p className="text-xs text-foreground">{q}</p>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => removeQuote(q)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </motion.div>

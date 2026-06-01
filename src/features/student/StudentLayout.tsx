@@ -42,6 +42,7 @@ import { doc, onSnapshot, collection, query, where, getDoc } from "firebase/fire
 import { getAuth, signOut } from "firebase/auth";
 import ImpersonationBanner from "@shared/components/ImpersonationBanner";
 import NotificationBell from "@shared/components/NotificationBell";
+import { WelcomeModal } from "./components/WelcomeModal";
 
 type UserDoc = {
   displayName?: string;
@@ -85,6 +86,19 @@ export default function StudentLayout() {
 
   const uid = firebaseUser?.uid || null;
   const educatorId = tenant?.educatorId || profile?.educatorId || null;
+
+  // Welcome splash — show once per session before the page renders
+  const [splashDone, setSplashDone] = useState(() => {
+    if (!educatorId) return true;
+    return !!sessionStorage.getItem(`wm_seen_${educatorId}`);
+  });
+
+  const showSplash =
+    !splashDone &&
+    !tenantLoading &&
+    !!tenant?.welcomeMessage?.isActive &&
+    !!tenant.welcomeMessage.message &&
+    !!educatorId;
 
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [instituteName, setInstituteName] = useState<string | null>(null);
@@ -272,6 +286,19 @@ export default function StudentLayout() {
 
   if (authLoading || tenantLoading || (isApp && !appTokenReady)) {
     return <div className="py-12 text-center text-muted-foreground">Loading...</div>;
+  }
+
+  if (showSplash) {
+    return (
+      <WelcomeModal
+        message={tenant!.welcomeMessage!.message!}
+        instituteName={instituteName || tenant!.coachingName || "Your Institute"}
+        instituteLogo={logoUrl || tenant!.instituteLogo}
+        primaryColor={tenant!.builderConfig?.customColor || "#6366f1"}
+        educatorId={educatorId!}
+        onDone={() => setSplashDone(true)}
+      />
+    );
   }
 
   if (isApp) {
