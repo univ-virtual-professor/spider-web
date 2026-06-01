@@ -169,7 +169,9 @@ function SourceCitations({ sources }: { sources: Source[] }) {
 export default function StudentChatbot() {
   const { profile, firebaseUser } = useAuth();
   const educatorId = profile?.educatorId;
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { features, loading: featuresLoading } = useEducatorFeatures(educatorId);
 
   const [screen, setScreen] = useState<Screen>("setup");
@@ -841,4 +843,3 @@ export default function StudentChatbot() {
     </div>
   );
 }
-

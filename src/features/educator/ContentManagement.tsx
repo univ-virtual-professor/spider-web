@@ -130,7 +130,9 @@ function formatBytes(bytes: number) {
 }
 
 export default function ContentManagement() {
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { profile, firebaseUser } = useAuth();
   const educatorId = profile?.uid ?? "";
   const { features, loading: featuresLoading } = useEducatorFeatures(educatorId);
@@ -611,7 +613,7 @@ export default function ContentManagement() {
       <div className="flex items-center gap-4">
         {!isApp && (
           <div
-            className="flex cursor-pointer items-center rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+            className="flex hidden cursor-pointer items-center rounded-full p-2 transition-colors hover:bg-primary hover:text-white md:block"
             onClick={() => navigate("/educator/dashboard")}
           >
             <ArrowLeft />
@@ -737,90 +739,191 @@ export default function ContentManagement() {
           ) : displayedContent.length === 0 ? (
             <div className="py-10 text-center text-muted-foreground">No content yet</div>
           ) : (
-            <div className="w-full overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead>Scope</TableHead>
-                    <TableHead>Size</TableHead>
-                    <TableHead>Added</TableHead>
-                    <TableHead>Published</TableHead>
-                    <TableHead className="w-20" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {displayedContent.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.title}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">
-                          <ContentTypeIcon slug={item.type} />
-                          {activeTypes.find((t) => t.slug === item.type)?.name ?? item.type}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={item.source === "admin_library" ? "outline" : "secondary"}>
-                          {item.source === "admin_library" ? "Admin Library" : "Own"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {item.sharingScope === "branch" ? (
-                          <Badge
-                            variant="outline"
-                            className="border-blue-500 bg-blue-500/10 text-blue-500"
-                          >
-                            Branch
+            <>
+              {/* Desktop View (Table) */}
+              <div className="hidden w-full overflow-x-auto md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Title</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Source</TableHead>
+                      <TableHead>Scope</TableHead>
+                      <TableHead>Size</TableHead>
+                      <TableHead>Added</TableHead>
+                      <TableHead>Published</TableHead>
+                      <TableHead className="w-20" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {displayedContent.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell className="font-medium">{item.title}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">
+                            <ContentTypeIcon slug={item.type} />
+                            {activeTypes.find((t) => t.slug === item.type)?.name ?? item.type}
                           </Badge>
-                        ) : item.sharingScope === "batch" ? (
+                        </TableCell>
+                        <TableCell>
                           <Badge
-                            variant="outline"
-                            className="border-purple-500 bg-purple-500/10 text-purple-500"
+                            variant={item.source === "admin_library" ? "outline" : "secondary"}
                           >
-                            {(item as any).targetBatches?.length > 1
-                              ? `Batches (${(item as any).targetBatches.length})`
-                              : `Batch: ${item.targetBatchName || "Specific"}`}
+                            {item.source === "admin_library" ? "Admin Library" : "Own"}
                           </Badge>
-                        ) : (
-                          <Badge
-                            variant="outline"
-                            className="border-emerald-500 bg-emerald-500/10 text-emerald-500"
-                          >
-                            Program
-                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {item.sharingScope === "branch" ? (
+                            <Badge
+                              variant="outline"
+                              className="border-blue-500 bg-blue-500/10 text-blue-500"
+                            >
+                              Branch
+                            </Badge>
+                          ) : item.sharingScope === "batch" ? (
+                            <Badge
+                              variant="outline"
+                              className="border-purple-500 bg-purple-500/10 text-purple-500"
+                            >
+                              {(item as any).targetBatches?.length > 1
+                                ? `Batches (${(item as any).targetBatches.length})`
+                                : `Batch: ${item.targetBatchName || "Specific"}`}
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="border-emerald-500 bg-emerald-500/10 text-emerald-500"
+                            >
+                              Program
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {formatBytes(item.fileSize)}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {item.createdAt?.toDate().toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <Switch
+                            checked={item.isPublished !== false}
+                            onCheckedChange={(val) => handleTogglePublish(item, val)}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1">
+                            <Button size="icon" variant="ghost" asChild>
+                              <a href={item.fileUrl} target="_blank" rel="noreferrer">
+                                <ExternalLink className="h-4 w-4" />
+                              </a>
+                            </Button>
+                            <Button size="icon" variant="ghost" onClick={() => handleDelete(item)}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile View (Cards) - Excludes Source and File Size options */}
+              <div className="space-y-4 p-4 md:hidden">
+                {displayedContent.map((item) => (
+                  <div
+                    key={item.id}
+                    className="space-y-3 rounded-xl border border-border/80 bg-card p-4 shadow-sm transition-all hover:border-primary/20"
+                  >
+                    {/* Header: Title + Type */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <h4 className="break-words text-sm font-semibold text-foreground">
+                          {item.title}
+                        </h4>
+                        {item.description && (
+                          <p className="mt-1 line-clamp-2 break-words text-xs text-muted-foreground">
+                            {item.description}
+                          </p>
                         )}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {formatBytes(item.fileSize)}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      </div>
+                      <Badge variant="secondary" className="shrink-0 px-2 py-0.5 text-[10px]">
+                        <ContentTypeIcon slug={item.type} />
+                        {activeTypes.find((t) => t.slug === item.type)?.name ?? item.type}
+                      </Badge>
+                    </div>
+
+                    {/* Scope & Added Date */}
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      {/* Scope Badge */}
+                      {item.sharingScope === "branch" ? (
+                        <Badge
+                          variant="outline"
+                          className="border-blue-500 bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-500"
+                        >
+                          Branch
+                        </Badge>
+                      ) : item.sharingScope === "batch" ? (
+                        <Badge
+                          variant="outline"
+                          className="border-purple-500 bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-500"
+                        >
+                          {(item as any).targetBatches?.length > 1
+                            ? `Batches (${(item as any).targetBatches.length})`
+                            : `Batch: ${item.targetBatchName || "Specific"}`}
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="border-emerald-500 bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-500"
+                        >
+                          Program
+                        </Badge>
+                      )}
+
+                      {/* Date */}
+                      <span className="text-[11px] font-medium text-muted-foreground">
                         {item.createdAt?.toDate().toLocaleDateString()}
-                      </TableCell>
-                      <TableCell>
+                      </span>
+                    </div>
+
+                    {/* Publish switch & Action buttons */}
+                    <div className="flex items-center justify-between gap-4 border-t border-border/40 pt-2">
+                      {/* Publish Switch */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">Published</span>
                         <Switch
                           checked={item.isPublished !== false}
                           onCheckedChange={(val) => handleTogglePublish(item, val)}
                         />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
-                          <Button size="icon" variant="ghost" asChild>
-                            <a href={item.fileUrl} target="_blank" rel="noreferrer">
-                              <ExternalLink className="h-4 w-4" />
-                            </a>
-                          </Button>
-                          <Button size="icon" variant="ghost" onClick={() => handleDelete(item)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 gap-1.5 px-2.5 text-xs"
+                          asChild
+                        >
+                          <a href={item.fileUrl} target="_blank" rel="noreferrer">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 gap-1.5 px-2.5 text-xs text-destructive hover:bg-destructive/5 hover:text-destructive"
+                          onClick={() => handleDelete(item)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -1066,4 +1169,3 @@ export default function ContentManagement() {
     </div>
   );
 }
-

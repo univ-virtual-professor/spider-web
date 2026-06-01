@@ -9,7 +9,9 @@ import { HealthStudentData } from "./components/StudentHealthOverview";
 export default function StudentHealthCategoryList() {
   const location = useLocation();
   const navigate = useNavigate();
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
 
   const state = location.state as { students?: HealthStudentData[]; title?: string } | null;
   const students = state?.students || [];
@@ -104,4 +106,3 @@ export default function StudentHealthCategoryList() {
     </div>
   );
 }
-

@@ -197,7 +197,9 @@ function computeFromQuestionsAndResponses(
 }
 
 export default function StudentResults() {
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { attemptId } = useParams();
   const { firebaseUser, loading: authLoading } = useAuth();
 

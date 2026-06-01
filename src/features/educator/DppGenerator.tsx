@@ -115,7 +115,9 @@ function SourceLabel({ mode }: { mode?: string }) {
 export default function DppGenerator() {
   const { firebaseUser } = useAuth();
   const navigate = useNavigate();
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const educatorUid = firebaseUser?.uid || "";
   const { features, loading: featuresLoading } = useEducatorFeatures(educatorUid);
   const { subjects, allowedSubjectIds } = useAccessibleCourses(educatorUid);
@@ -182,34 +184,20 @@ export default function DppGenerator() {
 
     getDocs(collection(db, "educators", educatorUid, "branches"))
       .then(async (branchSnap) => {
-        const loadedBranches = branchSnap.docs.map((d) => ({
-          id: d.id,
-          name: (d.data() as any).name || d.id,
-        }));
-        setBranches(loadedBranches);
-        if (loadedBranches.length === 1) {
-          setSelectedBranchId(loadedBranches[0].id);
-        }
+        const loadedBranches: { id: string; name: string }[] = [];
 
         for (const bDoc of branchSnap.docs) {
           const branchName = (bDoc.data() as any).name || bDoc.id;
           const courseSnap = await getDocs(
             collection(db, "educators", educatorUid, "branches", bDoc.id, "courses")
           );
+          let branchHasBatches = false;
+
           for (const cDoc of courseSnap.docs) {
             const courseName = (cDoc.data() as any).name || cDoc.id;
             const courseKey = `${bDoc.id}::${cDoc.id}`;
-            if (!seenCourseKeys.has(courseKey)) {
-              seenCourseKeys.add(courseKey);
-              uniqueCourses.push({
-                courseId: cDoc.id,
-                courseName,
-                branchId: bDoc.id,
-                branchName,
-              });
-            }
 
-            const contentSnap = await getDocs(
+            const batchSnap = await getDocs(
               collection(
                 db,
                 "educators",
@@ -218,22 +206,60 @@ export default function DppGenerator() {
                 bDoc.id,
                 "courses",
                 cDoc.id,
-                "content"
+                "batches"
               )
             );
-            for (const ctDoc of contentSnap.docs) {
-              const d = ctDoc.data() as any;
-              items.push({
-                id: ctDoc.id,
-                title: d.title || ctDoc.id,
-                type: d.type || "book",
-                courseId: cDoc.id,
-                courseName,
-                branchId: bDoc.id,
-                branchName,
-              });
+
+            if (batchSnap.docs.length > 0) {
+              branchHasBatches = true;
+              if (!seenCourseKeys.has(courseKey)) {
+                seenCourseKeys.add(courseKey);
+                uniqueCourses.push({
+                  courseId: cDoc.id,
+                  courseName,
+                  branchId: bDoc.id,
+                  branchName,
+                });
+              }
+
+              const contentSnap = await getDocs(
+                collection(
+                  db,
+                  "educators",
+                  educatorUid,
+                  "branches",
+                  bDoc.id,
+                  "courses",
+                  cDoc.id,
+                  "content"
+                )
+              );
+              for (const ctDoc of contentSnap.docs) {
+                const d = ctDoc.data() as any;
+                items.push({
+                  id: ctDoc.id,
+                  title: d.title || ctDoc.id,
+                  type: d.type || "book",
+                  courseId: cDoc.id,
+                  courseName,
+                  branchId: bDoc.id,
+                  branchName,
+                });
+              }
             }
           }
+
+          if (branchHasBatches) {
+            loadedBranches.push({
+              id: bDoc.id,
+              name: branchName,
+            });
+          }
+        }
+
+        setBranches(loadedBranches);
+        if (loadedBranches.length === 1) {
+          setSelectedBranchId(loadedBranches[0].id);
         }
       })
       .catch(() => toast.error("Failed to load content"))
@@ -309,7 +335,7 @@ export default function DppGenerator() {
             const tb = b.createdAt?.seconds ?? 0;
             return tb - ta;
           })
-          .slice(0, 5);
+          .slice(0, 6);
         setDpps(records);
       }
     );
@@ -522,7 +548,6 @@ export default function DppGenerator() {
 
       await performGeneration(finalContentIds, finalContentTitles, uploadedContext);
     } catch (e: any) {
-      console.log(e.message);
       toast.error(e?.message || "Failed to process DPP");
       setUploading(false);
     } finally {
@@ -678,7 +703,7 @@ export default function DppGenerator() {
               <div className="space-y-1.5">
                 <Label>Source</Label>
                 <div className="flex gap-2">
-                  {(["upload", "content", "qb"] as SourceMode[]).map((m) => (
+                  {(["upload", "content"] as SourceMode[]).map((m) => (
                     <button
                       key={m}
                       type="button"
@@ -692,7 +717,7 @@ export default function DppGenerator() {
                           : "border-border hover:bg-muted"
                       }`}
                     >
-                      {m === "upload" ? "Upload" : m === "content" ? "Content" : "Question Bank"}
+                      {m === "upload" ? "Upload" : "Content"}
                     </button>
                   ))}
                 </div>
@@ -1030,4 +1055,3 @@ export default function DppGenerator() {
     </div>
   );
 }
-

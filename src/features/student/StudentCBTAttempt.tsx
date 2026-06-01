@@ -89,7 +89,9 @@ function getStudentImageUrls(answer: string | null | undefined): string[] {
       const parsed = JSON.parse(answer);
       if (Array.isArray(parsed))
         return parsed.filter((u): u is string => typeof u === "string" && u.startsWith("https://"));
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
   if (answer.startsWith("https://")) return [answer];
   return [];
@@ -1119,16 +1121,16 @@ export default function StudentCBTAttempt() {
             const imgUrls = getStudentImageUrls(rawAnswer);
             const isUpload = imgUrls.length > 0;
             return {
-            questionId: q.id,
-            questionText: q.stem,
-            questionType: isUpload ? ("UPLOAD" as const) : ("SHORT_ANSWER" as const),
-            referenceAnswer: q.referenceAnswer || "",
-            referenceKeywords: q.referenceKeywords || [],
-            referenceAnswerImageUrls: q.referenceAnswerFileUrls || [],
-            evaluationInstructions: q.evaluationInstructions || "",
-            studentAnswer: isUpload ? "" : rawAnswer,
-            studentAnswerImageUrls: isUpload ? imgUrls : undefined,
-            maxScore: safeNumber(q.marks.correct, 5),
+              questionId: q.id,
+              questionText: q.stem,
+              questionType: isUpload ? ("UPLOAD" as const) : ("SHORT_ANSWER" as const),
+              referenceAnswer: q.referenceAnswer || "",
+              referenceKeywords: q.referenceKeywords || [],
+              referenceAnswerImageUrls: q.referenceAnswerFileUrls || [],
+              evaluationInstructions: q.evaluationInstructions || "",
+              studentAnswer: isUpload ? "" : rawAnswer,
+              studentAnswerImageUrls: isUpload ? imgUrls : undefined,
+              maxScore: safeNumber(q.marks.correct, 5),
             };
           });
 
@@ -2440,9 +2442,14 @@ export default function StudentCBTAttempt() {
                             >
                               Uploaded Answer ({uploadedImages.length}/5) :
                             </div>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+                            <div
+                              style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 }}
+                            >
                               {uploadedImages.map((imgUrl, imgIdx) => (
-                                <div key={imgIdx} style={{ position: "relative", display: "inline-block" }}>
+                                <div
+                                  key={imgIdx}
+                                  style={{ position: "relative", display: "inline-block" }}
+                                >
                                   <img
                                     src={imgUrl}
                                     alt={`Answer ${imgIdx + 1}`}
@@ -2527,12 +2534,16 @@ export default function StudentCBTAttempt() {
                                   }}
                                   onClick={() => {
                                     if (!isStarted) return;
-                                    resumeFullscreenRef.current = Boolean(document.fullscreenElement);
+                                    resumeFullscreenRef.current = Boolean(
+                                      document.fullscreenElement
+                                    );
                                     ignoreProctoringRef.current = true;
                                   }}
                                 >
                                   <Camera size={18} style={{ color: "#6b7280" }} />
-                                  <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>Add Photo</span>
+                                  <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>
+                                    Add Photo
+                                  </span>
                                   <input
                                     type="file"
                                     accept="image/*"
@@ -2544,17 +2555,30 @@ export default function StudentCBTAttempt() {
                                       const file = e.target.files?.[0];
                                       e.target.value = "";
                                       if (!file) return;
-                                      if (file.size > 10 * 1024 * 1024) { toast.error("File too large. Max 10MB."); return; }
-                                      if (!file.type.startsWith("image/")) { toast.error("Only image files are allowed."); return; }
+                                      if (file.size > 10 * 1024 * 1024) {
+                                        toast.error("File too large. Max 10MB.");
+                                        return;
+                                      }
+                                      if (!file.type.startsWith("image/")) {
+                                        toast.error("Only image files are allowed.");
+                                        return;
+                                      }
                                       try {
                                         setUploadingSubjectiveImage(true);
                                         const prev = getStudentImageUrls(selectedAnswer);
-                                        const { url } = await uploadToImageKit(file, `student_ans_${currentQuestion.id}_${Date.now()}.${file.name.split(".").pop() || "jpg"}`, "/student-answers", "student");
+                                        const { url } = await uploadToImageKit(
+                                          file,
+                                          `student_ans_${currentQuestion.id}_${Date.now()}.${file.name.split(".").pop() || "jpg"}`,
+                                          "/student-answers",
+                                          "student"
+                                        );
                                         handleSelectOption(JSON.stringify([...prev, url]));
                                         toast.success("Image added");
                                       } catch (err: any) {
                                         console.error("[StudentCBT] Upload failed:", err);
-                                        toast.error(err?.message || "Upload failed. Please try again.");
+                                        toast.error(
+                                          err?.message || "Upload failed. Please try again."
+                                        );
                                       } finally {
                                         setUploadingSubjectiveImage(false);
                                       }
@@ -2577,12 +2601,16 @@ export default function StudentCBTAttempt() {
                                   }}
                                   onClick={() => {
                                     if (!isStarted) return;
-                                    resumeFullscreenRef.current = Boolean(document.fullscreenElement);
+                                    resumeFullscreenRef.current = Boolean(
+                                      document.fullscreenElement
+                                    );
                                     ignoreProctoringRef.current = true;
                                   }}
                                 >
                                   <Upload size={18} style={{ color: "#9ca3af" }} />
-                                  <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>Add Image</span>
+                                  <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>
+                                    Add Image
+                                  </span>
                                   <input
                                     type="file"
                                     accept="image/jpeg,image/png,image/webp"
@@ -2593,17 +2621,30 @@ export default function StudentCBTAttempt() {
                                       const file = e.target.files?.[0];
                                       e.target.value = "";
                                       if (!file) return;
-                                      if (file.size > 10 * 1024 * 1024) { toast.error("File too large. Max 10MB."); return; }
-                                      if (!file.type.startsWith("image/")) { toast.error("Only image files are allowed."); return; }
+                                      if (file.size > 10 * 1024 * 1024) {
+                                        toast.error("File too large. Max 10MB.");
+                                        return;
+                                      }
+                                      if (!file.type.startsWith("image/")) {
+                                        toast.error("Only image files are allowed.");
+                                        return;
+                                      }
                                       try {
                                         setUploadingSubjectiveImage(true);
                                         const prev = getStudentImageUrls(selectedAnswer);
-                                        const { url } = await uploadToImageKit(file, `student_ans_${currentQuestion.id}_${Date.now()}.${file.name.split(".").pop() || "jpg"}`, "/student-answers", "student");
+                                        const { url } = await uploadToImageKit(
+                                          file,
+                                          `student_ans_${currentQuestion.id}_${Date.now()}.${file.name.split(".").pop() || "jpg"}`,
+                                          "/student-answers",
+                                          "student"
+                                        );
                                         handleSelectOption(JSON.stringify([...prev, url]));
                                         toast.success("Image added");
                                       } catch (err: any) {
                                         console.error("[StudentCBT] Upload failed:", err);
-                                        toast.error(err?.message || "Upload failed. Please try again.");
+                                        toast.error(
+                                          err?.message || "Upload failed. Please try again."
+                                        );
                                       } finally {
                                         setUploadingSubjectiveImage(false);
                                       }

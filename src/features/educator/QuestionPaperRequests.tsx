@@ -100,7 +100,9 @@ function MonthlyUsage({ requests, limit }: { requests: QPRequest[]; limit: numbe
 
 export default function QuestionPaperRequests() {
   const { profile, firebaseUser } = useAuth();
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
 
   async function apiFetch(path: string, options: RequestInit = {}) {
     const token = await firebaseUser?.getIdToken();
@@ -556,4 +558,3 @@ export default function QuestionPaperRequests() {
     </div>
   );
 }
-

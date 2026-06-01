@@ -126,7 +126,7 @@ export default function ActiveTestsFeed() {
 
             return bTime - aTime;
           })
-          .slice(0, 10);
+          .slice(0, 6);
 
         setTests(parsedTests);
         setLoading(false);

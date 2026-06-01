@@ -474,7 +474,7 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
         <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
           {/* Header */}
           <SheetHeader className="border-b py-4 pl-6 pr-14">
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div className="min-w-0">
                 <SheetTitle className="truncate">{batch?.name}</SheetTitle>
                 {course && <p className="text-sm text-muted-foreground">{course.name}</p>}

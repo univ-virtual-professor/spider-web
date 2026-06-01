@@ -44,12 +44,12 @@ export function AttemptTable({ attempts, showTest = true, compact = false }: Att
         <TableHeader>
           <TableRow className="bg-muted/50">
             {showTest && <TableHead>Test</TableHead>}
-            <TableHead>Date</TableHead>
+            <TableHead className="hidden text-center md:table-cell">Date</TableHead>
             <TableHead className="text-center">Score</TableHead>
-            <TableHead className="text-center">Accuracy</TableHead>
-            {!compact && <TableHead className="text-center">Time</TableHead>}
-            {!compact && <TableHead className="text-center">Rank</TableHead>}
-            <TableHead className="text-center">Status</TableHead>
+            <TableHead className="hidden text-center md:table-cell">Accuracy</TableHead>
+            {!compact && <TableHead className="hidden text-center md:table-cell">Time</TableHead>}
+            {!compact && <TableHead className="hidden text-center md:table-cell">Rank</TableHead>}
+            <TableHead className="hidden text-center md:table-cell">Status</TableHead>
             <TableHead className="text-right">Action</TableHead>
           </TableRow>
         </TableHeader>
@@ -61,15 +61,17 @@ export function AttemptTable({ attempts, showTest = true, compact = false }: Att
             return (
               <TableRow key={attempt.id} className="hover:bg-muted/30">
                 {showTest && (
-                  <TableCell className="max-w-[200px] font-medium">
+                  <TableCell className="max-w-[180px] font-medium">
                     <div className="truncate">{attempt.testTitle}</div>
                     <div className="text-xs text-muted-foreground">{attempt.subject}</div>
                   </TableCell>
                 )}
-                <TableCell className="text-sm text-muted-foreground">
-                  {format(new Date(attempt.createdAt), "MMM d, yyyy")}
+                <TableCell className="hidden text-sm text-muted-foreground md:table-cell">
+                  {format(new Date(attempt.createdAt), "MMM d")}
                   {!compact && (
-                    <div className="text-xs">{format(new Date(attempt.createdAt), "h:mm a")}</div>
+                    <div className="hidden text-xs md:block">
+                      {format(new Date(attempt.createdAt), "h:mm a")}
+                    </div>
                   )}
                 </TableCell>
                 <TableCell className="text-center">
@@ -81,7 +83,7 @@ export function AttemptTable({ attempts, showTest = true, compact = false }: Att
                     <span className="text-muted-foreground">—</span>
                   )}
                 </TableCell>
-                <TableCell className="text-center">
+                <TableCell className="hidden text-center md:table-cell">
                   {attempt.status === "completed" ? (
                     <span
                       className={cn(
@@ -100,7 +102,7 @@ export function AttemptTable({ attempts, showTest = true, compact = false }: Att
                   )}
                 </TableCell>
                 {!compact && (
-                  <TableCell className="text-center">
+                  <TableCell className="hidden text-center md:table-cell">
                     {attempt.status === "completed" ? (
                       <div className="flex items-center justify-center gap-1 text-sm text-muted-foreground">
                         <Clock className="h-3 w-3" />
@@ -112,7 +114,7 @@ export function AttemptTable({ attempts, showTest = true, compact = false }: Att
                   </TableCell>
                 )}
                 {!compact && (
-                  <TableCell className="text-center">
+                  <TableCell className="hidden text-center md:table-cell">
                     {attempt.status === "completed" && attempt.rank > 0 ? (
                       <div className="flex items-center justify-center gap-1">
                         <Trophy
@@ -131,7 +133,7 @@ export function AttemptTable({ attempts, showTest = true, compact = false }: Att
                     )}
                   </TableCell>
                 )}
-                <TableCell className="text-center">
+                <TableCell className="hidden text-center md:table-cell">
                   <Badge variant="secondary" className={cn("rounded-full", status.className)}>
                     <StatusIcon
                       className={cn(
@@ -146,8 +148,8 @@ export function AttemptTable({ attempts, showTest = true, compact = false }: Att
                   {attempt.status === "completed" ? (
                     <Button size="sm" variant="ghost" className="rounded-lg" asChild>
                       <Link to={`/student/results/${attempt.id}`}>
-                        <Eye className="mr-1 h-4 w-4" />
-                        View
+                        <Eye className="h-4 w-4" />
+                        <span className="hidden md:block">View</span>
                       </Link>
                     </Button>
                   ) : attempt.status === "in-progress" ? (

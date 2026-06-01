@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { AlertTriangle, ShieldAlert, XCircle, MonitorOff } from "lucide-react";
 import { collection, query, orderBy, limit, onSnapshot } from "firebase/firestore";
@@ -21,6 +21,19 @@ interface CheatAlert {
   timestamp: any;
 }
 
+interface GroupedCheatAlert extends CheatAlert {
+  count: number;
+}
+
+const getTimestampMillis = (timestamp: any): number => {
+  if (!timestamp) return 0;
+  if (typeof timestamp.toMillis === "function") return timestamp.toMillis();
+  if (typeof timestamp.seconds === "number") return timestamp.seconds * 1000;
+  if (timestamp instanceof Date) return timestamp.getTime();
+  const parsed = new Date(timestamp).getTime();
+  return isNaN(parsed) ? 0 : parsed;
+};
+
 export default function CheatActivityFeed() {
   const { profile } = useAuth();
   const { tenant } = useTenant();
@@ -28,6 +41,37 @@ export default function CheatActivityFeed() {
 
   const [alerts, setAlerts] = useState<CheatAlert[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const groupedAlerts = useMemo<GroupedCheatAlert[]>(() => {
+    const map = new Map<string, GroupedCheatAlert>();
+
+    alerts.forEach((alert) => {
+      const studentKey = alert.studentId || alert.studentName || "";
+      const testKey = alert.testId || alert.testTitle || "";
+      const key = `${studentKey}_${alert.violationType}_${testKey}`;
+
+      const existing = map.get(key);
+      if (!existing) {
+        map.set(key, {
+          ...alert,
+          count: 1,
+        });
+      } else {
+        existing.count += 1;
+        const existingMillis = getTimestampMillis(existing.timestamp);
+        const currentMillis = getTimestampMillis(alert.timestamp);
+
+        if (currentMillis > existingMillis) {
+          existing.timestamp = alert.timestamp;
+          existing.id = alert.id;
+        }
+      }
+    });
+
+    return Array.from(map.values()).sort(
+      (a, b) => getTimestampMillis(b.timestamp) - getTimestampMillis(a.timestamp)
+    );
+  }, [alerts]);
 
   useEffect(() => {
     if (!educatorId) return;
@@ -37,7 +81,6 @@ export default function CheatActivityFeed() {
       orderBy("timestamp", "desc"),
       limit(20)
     );
-
     const unsub = onSnapshot(
       q,
       (snap) => {
@@ -94,7 +137,7 @@ export default function CheatActivityFeed() {
                 </div>
               ))}
             </div>
-          ) : alerts.length === 0 ? (
+          ) : groupedAlerts.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center bg-muted/5 py-12 text-muted-foreground">
               <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-green-500/10">
                 <ShieldAlert className="h-5 w-5 text-green-500/60" />
@@ -104,7 +147,7 @@ export default function CheatActivityFeed() {
             </div>
           ) : (
             <div className="divide-y divide-border/40">
-              {alerts.map((alert) => {
+              {groupedAlerts.map((alert) => {
                 const timeStr = alert.timestamp?.toMillis
                   ? formatDistanceToNow(alert.timestamp.toMillis(), { addSuffix: true })
                   : "Recently";
@@ -131,6 +174,14 @@ export default function CheatActivityFeed() {
                         {getViolationIcon(alert.violationType)}
                         {alert.violationType}
                       </Badge>
+                      {alert.count > 1 && (
+                        <Badge
+                          variant="destructive"
+                          className="h-5 bg-red-600 px-1.5 py-0 text-[10px] font-semibold text-white hover:bg-red-600 dark:bg-red-700 dark:hover:bg-red-700"
+                        >
+                          {alert.count}x
+                        </Badge>
+                      )}
                     </div>
 
                     <p className="line-clamp-1 text-xs text-muted-foreground">

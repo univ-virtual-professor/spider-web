@@ -144,38 +144,48 @@ export default function DashboardStatsGrid({
   };
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-      {isLoading ? (
-        <Skeleton className="h-[120px] w-full rounded-xl" />
-      ) : (
-        <div
-          onClick={() => navigate("/educator/students")}
-          className="h-full cursor-pointer transition-transform hover:scale-[1.02]"
-        >
-          <MetricCard title="Total Students" value={totalStudents} delay={0.1} />
-        </div>
-      )}
+    <div className="grid grid-cols-1 gap-4 xs:grid-cols-2 sm:grid-cols-6 md:grid-cols-12 lg:grid-cols-10">
+      {/* Total Students */}
+      <div className="col-span-1 h-full sm:col-span-2 md:col-span-3 lg:col-span-2">
+        {isLoading ? (
+          <Skeleton className="h-[120px] w-full rounded-xl" />
+        ) : (
+          <div
+            onClick={() => navigate("/educator/students")}
+            className="h-full cursor-pointer transition-transform hover:scale-[1.02]"
+          >
+            <MetricCard title="Total Students" value={totalStudents} delay={0.1} />
+          </div>
+        )}
+      </div>
 
-      {isLoading ? (
-        <Skeleton className="h-[120px] w-full rounded-xl" />
-      ) : (
-        <div
-          onClick={() => navigate("/educator/batches")}
-          className="h-full cursor-pointer transition-transform hover:scale-[1.02]"
-        >
-          <MetricCard title="Active Batches" value={activeBatchesCount} delay={0.2} />
-        </div>
-      )}
+      {/* Active Batches */}
+      <div className="col-span-1 h-full sm:col-span-2 md:col-span-3 lg:col-span-2">
+        {isLoading ? (
+          <Skeleton className="h-[120px] w-full rounded-xl" />
+        ) : (
+          <div
+            onClick={() => navigate("/educator/batches")}
+            className="h-full cursor-pointer transition-transform hover:scale-[1.02]"
+          >
+            <MetricCard title="Active Batches" value={activeBatchesCount} delay={0.2} />
+          </div>
+        )}
+      </div>
 
-      {isLoading ? (
-        <Skeleton className="h-[120px] w-full rounded-xl" />
-      ) : (
-        <div className="h-full cursor-pointer transition-transform hover:scale-[1.02]">
-          <MetricCard title="Needs Attention (< 40%)" value={weakStudentsCount} delay={0.4} />
-        </div>
-      )}
+      {/* Needs Attention */}
+      <div className="col-span-1 h-full sm:col-span-2 md:col-span-3 lg:col-span-2">
+        {isLoading ? (
+          <Skeleton className="h-[120px] w-full rounded-xl" />
+        ) : (
+          <div className="h-full cursor-pointer transition-transform hover:scale-[1.02]">
+            <MetricCard title="Needs Attention (< 40%)" value={weakStudentsCount} delay={0.4} />
+          </div>
+        )}
+      </div>
 
-      <div className="h-full">
+      {/* DPP Attempts */}
+      <div className="col-span-1 h-full sm:col-span-3 md:col-span-3 lg:col-span-2">
         {isLoading || isDppLoading ? (
           <Skeleton className="h-[120px] w-full rounded-xl" />
         ) : (
@@ -219,7 +229,8 @@ export default function DashboardStatsGrid({
         )}
       </div>
 
-      <div className="h-full">
+      {/* Test Attempts */}
+      <div className="col-span-1 h-full xs:col-span-2 sm:col-span-3 md:col-span-12 lg:col-span-2">
         {isLoading || isTestLoading ? (
           <Skeleton className="h-[120px] w-full rounded-xl" />
         ) : (

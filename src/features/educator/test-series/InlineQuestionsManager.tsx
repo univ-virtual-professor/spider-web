@@ -729,7 +729,9 @@ const QuestionsManager = ({
   questionSourceTestId?: string;
 }) => {
   const isPageMode = mode === "page";
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const [questions, setQuestions] = useState<TestQuestion[]>([]);
   const [loading, setLoading] = useState(true);
   const [reordering, setReordering] = useState(false);
@@ -3149,4 +3151,3 @@ const QuestionsManager = ({
 };
 
 export default QuestionsManager;
-

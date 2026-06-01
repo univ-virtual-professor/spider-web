@@ -36,7 +36,7 @@ import { cn } from "@shared/lib/utils";
 const isDppTest = (t: any) => t.type === "from_dpp" || t.type === "dpp";
 
 const getDppDisplayTitle = (t: any) => {
-  if (t.topic) return `DPP: ${t.topic}`;
+  if (t.title) return `${t.title}`;
   const m = String(t.title || "").match(/^DPP\s*[-–]\s*(.+?)\s*\(/i);
   return m ? `DPP: ${m[1].trim()}` : "DPP";
 };
@@ -466,7 +466,7 @@ export default function StudentTests() {
       </div>
 
       {/* Optional unlock UI (keep if you want) */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex hidden flex-wrap items-center gap-2 md:block">
         <Input
           placeholder="Enter access code to unlock..."
           className="max-w-sm"
@@ -489,7 +489,10 @@ export default function StudentTests() {
               <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/40 dark:bg-amber-900/10">
                 <CalendarClock className="h-5 w-5 text-amber-600" />
                 <h3 className="font-semibold text-amber-900 dark:text-amber-200">Upcoming Tests</h3>
-                <Badge variant="secondary" className="ml-1 rounded-full bg-amber-100 text-amber-700">
+                <Badge
+                  variant="secondary"
+                  className="ml-1 rounded-full bg-amber-100 text-amber-700"
+                >
                   {upcomingTests.length}
                 </Badge>
               </div>
@@ -505,7 +508,6 @@ export default function StudentTests() {
                       windowExpiresAt: null,
                     }}
                     attemptsUsed={attemptCounts[t.id] || 0}
-                    onView={() => nav(`/student/tests/${t.id}`)}
                     onStart={() => nav(`/student/tests/${t.id}`)}
                     onUnlock={() => {}}
                   />
@@ -583,10 +585,11 @@ export default function StudentTests() {
                               isLive,
                             }}
                             attemptsUsed={attemptCounts[t.id] || 0}
-                            onView={() => nav(`/student/tests/${t.id}`)}
                             onStart={() => nav(`/student/tests/${t.id}`)}
                             onUnlock={(testId: string) => {
-                              const entered = window.prompt("Enter access code to unlock this test:");
+                              const entered = window.prompt(
+                                "Enter access code to unlock this test:"
+                              );
                               if (entered && entered.trim()) {
                                 unlockWithCode(entered.trim(), testId);
                               }
@@ -635,7 +638,6 @@ export default function StudentTests() {
                     isLive,
                   }}
                   attemptsUsed={attemptCounts[t.id] || 0}
-                  onView={() => nav(`/student/tests/${t.id}`)}
                   onStart={() => nav(`/student/tests/${t.id}`)}
                   onUnlock={(testId: string) => {
                     const entered = window.prompt("Enter access code to unlock this DPP:");

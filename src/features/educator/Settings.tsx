@@ -61,7 +61,9 @@ type EducatorProfileDoc = {
 };
 
 export default function Settings() {
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const [searchParams, setSearchParams] = useSearchParams();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const { firebaseUser, profile, loading: authLoading, refreshProfile } = useAuth();
@@ -943,4 +945,3 @@ export default function Settings() {
     </div>
   );
 }
-

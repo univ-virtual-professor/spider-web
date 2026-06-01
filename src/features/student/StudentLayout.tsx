@@ -78,7 +78,9 @@ export default function StudentLayout() {
   const { firebaseUser, profile, loading: authLoading } = useAuth();
   const { tenant, tenantSlug, loading: tenantLoading } = useTenant();
 
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { isReady: appTokenReady } = useAppTokenBootstrap();
 
   const uid = firebaseUser?.uid || null;
@@ -469,17 +471,6 @@ export default function StudentLayout() {
                 {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
               </Button>
 
-              {/* Settings */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate("/student/settings")}
-                title="Settings"
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <Settings className="h-5 w-5" />
-              </Button>
-
               {/* Notifications */}
               {profile?.uid && (
                 <NotificationBell
@@ -522,6 +513,12 @@ export default function StudentLayout() {
                       </div>
                     </Link>
                   </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/student/settings" className="flex w-full items-center">
+                      <Settings className="mr-2 h-4 w-4" />
+                      Settings
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem className="text-destructive" onClick={handleLogout}>
                     <LogOut className="mr-2 h-4 w-4" />
@@ -542,7 +539,8 @@ export default function StudentLayout() {
                 <div className="space-y-1">
                   <h2 className="text-xl font-semibold text-foreground">Account Locked</h2>
                   <p className="max-w-sm text-sm text-muted-foreground">
-                    Your seat has not been activated yet. Please contact your educator to get access.
+                    Your seat has not been activated yet. Please contact your educator to get
+                    access.
                   </p>
                 </div>
                 <button
@@ -568,4 +566,3 @@ export default function StudentLayout() {
     </div>
   );
 }
-

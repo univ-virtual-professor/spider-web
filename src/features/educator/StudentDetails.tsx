@@ -112,7 +112,9 @@ type StudentStatCard = {
 
 export default function StudentDetails() {
   const nav = useNavigate();
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { studentId = "" } = useParams<{ studentId: string }>();
   const { firebaseUser, profile, role, loading: authLoading } = useAuth();
   const educatorId = profile?.educatorId || firebaseUser?.uid || null;
@@ -548,4 +550,3 @@ export default function StudentDetails() {
     </div>
   );
 }
-

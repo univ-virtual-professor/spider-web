@@ -75,7 +75,9 @@ function getAnswerImageUrls(answer: string | undefined): string[] {
       const parsed = JSON.parse(answer);
       if (Array.isArray(parsed))
         return parsed.filter((u): u is string => typeof u === "string" && u.startsWith("https://"));
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
   if (answer.startsWith("http")) return [answer];
   return [];
@@ -100,7 +102,9 @@ function confidenceLabel(c: number) {
 }
 
 export default function SubjectiveAttemptGrader() {
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { attemptId } = useParams<{ attemptId: string }>();
   const { firebaseUser, profile } = useAuth();
   const educatorId = profile?.educatorId || firebaseUser?.uid || null;
@@ -366,11 +370,16 @@ export default function SubjectiveAttemptGrader() {
                         {isImageAnswer ? (
                           <div className="flex flex-wrap gap-2">
                             {studentImageUrls.map((imgUrl, imgIdx) => (
-                              <a key={imgIdx} href={imgUrl} target="_blank" rel="noopener noreferrer">
+                              <a
+                                key={imgIdx}
+                                href={imgUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
                                 <img
                                   src={imgUrl}
                                   alt={`Student answer ${imgIdx + 1}`}
-                                  className="max-h-56 max-w-[180px] rounded object-contain border border-border/50"
+                                  className="max-h-56 max-w-[180px] rounded border border-border/50 object-contain"
                                 />
                               </a>
                             ))}
@@ -389,17 +398,20 @@ export default function SubjectiveAttemptGrader() {
                         Reference Answer
                       </p>
                       <div className="min-h-[100px] rounded-lg border border-border/50 p-3">
-                        {q?.referenceAnswer && (
-                          <p className="text-sm mb-2">{q.referenceAnswer}</p>
-                        )}
+                        {q?.referenceAnswer && <p className="mb-2 text-sm">{q.referenceAnswer}</p>}
                         {refImageUrls.length > 0 ? (
                           <div className="flex flex-wrap gap-2">
                             {refImageUrls.map((imgUrl, imgIdx) => (
-                              <a key={imgIdx} href={imgUrl} target="_blank" rel="noopener noreferrer">
+                              <a
+                                key={imgIdx}
+                                href={imgUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
                                 <img
                                   src={imgUrl}
                                   alt={`Reference answer ${imgIdx + 1}`}
-                                  className="max-h-56 max-w-[180px] rounded object-contain border border-border/50"
+                                  className="max-h-56 max-w-[180px] rounded border border-border/50 object-contain"
                                 />
                               </a>
                             ))}
@@ -497,4 +509,3 @@ export default function SubjectiveAttemptGrader() {
     </div>
   );
 }
-

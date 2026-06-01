@@ -271,7 +271,9 @@ async function appendImageToField(current: string, folder = "/test-questions") {
 
 export default function TestSeries() {
   const navigate = useNavigate();
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { firebaseUser: currentUser } = useAuth();
   const [activeTab, setActiveTab] = useState<"overall" | "dpp" | "test">("overall");
 
@@ -1363,23 +1365,6 @@ export default function TestSeries() {
   return (
     <div className="space-y-6 p-1">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          {!isApp && (
-            <div
-              className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
-              onClick={() => navigate("/educator")}
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </div>
-          )}
-          <div>
-            <h1 className="text-2xl font-bold">Test Series</h1>
-            <p className="text-muted-foreground">
-              Import admin tests to your library, or create custom tests (manual questions only).
-            </p>
-          </div>
-        </div>
-
         <div className="flex items-center gap-3 rounded-2xl border border-border/50 bg-white px-4 py-2 shadow-sm dark:bg-card">
           <div className="shrink-0 rounded-xl bg-primary/10 p-2 text-primary">
             <Award className="h-4 w-4" />
@@ -1435,6 +1420,23 @@ export default function TestSeries() {
               </button>
             </div>
           )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {!isApp && (
+            <div
+              className="flex hidden cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white md:block"
+              onClick={() => navigate("/educator")}
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </div>
+          )}
+          <div>
+            <h1 className="text-2xl font-bold">Test Series</h1>
+            <p className="hidden text-muted-foreground md:block">
+              Import admin tests to your library, or create custom tests (manual questions only).
+            </p>
+          </div>
         </div>
       </div>
 
@@ -1681,77 +1683,107 @@ export default function TestSeries() {
                 return (
                   <div key={group.key}>
                     {!flatView && (
-                      <div className="mb-2 flex items-center gap-1 rounded-xl pr-1 transition-colors hover:bg-muted/50">
-                        <button
+                      <div className="mb-4">
+                        <div
                           onClick={() => toggleFolder(group.key)}
-                          className="flex flex-1 items-center gap-2 px-3 py-2 text-sm font-semibold"
+                          className="flex cursor-pointer items-center justify-between rounded-2xl border border-border/60 bg-white p-4 shadow-sm transition-all hover:border-primary/20 hover:shadow-md dark:bg-card"
                         >
-                          {group.type === "folder" ? (
-                            <Folder className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <BookOpen className="h-4 w-4 text-muted-foreground" />
-                          )}
-                          {renamingFolderId === group.key ? (
-                            <Input
-                              value={renameFolderName}
-                              onChange={(e) => setRenameFolderName(e.target.value)}
-                              onBlur={() => void handleRenameFolder()}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") void handleRenameFolder();
-                                if (e.key === "Escape") setRenamingFolderId(null);
-                              }}
-                              autoFocus
-                              className="h-7 w-36 rounded-lg text-sm font-semibold"
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          ) : (
-                            <span>{group.label}</span>
-                          )}
-                          <Badge variant="secondary" className="ml-1 rounded-full px-2 text-xs">
-                            {group.tests.length}
-                          </Badge>
-                          <ChevronDown
-                            className={cn(
-                              "ml-auto h-4 w-4 text-muted-foreground transition-transform duration-200",
-                              !isExpanded && "-rotate-90"
+                          <div className="flex min-w-0 flex-1 items-center gap-3.5">
+                            {/* Folder Icon Container */}
+                            <div className="shrink-0 rounded-xl bg-indigo-50 p-2.5 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400">
+                              <Folder className="h-5 w-5" />
+                            </div>
+
+                            {/* Text Info */}
+                            <div className="min-w-0 flex-1 text-left">
+                              {renamingFolderId === group.key ? (
+                                <Input
+                                  value={renameFolderName}
+                                  onChange={(e) => setRenameFolderName(e.target.value)}
+                                  onBlur={() => void handleRenameFolder()}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") void handleRenameFolder();
+                                    if (e.key === "Escape") setRenamingFolderId(null);
+                                  }}
+                                  autoFocus
+                                  className="h-8 w-48 rounded-lg text-sm font-semibold"
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              ) : (
+                                <span className="block truncate text-sm font-semibold text-foreground">
+                                  {group.label}
+                                </span>
+                              )}
+                              <span className="mt-0.5 block text-xs text-muted-foreground">
+                                {group.tests.length} {group.tests.length === 1 ? "test" : "tests"}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Actions on Right */}
+                          <div
+                            className="flex shrink-0 items-center gap-1.5"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {group.type === "folder" && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 rounded-lg"
+                                  >
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setRenamingFolderId(group.key);
+                                      setRenameFolderName(group.label);
+                                    }}
+                                  >
+                                    <Pencil className="mr-2 h-3.5 w-3.5" /> Rename
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => void handleReorderFolder(group.key, -1)}
+                                  >
+                                    Move Up
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => void handleReorderFolder(group.key, 1)}
+                                  >
+                                    Move Down
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => void handleDeleteFolder(group.key)}
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
                             )}
-                          />
-                        </button>
-                        {group.type === "folder" && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
-                                <MoreVertical className="h-3.5 w-3.5" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setRenamingFolderId(group.key);
-                                  setRenameFolderName(group.label);
-                                }}
-                              >
-                                <Pencil className="mr-2 h-3.5 w-3.5" /> Rename
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => void handleReorderFolder(group.key, -1)}
-                              >
-                                Move Up
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => void handleReorderFolder(group.key, 1)}
-                              >
-                                Move Down
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => void handleDeleteFolder(group.key)}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
+
+                            {/* Chevron Toggle */}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-black"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleFolder(group.key);
+                              }}
+                            >
+                              <ChevronDown
+                                className={cn(
+                                  "h-5 w-5 transition-transform duration-200",
+                                  !isExpanded && "-rotate-90"
+                                )}
+                              />
+                            </Button>
+                          </div>
+                        </div>
                       </div>
                     )}
                     {isExpanded && (
@@ -1942,7 +1974,7 @@ export default function TestSeries() {
                                       {test.description}
                                     </p>
 
-                                    <div className="mt-auto flex flex-wrap items-center justify-between gap-y-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-y-3">
                                       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
                                         <span className="flex shrink-0 items-center gap-1">
                                           <BookOpen className="h-3 w-3" /> {test.subject || "—"}
@@ -1951,25 +1983,7 @@ export default function TestSeries() {
                                           <Clock className="h-3 w-3" />{" "}
                                           {Number(test.durationMinutes || 0)}m
                                         </span>
-                                        {isAdminLinked ? (
-                                          <Badge
-                                            variant="outline"
-                                            className="h-5 shrink-0 px-2 py-0 text-[10px]"
-                                          >
-                                            Admin Linked
-                                          </Badge>
-                                        ) : test.source === "imported" ? (
-                                          <Badge
-                                            variant="secondary"
-                                            className="h-5 shrink-0 px-2 py-0 text-[10px]"
-                                          >
-                                            Imported
-                                          </Badge>
-                                        ) : (
-                                          <Badge className="h-5 shrink-0 px-2 py-0 text-[10px]">
-                                            Custom
-                                          </Badge>
-                                        )}
+
                                         {isDpp && test.difficulty && (
                                           <Badge
                                             variant="outline"
@@ -2304,4 +2318,3 @@ export default function TestSeries() {
     </div>
   );
 }
-

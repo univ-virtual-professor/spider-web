@@ -164,7 +164,7 @@ export default function AttemptsAnalyticsChart({
               <BarChart3 className="h-5 w-5 text-primary" />
               Attempts Analytics
             </CardTitle>
-            <CardDescription className="mt-1">
+            <CardDescription className="mt-1 hidden md:block">
               Track DPP and Test participation trends dynamically.
             </CardDescription>
           </div>

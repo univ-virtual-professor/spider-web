@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Trophy, TrendingUp, TrendingDown, Minus, Filter, XCircle } from "lucide-react";
+import { Trophy, TrendingUp, TrendingDown, Minus, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@shared/ui/table";
@@ -317,7 +317,6 @@ export default function StudentRankings() {
     }
 
     setLoading(true);
-    setLeaderboard([]);
 
     const DAYS = 30;
     const cur = windowRange(DAYS);
@@ -448,17 +447,12 @@ export default function StudentRankings() {
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
           <h1 className="text-2xl font-bold">Rankings</h1>
-          <p className="text-muted-foreground">See how you compare with others in your coaching</p>
+          <p className="hidden text-muted-foreground md:block">
+            See how you compare with others in your coaching
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-1.5">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Filters
-            </span>
-          </div>
-
           <div className="inline-flex rounded-xl border border-border/80 bg-muted/40 p-1">
             <button
               onClick={() => {
@@ -505,7 +499,7 @@ export default function StudentRankings() {
           </div>
 
           <Select value={filterTest} onValueChange={setFilterTest}>
-            <SelectTrigger className="h-9 w-[180px] rounded-xl bg-card">
+            <SelectTrigger className="h-9 w-[140px] rounded-xl bg-card">
               <SelectValue placeholder="Test Series" />
             </SelectTrigger>
             <SelectContent>
@@ -519,7 +513,7 @@ export default function StudentRankings() {
           </Select>
 
           <Select value={filterSubject} onValueChange={setFilterSubject}>
-            <SelectTrigger className="h-9 w-[150px] rounded-xl bg-card">
+            <SelectTrigger className="h-9 w-[130px] rounded-xl bg-card">
               <SelectValue placeholder="Subject" />
             </SelectTrigger>
             <SelectContent>
@@ -552,7 +546,7 @@ export default function StudentRankings() {
           </CardContent>
         </Card>
       ) : (
-        <>
+        <div className={cn("transition-opacity duration-200", loading && "pointer-events-none")}>
           {/* Top 3 */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {/* Rank 2 (Left on desktop) */}
@@ -584,7 +578,7 @@ export default function StudentRankings() {
             {/* Rank 1 (Center) */}
             {top3[0] && (
               <div className="order-1 md:order-2">
-                <Card className="card-soft relative z-10 scale-105 border-0 border-2 border-yellow-200/50 bg-yellow-50 text-center shadow-xl dark:bg-yellow-900/10">
+                <Card className="card-soft relative z-10 mt-5 scale-105 border-0 border-2 border-yellow-200/50 bg-yellow-50 text-center shadow-xl dark:bg-yellow-900/10">
                   <div className="absolute -top-4 left-1/2 -translate-x-1/2">
                     <Trophy className="h-10 w-10 animate-bounce fill-yellow-500 text-yellow-500" />
                   </div>
@@ -752,7 +746,7 @@ export default function StudentRankings() {
               </div>
             </CardContent>
           </Card>
-        </>
+        </div>
       )}
     </div>
   );

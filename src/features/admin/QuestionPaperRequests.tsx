@@ -8,6 +8,8 @@ import { Textarea } from "@shared/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@shared/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@shared/ui/table";
+import { db } from "@shared/lib/firebase";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 const API = import.meta.env.VITE_MONKEY_KING_API_URL;
 const ADMIN_KEY = import.meta.env.VITE_MONKEY_KING_ADMIN_KEY;
@@ -116,6 +118,23 @@ export default function AdminQuestionPaperRequests() {
         }
       );
       setRequests((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+
+      // Notify Educator
+      try {
+        if (updateTarget.educator_id) {
+          await addDoc(collection(db, "users", updateTarget.educator_id, "notifications"), {
+            title: `🔄 Question Paper Status: ${STATUS_LABEL[newStatus]}`,
+            body: `Your request "${updateTarget.title}" is now ${STATUS_LABEL[newStatus]}.${adminNote.trim() ? ` Note: ${adminNote.trim()}` : ""}`,
+            read: false,
+            type: "qp_status_update",
+            createdAt: serverTimestamp(),
+            createdByRole: "ADMIN",
+          });
+        }
+      } catch (err) {
+        console.error("Error creating educator notification for QP status update:", err);
+      }
+
       setUpdateTarget(null);
       toast.success("Status updated");
     } catch (e: any) {

@@ -215,11 +215,6 @@ export default function Login() {
       <div className="relative flex min-h-screen flex-col p-6 lg:p-12">
         {/* Header / Nav */}
         <div className="mb-8 flex items-center justify-between">
-          {role === "educator" ? (
-            <img src="/logo.png" className="w-25 h-10" alt="PrepareKaro Logo" />
-          ) : (
-            <div />
-          )}
           <Link
             to="/"
             className="flex items-center gap-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -312,7 +307,7 @@ export default function Login() {
                     return tenant ? `/signup?tenant=${tenant}` : "/signup";
                   })()}
                 >
-                  Sign up
+                  Create Account
                 </Link>
               </div>
             )}
@@ -325,7 +320,7 @@ export default function Login() {
                   onClick={() => setRole("educator")}
                   className="underline underline-offset-2 transition-colors hover:text-muted-foreground"
                 >
-                  Sign in here
+                  <span className="font-bold text-black">Sign in here </span>
                 </button>
               </div>
             )}
@@ -337,7 +332,7 @@ export default function Login() {
                   onClick={() => setRole("student")}
                   className="underline underline-offset-2 transition-colors hover:text-muted-foreground"
                 >
-                  ← Back to student login
+                  ← Back to <span className="font-bold text-black">student login</span>
                 </button>
               </div>
             )}

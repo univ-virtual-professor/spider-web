@@ -71,7 +71,9 @@ type Subject = { id: string; name: string; courseId?: string };
 
 export default function BatchesListing() {
   const navigate = useNavigate();
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { profile, firebaseUser, loading: authLoading } = useAuth();
   const { tenantSlug: currentTenantSlug } = useTenant();
   const educatorId = profile?.uid || firebaseUser?.uid || "";
@@ -574,7 +576,7 @@ export default function BatchesListing() {
         <div className="flex items-center gap-4">
           {!isApp && (
             <div
-              className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+              className="flex hidden cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white md:block"
               onClick={() => navigate("/educator")}
             >
               <ArrowLeft className="h-4 w-4" />
@@ -582,7 +584,7 @@ export default function BatchesListing() {
           )}
           <div>
             <h1 className="text-2xl font-bold">Batches</h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="hidden text-sm text-muted-foreground md:block">
               Manage your teaching batches and invite students
             </p>
           </div>
@@ -606,16 +608,18 @@ export default function BatchesListing() {
             {pools.length <= 1 && (
               <div className="flex gap-6">
                 <div>
-                  <p className="text-2xl font-bold text-primary">{totalAvailableSeats}</p>
+                  <p className="text-xl font-bold text-primary md:text-2xl">
+                    {totalAvailableSeats}
+                  </p>
                   <p className="text-xs text-muted-foreground">Available</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{totalInUse}</p>
+                  <p className="text-xl font-bold md:text-2xl">{totalInUse}</p>
                   <p className="text-xs text-muted-foreground">In use</p>
                 </div>
                 {pools[0] && (
                   <div>
-                    <p className="text-2xl font-bold text-muted-foreground">
+                    <p className="text-xl font-bold text-muted-foreground md:text-2xl">
                       {pools[0].totalSeats}
                     </p>
                     <p className="text-xs text-muted-foreground">
@@ -665,7 +669,12 @@ export default function BatchesListing() {
                   Running low
                 </Badge>
               )}
-              <Button size="sm" variant="outline" onClick={() => navigate("/educator/billing")}>
+              <Button
+                size="sm"
+                className="hidden md:block"
+                variant="outline"
+                onClick={() => navigate("/educator/billing")}
+              >
                 {totalAvailableSeats === 0 ? "Buy Seats" : "Buy More"}
               </Button>
             </div>
@@ -716,7 +725,7 @@ export default function BatchesListing() {
                       <CardHeader className="pb-3">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
-                            <CardTitle className="truncate text-base">{batch.name}</CardTitle>
+                            <CardTitle className="truncate text-sm">{batch.name}</CardTitle>
                             {course && (
                               <p className="mt-0.5 truncate text-xs text-muted-foreground">
                                 {course.name}
@@ -1290,4 +1299,3 @@ export default function BatchesListing() {
     </div>
   );
 }
-

@@ -149,7 +149,9 @@ export default function StudentAttemptDetails() {
   const { attemptId } = useParams();
   const { firebaseUser, loading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

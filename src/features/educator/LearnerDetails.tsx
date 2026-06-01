@@ -173,7 +173,9 @@ function getLearnerName(learner: LearnerDoc | null, profile: UserDoc | null) {
 
 export default function LearnerDetails() {
   const nav = useNavigate();
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { studentId = "" } = useParams<{ studentId: string }>();
   const { firebaseUser, profile, role, loading: authLoading } = useAuth();
 
@@ -750,4 +752,3 @@ export default function LearnerDetails() {
     </div>
   );
 }
-

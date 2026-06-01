@@ -41,7 +41,9 @@ type TestMeta = {
 
 export default function ManageQuestionsPage() {
   const navigate = useNavigate();
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { testId } = useParams<{ testId: string }>();
   const { firebaseUser, loading: authLoading } = useAuth();
 
@@ -226,4 +228,3 @@ export default function ManageQuestionsPage() {
     />
   );
 }
-

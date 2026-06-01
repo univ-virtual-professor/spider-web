@@ -15,7 +15,9 @@ export default function RequireRole({ allow, redirectTo = "/login", children }: 
   const { firebaseUser, profile, loading } = useAuth();
   const location = useLocation();
 
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const {
     isReady: appTokenReady,
     status: appTokenStatus,
@@ -57,4 +59,3 @@ export default function RequireRole({ allow, redirectTo = "/login", children }: 
 
   return <>{children}</>;
 }
-

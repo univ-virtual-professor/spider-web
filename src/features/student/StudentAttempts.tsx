@@ -166,7 +166,9 @@ export default function StudentAttempts() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold">My Attempts</h1>
-          <p className="text-muted-foreground">Review all your test attempts and performance</p>
+          <p className="hidden text-muted-foreground md:block">
+            Review all your test attempts and performance
+          </p>
         </div>
         <div className="rounded-xl border border-border p-6 text-muted-foreground">
           Loading attempts…
@@ -180,7 +182,9 @@ export default function StudentAttempts() {
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold">My Attempts</h1>
-          <p className="text-muted-foreground">Review all your test attempts and performance</p>
+          <p className="hidden text-muted-foreground md:block">
+            Review all your test attempts and performance
+          </p>
         </div>
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-center">
           <p className="font-medium text-destructive">Failed to load attempts</p>
@@ -203,10 +207,12 @@ export default function StudentAttempts() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold">My Attempts</h1>
-          <p className="text-muted-foreground">Review all your test attempts and performance</p>
+          <p className="hidden text-muted-foreground md:block">
+            Review all your test attempts and performance
+          </p>
         </div>
 
-        <div className="inline-flex shrink-0 rounded-lg border border-border/50 bg-muted/30 p-1">
+        <div className="inline-flex w-fit shrink-0 rounded-lg border border-border/50 bg-muted/30 p-1">
           <button
             onClick={() => setActiveTab("test")}
             className={cn(

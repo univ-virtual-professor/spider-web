@@ -16,7 +16,6 @@ import {
   ChevronDown,
   BookOpen,
   Zap,
-  Database,
   BarChart3,
   ClipboardList,
   Users,
@@ -72,7 +71,9 @@ function EducatorLayoutInner() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { isReady: appTokenReady } = useAppTokenBootstrap();
 
   const { profile } = useAuth();
@@ -183,13 +184,13 @@ function EducatorLayoutInner() {
 
     // Build Test Series children based on permissions
     const testChildren: SubItem[] = [];
-    if (!isEmployee || hasPermission(PERMISSIONS.QB_VIEW)) {
-      testChildren.push({
-        icon: Database,
-        label: "Question Bank",
-        href: "/educator/question-bank",
-      });
-    }
+    // if (!isEmployee || hasPermission(PERMISSIONS.QB_VIEW)) {
+    //   testChildren.push({
+    //     icon: Database,
+    //     label: "Question Bank",
+    //     href: "/educator/question-bank",
+    //   });
+    // }
     if (!isEmployee || hasPermission(PERMISSIONS.TESTS_CREATE)) {
       testChildren.push({
         icon: ClipboardList,
@@ -676,4 +677,3 @@ export default function EducatorLayout() {
     </EmployeeProvider>
   );
 }
-

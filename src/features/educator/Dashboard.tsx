@@ -183,7 +183,7 @@ export default function EducatorDashboard() {
       <div className="gradient-bg rounded-2xl p-5 text-white md:p-6">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-xl font-bold md:text-2xl">Welcome back, {coachingName}!</h2>
+            <h2 className="text-lg font-bold md:text-2xl">Welcome back, {coachingName}!</h2>
             <p className="mt-1 text-sm text-white/80">Here's your coaching at a glance.</p>
           </div>
           <Button
@@ -312,7 +312,7 @@ export default function EducatorDashboard() {
       </Card>
 
       {/* Quick Actions */}
-      <Card className="border-border/50">
+      <Card className="hidden border-border/50 md:block">
         <CardHeader>
           <CardTitle className="text-base">Quick Actions</CardTitle>
         </CardHeader>

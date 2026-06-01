@@ -4,7 +4,9 @@ import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 
 export default function ScheduledTests() {
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   return (
     <div className="space-y-6">
       <div className="flex gap-2">
@@ -39,4 +41,3 @@ export default function ScheduledTests() {
     </div>
   );
 }
-

@@ -54,7 +54,9 @@ function clampZoom(z: number) {
 }
 
 export default function ContentViewer({ item, studentName, onClose }: Props) {
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   // PDF state
   const [pageNum, setPageNum] = useState(1);
   const [numPages, setNumPages] = useState(0);

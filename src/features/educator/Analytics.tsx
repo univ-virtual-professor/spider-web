@@ -262,7 +262,9 @@ export default function Analytics() {
   const { firebaseUser, profile, loading: authLoading } = useAuth();
   const { tenant, loading: tenantLoading } = useTenant();
   const navigate = useNavigate();
-  const isApp = new URLSearchParams(window.location.search).get("_app") === "1" || window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
+  const isApp =
+    new URLSearchParams(window.location.search).get("_app") === "1" ||
+    window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
 
   const educatorId = tenant?.educatorId || profile?.educatorId || null;
 
@@ -1046,7 +1048,7 @@ export default function Analytics() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="rounded-full"
+                className="hidden rounded-full md:block"
                 onClick={() => navigate("/educator")}
               >
                 <ArrowLeft className="h-5 w-5" />
@@ -1054,7 +1056,7 @@ export default function Analytics() {
             )}
             <div className="space-y-1">
               <h2 className="text-2xl font-semibold tracking-tight">Students Overview</h2>
-              <p className="text-sm text-muted-foreground">
+              <p className="hidden text-sm text-muted-foreground md:block">
                 Monitor performance trends, activity levels, and overall academic health across your
                 programs.
               </p>
@@ -1133,6 +1135,12 @@ export default function Analytics() {
             selectedCourseName={selectedCourseName}
           />
 
+          <StudentHealthOverview
+            students={studentsForDashboard}
+            attempts={attemptsForDashboard}
+            isLoading={isDataFiltering || loading}
+          />
+
           <AttemptsAnalyticsChart
             attempts={attemptsForDashboard}
             isLoading={isDataFiltering || loading}
@@ -1144,15 +1152,8 @@ export default function Analytics() {
             batches={allBatches}
             isLoading={isDataFiltering || loading}
           />
-
-          <StudentHealthOverview
-            students={studentsForDashboard}
-            attempts={attemptsForDashboard}
-            isLoading={isDataFiltering || loading}
-          />
         </div>
       </motion.div>
     </div>
   );
 }
-

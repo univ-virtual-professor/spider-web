@@ -197,7 +197,9 @@ export default function TopPerformersLeaderboard({
             <CardTitle className="text-lg">Top Performers</CardTitle>
           </div>
           <CardDescription>
-            Ranked by best score first, then average accuracy based on selected filters.
+            <span className="hidden md:block">
+              Ranked by best score first, then average accuracy based on selected filters.
+            </span>
             {overallLatestTest && (
               <span className="mt-1 block font-medium text-primary">
                 Latest completed test: {overallLatestTest}
@@ -268,8 +270,12 @@ export default function TopPerformersLeaderboard({
               <TableRow className="bg-muted/10 hover:bg-muted/10">
                 <TableHead className="w-[80px] font-semibold">Rank</TableHead>
                 <TableHead className="font-semibold">Learner</TableHead>
-                <TableHead className="text-center font-semibold">Attempts</TableHead>
-                <TableHead className="text-center font-semibold">Accuracy</TableHead>
+                <TableHead className="hidden text-center font-semibold md:table-cell">
+                  Attempts
+                </TableHead>
+                <TableHead className="hidden text-center font-semibold md:table-cell">
+                  Accuracy
+                </TableHead>
                 <TableHead className="text-right font-semibold">Best Score</TableHead>
               </TableRow>
             </TableHeader>
@@ -299,10 +305,10 @@ export default function TopPerformersLeaderboard({
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-center text-muted-foreground">
+                    <TableCell className="hidden text-center text-muted-foreground md:table-cell">
                       {row.attempts}
                     </TableCell>
-                    <TableCell className="text-center font-medium">
+                    <TableCell className="hidden text-center font-medium md:table-cell">
                       <div className="flex items-center justify-center gap-1.5">
                         <TrendingUp className="h-3 w-3 text-green-500" />
                         {row.accuracy.toFixed(1)}%
