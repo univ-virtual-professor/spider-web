@@ -94,6 +94,7 @@ export default function StudentLayout() {
   });
 
   const showSplash =
+    !isApp &&
     !splashDone &&
     !tenantLoading &&
     !!tenant?.welcomeMessage?.isActive &&
