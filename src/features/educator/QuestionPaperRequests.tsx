@@ -277,11 +277,11 @@ export default function QuestionPaperRequests() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center">
           {!isApp && (
             <div
-              className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+              className="flex hidden cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white md:block"
               onClick={() => navigate("/educator/test-series")}
             >
               <ArrowLeft className="h-4 w-4" />
@@ -289,14 +289,14 @@ export default function QuestionPaperRequests() {
           )}
           <div>
             <h1 className="text-2xl font-semibold">Question Paper Requests</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 hidden text-sm text-muted-foreground md:block">
               Upload a question paper and request admin to add it to your panel.
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row sm:items-center">
           <MonthlyUsage requests={requests} limit={monthlyLimit} />
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button onClick={() => setCreateOpen(true)} className="w-full sm:w-auto">
             <FileUp className="mr-2 h-4 w-4" />
             New Request
           </Button>
