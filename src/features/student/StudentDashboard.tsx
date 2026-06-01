@@ -43,7 +43,7 @@ import {
   where,
 } from "firebase/firestore";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, GraduationCap, Users2 } from "lucide-react";
+import { BookOpen, GraduationCap, Users2, Zap as DppIcon, BookOpenCheck } from "lucide-react";
 
 type AttemptStatus = "in-progress" | "completed" | "expired";
 
@@ -75,6 +75,7 @@ type DashTest = {
   subject?: string;
   durationMinutes?: number;
   questionsCount?: number;
+  type?: string;
   _startsAtMs?: number;
   _windowExpiresAt?: number | null;
 };
@@ -345,10 +346,12 @@ export default function StudentDashboard() {
       });
 
       upcoming.sort((a: any, b: any) => a._startsAtMs! - b._startsAtMs!);
+      const dpps = all.filter((t: any) => t.type === "from_dpp").slice(0, 5);
       return {
         running: running.slice(0, 6),
         unlocked: unlocked.slice(0, 6),
         upcoming: upcoming.slice(0, 5),
+        dpps,
       };
     },
     enabled: canLoad,
@@ -641,6 +644,29 @@ export default function StudentDashboard() {
         </div>
       )}
 
+      {/* Empty state for new students */}
+      {completedAttempts.length === 0 &&
+        dashboardTests.running.length === 0 &&
+        dashboardTests.unlocked.length === 0 &&
+        dashboardTests.upcoming.length === 0 &&
+        dashboardTests.dpps?.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-border bg-muted/30 px-6 py-10 text-center">
+            <BookOpenCheck className="mx-auto mb-3 h-10 w-10 text-muted-foreground/50" />
+            <p className="text-base font-semibold text-foreground">You're all set!</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Your educator will assign tests soon. Check back here to see them.
+            </p>
+            <div className="mt-4 flex justify-center gap-3">
+              <Button size="sm" className="gradient-bg rounded-lg" asChild>
+                <Link to="/student/tests">Browse Tests</Link>
+              </Button>
+              <Button size="sm" variant="outline" className="rounded-lg" asChild>
+                <Link to="/student/content">View Content</Link>
+              </Button>
+            </div>
+          </div>
+        )}
+
       {/* Key Metrics */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StudentMetricCard
@@ -669,6 +695,57 @@ export default function StudentDashboard() {
           color="lavender"
         />
       </div>
+
+      {/* Daily Practice (DPPs) */}
+      {dashboardTests.dpps && dashboardTests.dpps.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+              <DppIcon className="h-4 w-4 text-primary" />
+              Daily Practice
+            </h2>
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" asChild>
+              <Link to="/student/tests">
+                View All <ArrowRight className="ml-1 h-3 w-3" />
+              </Link>
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {dashboardTests.dpps.map((test) => (
+              <div
+                key={test.id}
+                className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md"
+              >
+                <div className="gradient-bg h-1" />
+                <div className="flex flex-1 flex-col gap-3 p-3.5">
+                  <p className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
+                    {test.title || "Daily Practice"}
+                  </p>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    {test.subject && <span className="truncate">{test.subject}</span>}
+                    <span className="ml-auto flex shrink-0 items-center gap-2">
+                      {test.durationMinutes && (
+                        <span className="flex items-center gap-0.5">
+                          <Clock className="h-3 w-3" />
+                          {test.durationMinutes}m
+                        </span>
+                      )}
+                      {test.questionsCount && <span>{test.questionsCount}Q</span>}
+                    </span>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="gradient-bg h-7 w-full rounded-lg text-xs font-medium"
+                    asChild
+                  >
+                    <Link to={`/student/tests/${test.id}`}>Start Practice</Link>
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Tests Section */}
       {(() => {

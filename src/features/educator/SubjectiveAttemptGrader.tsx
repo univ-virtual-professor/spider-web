@@ -398,7 +398,9 @@ export default function SubjectiveAttemptGrader() {
                         Reference Answer
                       </p>
                       <div className="min-h-[100px] rounded-lg border border-border/50 p-3">
-                        {q?.referenceAnswer && <p className="mb-2 text-sm">{q.referenceAnswer}</p>}
+                        {q?.referenceAnswer && (
+                          <HtmlView html={q.referenceAnswer} className="mb-2 text-sm" />
+                        )}
                         {refImageUrls.length > 0 ? (
                           <div className="flex flex-wrap gap-2">
                             {refImageUrls.map((imgUrl, imgIdx) => (

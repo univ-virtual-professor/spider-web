@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { AlertTriangle, Camera, LayoutGrid, Upload } from "lucide-react";
 import { toast } from "sonner";
 
@@ -137,6 +137,7 @@ type AttemptDoc = {
   testId: string;
   testTitle?: string;
   subject?: string;
+  batchAssignmentId?: string | null;
   status: "in_progress" | "submitted";
   durationSec: number;
   startedAtMs?: number;
@@ -263,6 +264,7 @@ async function exitFullscreenSafe() {
 export default function StudentCBTAttempt() {
   const { testId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
 
   const { firebaseUser, profile, loading: authLoading } = useAuth();
@@ -280,6 +282,9 @@ export default function StudentCBTAttempt() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [currentSectionId, setCurrentSectionId] = useState("");
 
+  const [batchAssignmentId, setBatchAssignmentId] = useState<string | null>(
+    (location.state as any)?.batchAssignmentId ?? null
+  );
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const [attemptStartedAtMs, setAttemptStartedAtMs] = useState<number | null>(null);
   const [durationSec, setDurationSec] = useState(0);
@@ -289,6 +294,7 @@ export default function StudentCBTAttempt() {
   const [instructionsOpen, setInstructionsOpen] = useState(true);
   const [instructionsChecked, setInstructionsChecked] = useState(false);
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
+  const [backPressDialogOpen, setBackPressDialogOpen] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [evaluatingSubjective, setEvaluatingSubjective] = useState(false);
@@ -305,6 +311,9 @@ export default function StudentCBTAttempt() {
   const [violationModalOpen, setViolationModalOpen] = useState(false);
   const ignoreProctoringRef = useRef(false);
   const resumeFullscreenRef = useRef(false);
+  const skipBackGuardRef = useRef(false);
+  const pendingAutoResumeRef = useRef(false);
+  const handleStartRef = useRef<(() => Promise<void>) | null>(null);
 
   const attemptIdStorageKey = useMemo(
     () => `${LS_ATTEMPT_ID_PREFIX}${tenantSlug || "main"}__${testId || ""}`,
@@ -605,7 +614,9 @@ export default function StudentCBTAttempt() {
               )
             );
             if (!assignSnap.empty) {
-              const assignment = assignSnap.docs[0].data() as any;
+              const assignDoc = assignSnap.docs[0];
+              const assignment = assignDoc.data() as any;
+              setBatchAssignmentId((prev) => prev ?? assignDoc.id);
               if (assignment.accessType === "scheduled") {
                 startTime = assignment.startTime?.toMillis?.() ?? assignment.startTime ?? null;
                 endTime = assignment.endTime?.toMillis?.() ?? assignment.endTime ?? null;
@@ -732,8 +743,10 @@ export default function StudentCBTAttempt() {
           setAttemptStartedAtMs(startedMs ? safeNumber(startedMs, Date.now()) : null);
           setDurationSec(safeNumber(foundAttempt.durationSec, meta.durationMinutes * 60));
 
+          // Auto-resume: skip the start/instructions overlay and call handleStart() via effect
           setIsStarted(false);
-          setStartDialogOpen(true);
+          setStartDialogOpen(false);
+          pendingAutoResumeRef.current = true;
         } else {
           setAttemptId(null);
           setAttemptStartedAtMs(null);
@@ -871,6 +884,7 @@ export default function StudentCBTAttempt() {
           testId,
           testTitle: testMeta.title,
           subject: testMeta.subject || null,
+          batchAssignmentId: batchAssignmentId || null,
           status: "in_progress",
           durationSec: totalSec,
           startedAtMs,
@@ -908,6 +922,19 @@ export default function StudentCBTAttempt() {
       toast.error("Failed to start test");
     }
   };
+
+  // Keep handleStartRef in sync so the auto-resume effect always has the latest closure
+  useEffect(() => {
+    handleStartRef.current = handleStart;
+  });
+
+  // Auto-resume: when an in-progress attempt was found on load, start the test immediately
+  useEffect(() => {
+    if (loading || authLoading || tenantLoading) return;
+    if (!pendingAutoResumeRef.current || !handleStartRef.current) return;
+    pendingAutoResumeRef.current = false;
+    handleStartRef.current();
+  }, [loading, authLoading, tenantLoading]);
 
   const handleSelectOption = (answer: string) => {
     if (!currentQuestion || !isStarted) return;
@@ -1302,7 +1329,10 @@ export default function StudentCBTAttempt() {
       queryClient.invalidateQueries({ queryKey: ["studentDashboardAttempts"] });
       queryClient.invalidateQueries({ queryKey: ["studentRank"] });
 
-      navigate(`/student/results/${attemptId}?fromTest=true${isAutoSubmit ? "&auto=1" : ""}`);
+      skipBackGuardRef.current = true;
+      navigate(`/student/results/${attemptId}?fromTest=true${isAutoSubmit ? "&auto=1" : ""}`, {
+        replace: true,
+      });
     } catch (e) {
       console.error(e);
       logError(e, "cbt:submit-test");
@@ -1454,6 +1484,33 @@ export default function StudentCBTAttempt() {
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
+  }, [isStarted]);
+
+  // Intercept browser back button while test is active
+  useEffect(() => {
+    if (!isStarted) return;
+    window.history.pushState(null, "", window.location.href);
+    const handlePopState = () => {
+      if (skipBackGuardRef.current) return;
+      window.history.pushState(null, "", window.location.href);
+      setBackPressDialogOpen(true);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [isStarted]);
+
+  // Keep a ref to latest handleSubmit so event listeners don't capture stale closures
+  const handleSubmitRef = useRef(handleSubmit);
+  useEffect(() => {
+    handleSubmitRef.current = handleSubmit;
+  });
+
+  // Allow mobile WebView to trigger submission via injected JS
+  useEffect(() => {
+    if (!isStarted) return;
+    const handler = () => handleSubmitRef.current(false);
+    document.addEventListener("nativeSubmitTest", handler);
+    return () => document.removeEventListener("nativeSubmitTest", handler);
   }, [isStarted]);
 
   if (loading || authLoading || tenantLoading)
@@ -3185,6 +3242,92 @@ export default function StudentCBTAttempt() {
                 }}
               >
                 Return to Test
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── BACK-PRESS WARNING DIALOG ─── */}
+      {backPressDialogOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 120,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 400,
+              borderRadius: 10,
+              background: "#fff",
+              boxShadow: "0 8px 40px rgba(0,0,0,0.25)",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                padding: "14px 18px",
+                borderBottom: "1px solid #e5e7eb",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 12,
+              }}
+            >
+              <AlertTriangle size={20} style={{ color: "#f59e0b", flexShrink: 0, marginTop: 2 }} />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: "#1f2937" }}>Leave test?</div>
+                <div style={{ fontSize: 13, color: "#6b7280", marginTop: 2 }}>
+                  Your answers are saved. You can submit now or continue the test later.
+                </div>
+              </div>
+            </div>
+            <div
+              style={{
+                padding: "12px 18px",
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 8,
+              }}
+            >
+              <button
+                onClick={() => setBackPressDialogOpen(false)}
+                style={{
+                  background: "#fff",
+                  color: "#374151",
+                  border: "1.5px solid #d1d5db",
+                  borderRadius: 6,
+                  padding: "7px 18px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Continue Test
+              </button>
+              <button
+                onClick={() => handleSubmitRef.current(false)}
+                disabled={saving}
+                style={{
+                  background: "#22c55e",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  padding: "7px 20px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: saving ? "not-allowed" : "pointer",
+                  opacity: saving ? 0.7 : 1,
+                }}
+              >
+                {saving ? "Submitting..." : "Submit Test"}
               </button>
             </div>
           </div>

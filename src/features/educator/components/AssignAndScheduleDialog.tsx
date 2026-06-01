@@ -40,6 +40,7 @@ type BatchConfig = {
   maxUses: string;
   expiresAt: string;
   windowMinutes: string;
+  attemptsAllowed: string;
 };
 
 function genCode() {
@@ -53,7 +54,7 @@ function toEndOfDay(s: string): Timestamp | null {
   return Timestamp.fromDate(new Date(y, m - 1, d, 23, 59, 59, 999));
 }
 
-function defaultConfig(): BatchConfig {
+function defaultConfig(attemptsAllowed = "3"): BatchConfig {
   return {
     accessType: "scheduled",
     startDate: "",
@@ -65,17 +66,18 @@ function defaultConfig(): BatchConfig {
     maxUses: "100",
     expiresAt: "",
     windowMinutes: "0",
+    attemptsAllowed,
   };
 }
 
 interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  test: { id: string; title?: string } | null;
+  test: { id: string; title?: string; attemptsAllowed?: number } | null;
   allBatches: Batch[];
   educatorId: string;
   preselectedBatchId?: string;
-  allTests?: { id: string; title?: string }[];
+  allTests?: { id: string; title?: string; attemptsAllowed?: number }[];
 }
 
 export default function AssignAndScheduleDialog({
@@ -100,7 +102,9 @@ export default function AssignAndScheduleDialog({
     preselectedBatchId ? [preselectedBatchId] : []
   );
   const [perBatch, setPerBatch] = useState(false);
-  const [globalConfig, setGlobalConfig] = useState<BatchConfig>(defaultConfig);
+  const [globalConfig, setGlobalConfig] = useState<BatchConfig>(() =>
+    defaultConfig(String(initialTest?.attemptsAllowed ?? 3))
+  );
   const [perBatchConfigs, setPerBatchConfigs] = useState<Record<string, BatchConfig>>({});
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -110,7 +114,7 @@ export default function AssignAndScheduleDialog({
     setSelectedTest(initialTest);
     setSelectedIds(preselectedBatchId ? [preselectedBatchId] : []);
     setPerBatch(false);
-    setGlobalConfig(defaultConfig());
+    setGlobalConfig(defaultConfig(String(initialTest?.attemptsAllowed ?? 3)));
     setPerBatchConfigs({});
     setSaving(false);
     setCopied(null);
@@ -295,6 +299,16 @@ export default function AssignAndScheduleDialog({
             </div>
           </>
         )}
+
+        <div className="space-y-1">
+          <Label className="text-xs">Attempts Allowed</Label>
+          <Input
+            type="number"
+            min="1"
+            value={cfg.attemptsAllowed}
+            onChange={(e) => update("attemptsAllowed", e.target.value)}
+          />
+        </div>
       </div>
     );
   }
@@ -352,6 +366,7 @@ export default function AssignAndScheduleDialog({
             maxUses: null,
             expiresAt: null,
             windowMinutes: null,
+            attemptsAllowed: Number(cfg.attemptsAllowed) || 3,
             createdAt: ts,
             updatedAt: ts,
           });
@@ -382,6 +397,7 @@ export default function AssignAndScheduleDialog({
             maxUses: max,
             expiresAt,
             windowMinutes,
+            attemptsAllowed: Number(cfg.attemptsAllowed) || 3,
             createdAt: ts,
             updatedAt: ts,
           });
@@ -437,7 +453,10 @@ export default function AssignAndScheduleDialog({
                   <button
                     key={t.id}
                     type="button"
-                    onClick={() => setSelectedTest(t)}
+                    onClick={() => {
+                      setSelectedTest(t);
+                      setGlobalConfig(defaultConfig(String(t.attemptsAllowed ?? 3)));
+                    }}
                     className={`w-full rounded px-2 py-2 text-left text-sm transition-colors hover:bg-muted ${
                       selectedTest?.id === t.id ? "bg-primary/10 font-medium text-primary" : ""
                     }`}

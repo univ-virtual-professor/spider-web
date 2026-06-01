@@ -70,6 +70,7 @@ interface Assignment {
   maxUses: number | null;
   expiresAt: Timestamp | null;
   windowMinutes: number | null;
+  attemptsAllowed: number | null;
   createdAt: Timestamp | null;
 }
 
@@ -105,7 +106,9 @@ function assignmentStatus(a: Assignment, now: number): "live" | "upcoming" | "pa
 export default function BatchSchedulePanel({ batch, educatorId, courses, onClose }: Props) {
   const [activeTab, setActiveTab] = useState("live");
   const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [allTests, setAllTests] = useState<{ id: string; title?: string }[]>([]);
+  const [allTests, setAllTests] = useState<
+    { id: string; title?: string; attemptsAllowed?: number }[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
@@ -120,6 +123,7 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
   const [editMaxUses, setEditMaxUses] = useState("100");
   const [editExpiry, setEditExpiry] = useState("");
   const [editWindow, setEditWindow] = useState("0");
+  const [editAttemptsAllowed, setEditAttemptsAllowed] = useState("3");
   const [editBusy, setEditBusy] = useState(false);
 
   useEffect(() => {
@@ -148,6 +152,7 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
             maxUses: data.maxUses != null ? Number(data.maxUses) : null,
             expiresAt: data.expiresAt || null,
             windowMinutes: data.windowMinutes != null ? Number(data.windowMinutes) : null,
+            attemptsAllowed: data.attemptsAllowed != null ? Number(data.attemptsAllowed) : null,
             createdAt: data.createdAt || null,
           } as Assignment;
         })
@@ -163,7 +168,13 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
       orderBy("createdAt", "desc")
     );
     return onSnapshot(q, (snap) => {
-      setAllTests(snap.docs.map((d) => ({ id: d.id, title: (d.data() as any).title })));
+      setAllTests(
+        snap.docs.map((d) => ({
+          id: d.id,
+          title: (d.data() as any).title,
+          attemptsAllowed: (d.data() as any).attemptsAllowed,
+        }))
+      );
     });
   }, [educatorId]);
 
@@ -199,6 +210,7 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
 
   function openEdit(a: Assignment) {
     setEditAssignment(a);
+    setEditAttemptsAllowed(String(a.attemptsAllowed ?? 3));
     if (a.accessType === "scheduled") {
       const toDateStr = (ts: Timestamp | null) => {
         if (!ts) return "";
@@ -238,6 +250,7 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
         await updateDoc(doc(db, "educators", educatorId, "batchAssignments", editAssignment.id), {
           startTime: start,
           endTime: end,
+          attemptsAllowed: Number(editAttemptsAllowed) || 3,
           updatedAt: serverTimestamp(),
         });
         toast.success("Schedule updated");
@@ -253,6 +266,7 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
           maxUses: max,
           expiresAt,
           windowMinutes,
+          attemptsAllowed: Number(editAttemptsAllowed) || 3,
           updatedAt: serverTimestamp(),
         });
         if (editAssignment.accessCode) {
@@ -613,6 +627,15 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
                   />
                 </div>
               </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Attempts Allowed</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={editAttemptsAllowed}
+                  onChange={(e) => setEditAttemptsAllowed(e.target.value)}
+                />
+              </div>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setEditOpen(false)}>
                   Cancel
@@ -650,6 +673,15 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
                   min="0"
                   value={editWindow}
                   onChange={(e) => setEditWindow(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Attempts Allowed</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={editAttemptsAllowed}
+                  onChange={(e) => setEditAttemptsAllowed(e.target.value)}
                 />
               </div>
               <div className="flex justify-end gap-2">

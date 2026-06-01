@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
 import { Clock, FileText, Award, ArrowLeft, Play, Lock, Timer } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
@@ -125,6 +125,11 @@ export default function StudentTestDetails() {
     window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { testId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const batchAssignmentIdFromState = (location.state as any)?.batchAssignmentId as
+    | string
+    | null
+    | undefined;
 
   const { firebaseUser, profile, loading: authLoading } = useAuth();
   const { tenant, tenantSlug: tenantSlugFromDomain, loading: tenantLoading } = useTenant();
@@ -134,6 +139,9 @@ export default function StudentTestDetails() {
 
   const [loading, setLoading] = useState(true);
   const [test, setTest] = useState<Test | null>(null);
+  const [batchAssignmentId, setBatchAssignmentId] = useState<string | null>(
+    batchAssignmentIdFromState ?? null
+  );
   const [unlocked, setUnlocked] = useState(false);
   const [unlockWindowExpiresAt, setUnlockWindowExpiresAt] = useState<number | null>(null);
   const [windowTimeLeft, setWindowTimeLeft] = useState<number | null>(null);
@@ -222,13 +230,7 @@ export default function StudentTestDetails() {
           sumSectionQuestions(sections);
 
         const price = Math.max(0, safeNum(data?.price, 0));
-        const attemptsAllowed = Math.max(
-          1,
-          safeNum(
-            data?.attemptsAllowed ?? data?.maxAttempts,
-            tenant?.testDefaults?.attemptsAllowed ?? 3
-          )
-        );
+        let assignmentAttemptsAllowed: number | null = null;
 
         const markingScheme = data?.markingScheme
           ? {
@@ -259,7 +261,12 @@ export default function StudentTestDetails() {
               )
             );
             if (!assignSnap.empty) {
-              const assignment = assignSnap.docs[0].data() as any;
+              const assignDoc = assignSnap.docs[0];
+              const assignment = assignDoc.data() as any;
+              setBatchAssignmentId(assignDoc.id);
+              if (assignment.attemptsAllowed != null) {
+                assignmentAttemptsAllowed = Number(assignment.attemptsAllowed);
+              }
               if (assignment.accessType === "scheduled") {
                 startTime = assignment.startTime ? toMillis(assignment.startTime) : null;
                 endTime = assignment.endTime ? toMillis(assignment.endTime) : null;
@@ -272,6 +279,14 @@ export default function StudentTestDetails() {
             // non-fatal — fall back to test doc fields
           }
         }
+
+        const attemptsAllowed = Math.max(
+          1,
+          safeNum(
+            assignmentAttemptsAllowed ?? data?.attemptsAllowed ?? data?.maxAttempts,
+            tenant?.testDefaults?.attemptsAllowed ?? 3
+          )
+        );
 
         if (!mounted) return;
 
@@ -356,15 +371,24 @@ export default function StudentTestDetails() {
   useEffect(() => {
     if (!canLoad) return;
 
-    const qAttempts = query(
-      collection(db, "attempts"),
-      where("studentId", "==", firebaseUser!.uid),
-      where("educatorId", "==", educatorId!),
-      where("testId", "==", testId!),
-      where("status", "==", "submitted"),
-      orderBy("submittedAt", "desc"),
-      limit(20)
-    );
+    const qAttempts = batchAssignmentId
+      ? query(
+          collection(db, "attempts"),
+          where("studentId", "==", firebaseUser!.uid),
+          where("batchAssignmentId", "==", batchAssignmentId),
+          where("status", "==", "submitted"),
+          orderBy("submittedAt", "desc"),
+          limit(20)
+        )
+      : query(
+          collection(db, "attempts"),
+          where("studentId", "==", firebaseUser!.uid),
+          where("educatorId", "==", educatorId!),
+          where("testId", "==", testId!),
+          where("status", "==", "submitted"),
+          orderBy("submittedAt", "desc"),
+          limit(20)
+        );
 
     const unsub = onSnapshot(
       qAttempts,
@@ -400,7 +424,7 @@ export default function StudentTestDetails() {
     );
 
     return () => unsub();
-  }, [canLoad, firebaseUser, educatorId, testId]);
+  }, [canLoad, firebaseUser, educatorId, testId, batchAssignmentId]);
 
   const isLive = useMemo(() => {
     if (!test?.startTime || !test?.endTime) return false;
@@ -509,7 +533,9 @@ export default function StudentTestDetails() {
       toast.error("No attempts left for this test.");
       return;
     }
-    navigate(`/student/tests/${test.id}/attempt`);
+    navigate(`/student/tests/${test.id}/attempt`, {
+      state: { batchAssignmentId: batchAssignmentId || null },
+    });
   };
 
   if (loading || authLoading || tenantLoading) {

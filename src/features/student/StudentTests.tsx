@@ -122,7 +122,7 @@ export default function StudentTests() {
         );
         assignSnap.docs.forEach((d) => {
           const data = d.data() as any;
-          assignMap.set(String(data.testId || ""), data);
+          assignMap.set(String(data.testId || ""), { ...data, _docId: d.id });
         });
       }
 
@@ -143,16 +143,21 @@ export default function StudentTests() {
       return visible.map((t: any) => {
         const assignment = assignMap.get(t.id);
         if (!assignment) return t;
+        const assignmentBase = {
+          ...t,
+          batchAssignmentId: assignment._docId,
+          attemptsAllowed: assignment.attemptsAllowed ?? t.attemptsAllowed,
+        };
         if (assignment.accessType === "scheduled") {
           return {
-            ...t,
+            ...assignmentBase,
             startTime: assignment.startTime,
             endTime: assignment.endTime,
             isScheduleActive: assignment.isScheduleActive,
           };
         }
         // access_code: no time-based schedule; test is visible but locked until code entered
-        return { ...t, startTime: null, endTime: null, isScheduleActive: false };
+        return { ...assignmentBase, startTime: null, endTime: null, isScheduleActive: false };
       });
     },
     enabled: allowed && !!educatorId,
@@ -212,9 +217,9 @@ export default function StudentTests() {
       const counts: Record<string, number> = {};
       snap.docs.forEach((d) => {
         const a = d.data();
-        const tid = String(a.testId || "");
-        if (tid) {
-          counts[tid] = (counts[tid] || 0) + 1;
+        const aid = String(a.batchAssignmentId || "");
+        if (aid) {
+          counts[aid] = (counts[aid] || 0) + 1;
         }
       });
       return counts;
@@ -536,8 +541,12 @@ export default function StudentTests() {
                       startsAtMs: t._startsAtMs,
                       windowExpiresAt: null,
                     }}
-                    attemptsUsed={attemptCounts[t.id] || 0}
-                    onStart={() => nav(`/student/tests/${t.id}`)}
+                    attemptsUsed={attemptCounts[(t as any).batchAssignmentId] || 0}
+                    onStart={() =>
+                      nav(`/student/tests/${t.id}`, {
+                        state: { batchAssignmentId: (t as any).batchAssignmentId || null },
+                      })
+                    }
                     onUnlock={() => {}}
                   />
                 ))}
@@ -613,8 +622,12 @@ export default function StudentTests() {
                               windowExpiresAt: unlockEntry ?? null,
                               isLive,
                             }}
-                            attemptsUsed={attemptCounts[t.id] || 0}
-                            onStart={() => nav(`/student/tests/${t.id}`)}
+                            attemptsUsed={attemptCounts[(t as any).batchAssignmentId] || 0}
+                            onStart={() =>
+                              nav(`/student/tests/${t.id}`, {
+                                state: { batchAssignmentId: (t as any).batchAssignmentId || null },
+                              })
+                            }
                             onUnlock={(testId: string) => {
                               const entered = window.prompt(
                                 "Enter access code to unlock this test:"
@@ -666,8 +679,12 @@ export default function StudentTests() {
                     windowExpiresAt: unlockEntry ?? null,
                     isLive,
                   }}
-                  attemptsUsed={attemptCounts[t.id] || 0}
-                  onStart={() => nav(`/student/tests/${t.id}`)}
+                  attemptsUsed={attemptCounts[(t as any).batchAssignmentId] || 0}
+                  onStart={() =>
+                    nav(`/student/tests/${t.id}`, {
+                      state: { batchAssignmentId: (t as any).batchAssignmentId || null },
+                    })
+                  }
                   onUnlock={(testId: string) => {
                     const entered = window.prompt("Enter access code to unlock this DPP:");
                     if (entered && entered.trim()) {
