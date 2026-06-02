@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, MoreVertical } from "lucide-react";
+import { AlertTriangle, ArrowLeft, MoreVertical, Trash2 } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -24,7 +24,8 @@ import {
 } from "@shared/ui/dropdown-menu";
 import { useAuth } from "@app/providers/AuthProvider";
 import { db } from "@shared/lib/firebase";
-import { collection, doc, getDoc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@shared/ui/dialog";
 import { toast } from "sonner";
 
 type LearnerDoc = {
@@ -190,9 +191,8 @@ export default function LearnerDetails() {
   const [attemptsLoaded, setAttemptsLoaded] = useState(false);
   const [classAttemptsLoaded, setClassAttemptsLoaded] = useState(false);
   const [seatActive, setSeatActive] = useState(false);
-  const [actionBusy, setActionBusy] = useState<
-    "revoke-seat" | "set-inactive" | "set-active" | null
-  >(null);
+  const [actionBusy, setActionBusy] = useState<"revoke-seat" | "delete" | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!authLoading && role && role !== "EDUCATOR" && role !== "ADMIN") {
@@ -302,40 +302,14 @@ export default function LearnerDetails() {
     }
   };
 
-  const handleSetInactive = async () => {
-    if (!educatorId) return;
-    if (String(learner?.status || "").toUpperCase() === "INACTIVE") {
-      toast.info("Learner is already inactive.");
-      return;
-    }
-    setActionBusy("set-inactive");
+  const handleDeleteStudent = async () => {
+    setActionBusy("delete");
     try {
-      await updateDoc(doc(db, "educators", educatorId, "students", studentId), {
-        status: "INACTIVE",
-      });
-      toast.success("Learner set to INACTIVE");
+      await postWithToken("/api/tenant/delete-student", { studentId });
+      toast.success("Student deleted");
+      nav(-1);
     } catch (e: any) {
-      toast.error(e?.message || "Failed to set learner inactive");
-    } finally {
-      setActionBusy(null);
-    }
-  };
-
-  const handleSetActive = async () => {
-    if (!educatorId) return;
-    if (String(learner?.status || "").toUpperCase() === "ACTIVE") {
-      toast.info("Learner is already active.");
-      return;
-    }
-    setActionBusy("set-active");
-    try {
-      await updateDoc(doc(db, "educators", educatorId, "students", studentId), {
-        status: "ACTIVE",
-      });
-      toast.success("Learner set to ACTIVE");
-    } catch (e: any) {
-      toast.error(e?.message || "Failed to activate learner");
-    } finally {
+      toast.error(e?.message || "Failed to delete student");
       setActionBusy(null);
     }
   };
@@ -564,15 +538,14 @@ export default function LearnerDetails() {
                     >
                       {actionBusy === "revoke-seat" ? "Revoking seat..." : "Revoke Seat"}
                     </DropdownMenuItem>
-                    {String(learner.status || "").toUpperCase() === "INACTIVE" ? (
-                      <DropdownMenuItem onClick={handleSetActive} disabled={actionBusy !== null}>
-                        {actionBusy === "set-active" ? "Updating..." : "Activate Student"}
-                      </DropdownMenuItem>
-                    ) : (
-                      <DropdownMenuItem onClick={handleSetInactive} disabled={actionBusy !== null}>
-                        {actionBusy === "set-inactive" ? "Updating..." : "Set Student Inactive"}
-                      </DropdownMenuItem>
-                    )}
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => setDeleteDialogOpen(true)}
+                      disabled={actionBusy !== null}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete Student
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -749,6 +722,38 @@ export default function LearnerDetails() {
           </div>
         </>
       )}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Delete Student
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <p className="font-medium">{learner?.name || studentId}</p>
+            <p className="text-sm text-muted-foreground">
+              This will permanently remove the student from your institute, revoke their seat, and
+              clear their enrollment. <strong>This action cannot be undone.</strong>
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={actionBusy === "delete"}
+              onClick={() => {
+                setDeleteDialogOpen(false);
+                handleDeleteStudent();
+              }}
+            >
+              {actionBusy === "delete" ? "Deleting..." : "Delete permanently"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

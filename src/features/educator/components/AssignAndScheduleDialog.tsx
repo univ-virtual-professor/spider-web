@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@shared/ui/dialog";
 import { Button } from "@shared/ui/button";
 import { Input } from "@shared/ui/input";
@@ -18,7 +18,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
-import { Key, Clock, Copy, Check, RotateCcw } from "lucide-react";
+import { Key, Clock, Copy, Check, RotateCcw, Monitor, Globe, Layers } from "lucide-react";
 import { cn } from "@shared/lib/utils";
 
 export type Batch = {
@@ -27,6 +27,24 @@ export type Batch = {
   label: string;
   branchId: string;
   courseId: string;
+};
+
+type ExamMode = "web" | "desktop" | "both";
+
+type ProctoringConfig = {
+  faceDetection: boolean;
+  phoneDetection: boolean;
+  eyeGaze: boolean;
+  photoCapture: boolean;
+  violationThreshold: number;
+};
+
+const DEFAULT_PROCTORING: ProctoringConfig = {
+  faceDetection: true,
+  phoneDetection: true,
+  eyeGaze: true,
+  photoCapture: true,
+  violationThreshold: 10,
 };
 
 type BatchConfig = {
@@ -41,6 +59,8 @@ type BatchConfig = {
   expiresAt: string;
   windowMinutes: string;
   attemptsAllowed: string;
+  examMode: ExamMode;
+  proctoringConfig: ProctoringConfig;
 };
 
 function genCode() {
@@ -67,6 +87,8 @@ function defaultConfig(attemptsAllowed = "3"): BatchConfig {
     expiresAt: "",
     windowMinutes: "0",
     attemptsAllowed,
+    examMode: "web",
+    proctoringConfig: { ...DEFAULT_PROCTORING },
   };
 }
 
@@ -309,6 +331,93 @@ export default function AssignAndScheduleDialog({
             onChange={(e) => update("attemptsAllowed", e.target.value)}
           />
         </div>
+
+        {/* Exam delivery mode */}
+        <div className="space-y-1.5">
+          <Label className="text-xs">Exam Delivery</Label>
+          <div className="grid grid-cols-3 gap-1.5">
+            {(
+              [
+                { value: "web", label: "Web", Icon: Globe },
+                { value: "desktop", label: "App only", Icon: Monitor },
+                { value: "both", label: "Both", Icon: Layers },
+              ] as { value: ExamMode; label: string; Icon: React.ElementType }[]
+            ).map(({ value, label, Icon }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => update("examMode", value)}
+                className={cn(
+                  "flex flex-col items-center gap-1 rounded-xl border px-2 py-2 text-xs font-medium transition",
+                  cfg.examMode === value
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:border-primary/40"
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Proctoring config — only for desktop/both */}
+        {cfg.examMode !== "web" && (
+          <div className="space-y-2 rounded-xl border border-border p-3">
+            <Label className="text-xs font-medium">Proctoring</Label>
+            {(
+              [
+                { key: "faceDetection", label: "Face detection" },
+                { key: "phoneDetection", label: "Phone detection" },
+                { key: "eyeGaze", label: "Eye gaze" },
+                { key: "photoCapture", label: "Photo capture" },
+              ] as { key: keyof ProctoringConfig; label: string }[]
+            ).map(({ key, label }) => (
+              <div key={key} className="flex items-center justify-between">
+                <span className="text-xs text-foreground">{label}</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    update("proctoringConfig", {
+                      ...cfg.proctoringConfig,
+                      [key]: !cfg.proctoringConfig[key],
+                    })
+                  }
+                  className={cn(
+                    "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+                    cfg.proctoringConfig[key] ? "bg-primary" : "bg-muted"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition",
+                      cfg.proctoringConfig[key] ? "translate-x-[18px]" : "translate-x-[2px]"
+                    )}
+                  />
+                </button>
+              </div>
+            ))}
+            <div className="flex items-center justify-between pt-0.5">
+              <span className="text-xs text-muted-foreground">Warn after</span>
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={cfg.proctoringConfig.violationThreshold}
+                  onChange={(e) =>
+                    update("proctoringConfig", {
+                      ...cfg.proctoringConfig,
+                      violationThreshold: Math.min(50, Math.max(1, Number(e.target.value))),
+                    })
+                  }
+                  className="w-12 rounded-lg border border-input bg-background px-2 py-0.5 text-center text-xs"
+                />
+                <span className="text-xs text-muted-foreground">violations</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -367,6 +476,8 @@ export default function AssignAndScheduleDialog({
             expiresAt: null,
             windowMinutes: null,
             attemptsAllowed: Number(cfg.attemptsAllowed) || 3,
+            examMode: cfg.examMode,
+            proctoringConfig: cfg.examMode !== "web" ? cfg.proctoringConfig : null,
             createdAt: ts,
             updatedAt: ts,
           });
@@ -398,6 +509,8 @@ export default function AssignAndScheduleDialog({
             expiresAt,
             windowMinutes,
             attemptsAllowed: Number(cfg.attemptsAllowed) || 3,
+            examMode: cfg.examMode,
+            proctoringConfig: cfg.examMode !== "web" ? cfg.proctoringConfig : null,
             createdAt: ts,
             updatedAt: ts,
           });

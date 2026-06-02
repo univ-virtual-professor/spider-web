@@ -22,3 +22,4 @@ export { default as StudentHealthCategoryList } from "./StudentHealthCategoryLis
 export { default as ReportedQuestions } from "./ReportedQuestions";
 export { default as SubjectiveReviewQueue } from "./SubjectiveReviewQueue";
 export { default as SubjectiveAttemptGrader } from "./SubjectiveAttemptGrader";
+export { default as ProctoringReview } from "./ProctoringReview";

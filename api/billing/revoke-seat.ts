@@ -16,7 +16,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const admin = getAdmin();
     const db = admin.firestore();
 
-    await db.doc(`educators/${educatorId}/billingSeats/${studentId}`).set(
+    const batch = db.batch();
+
+    batch.set(
+      db.doc(`educators/${educatorId}/billingSeats/${studentId}`),
       {
         status: "inactive",
         revokedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -24,6 +27,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
       { merge: true }
     );
+
+    batch.update(db.doc(`educators/${educatorId}/students/${studentId}`), {
+      batchId: admin.firestore.FieldValue.delete(),
+    });
+
+    await batch.commit();
 
     return res.json({ ok: true });
   } catch (e: any) {

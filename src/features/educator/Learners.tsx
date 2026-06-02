@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
+  AlertTriangle,
   ArrowRight,
   Check,
   ChevronDown,
@@ -10,6 +11,7 @@ import {
   Loader2,
   RefreshCw,
   Search,
+  Trash2,
   Upload,
   UserCheck,
   UserPlus,
@@ -24,7 +26,6 @@ import {
   onSnapshot,
   orderBy,
   query,
-  updateDoc,
   writeBatch,
 } from "firebase/firestore";
 import { db, auth } from "@shared/lib/firebase";
@@ -45,7 +46,6 @@ type Learner = {
   id: string;
   name?: string;
   email?: string;
-  status?: "ACTIVE" | "INACTIVE";
   joinedAt?: any;
   batchId?: string;
   courseId?: string;
@@ -120,6 +120,10 @@ export default function Learners() {
   const [allBranches, setAllBranches] = useState<Branch[]>([]);
   const [allCourses, setAllCourses] = useState<Course[]>([]);
   const [allBatches, setAllBatches] = useState<Batch[]>([]);
+
+  // Delete dialog
+  const [deleteTarget, setDeleteTarget] = useState<Learner | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   // Assign-batch dialog
   const [assignTarget, setAssignTarget] = useState<Learner | null>(null);
@@ -338,12 +342,16 @@ export default function Learners() {
     }
   };
 
-  const toggleActive = async (studentId: string, next: "ACTIVE" | "INACTIVE") => {
+  const handleDeleteStudent = async (studentId: string) => {
+    setDeleteBusy(true);
     try {
-      await updateDoc(doc(db, "educators", educatorId, "students", studentId), { status: next });
-      toast.success(`Learner set to ${next}`);
+      await postWithToken("/api/tenant/delete-student", { studentId });
+      toast.success("Student deleted");
+      setDeleteTarget(null);
     } catch (e: any) {
-      toast.error(e?.message || "Failed to update learner");
+      toast.error(e?.message || "Failed to delete student");
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -866,7 +874,6 @@ export default function Learners() {
       <div className="grid gap-3">
         {filtered.map((l) => {
           const seatOn = Boolean(seatMap[l.id]);
-          const inactive = l.status === "INACTIVE";
           const batchName = allBatches.find((b) => b.id === l.batchId)?.name;
           const courseName = allCourses.find((c) => c.id === l.courseId)?.name;
           const branchName = allBranches.find((b) => b.id === l.branchId)?.name;
@@ -880,10 +887,7 @@ export default function Learners() {
                 onClick={() => nav(`/educator/learners/${l.id}`)}
                 className="group text-left"
               >
-                <div className="font-semibold">
-                  {l.name || "Student"}
-                  {inactive && <span className="ml-2 text-xs text-red-500">(INACTIVE)</span>}
-                </div>
+                <div className="font-semibold">{l.name || "Student"}</div>
                 <div className="text-xs text-muted-foreground transition-colors group-hover:text-foreground md:text-sm">
                   {l.email || l.id}
                 </div>
@@ -918,10 +922,7 @@ export default function Learners() {
                   {l.batchId ? "Change Batch" : "Assign Batch"}
                 </Button>
                 {!seatOn ? (
-                  <Button
-                    disabled={!canAssign || busyId === l.id || inactive}
-                    onClick={() => grantSeat(l.id)}
-                  >
+                  <Button disabled={!canAssign || busyId === l.id} onClick={() => grantSeat(l.id)}>
                     {busyId === l.id ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
@@ -943,15 +944,14 @@ export default function Learners() {
                     Revoke Seat
                   </Button>
                 )}
-                {inactive ? (
-                  <Button variant="outline" onClick={() => toggleActive(l.id, "ACTIVE")}>
-                    Set ACTIVE
-                  </Button>
-                ) : (
-                  <Button variant="outline" onClick={() => toggleActive(l.id, "INACTIVE")}>
-                    Set INACTIVE
-                  </Button>
-                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setDeleteTarget(l)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </div>
             </div>
           );
@@ -1053,6 +1053,42 @@ export default function Learners() {
           No seats are assigned to your coaching yet. Purchase seats in Billing to get started.
         </div>
       )}
+
+      {/* Delete Student Dialog */}
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => {
+          if (!o) setDeleteTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Delete Student
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <p className="font-medium">{deleteTarget?.name || deleteTarget?.id}</p>
+            <p className="text-sm text-muted-foreground">
+              This will permanently remove the student from your institute, revoke their seat, and
+              clear their enrollment. <strong>This action cannot be undone.</strong>
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteBusy}
+              onClick={() => deleteTarget && handleDeleteStudent(deleteTarget.id)}
+            >
+              {deleteBusy ? "Deleting..." : "Delete permanently"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -202,10 +202,20 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
   - Tabs: Upcoming | Past | Access Codes
   - Upcoming/Past: tests from `my_tests` where `targetBatches array-contains batchId`
   - Access Codes: codes from `accessCodes` where `testSeriesId` in batch's test IDs
-  - "Assign Test" button → inline dialog: select test + start/end datetime → writes `arrayUnion(batchId)` + schedule fields to `my_tests/{testId}`
-  - "Remove from Batch" → `arrayRemove(batchId)` from `my_tests/{testId}.targetBatches`
-  - "Create Access Code" (per test or from codes tab) → inline dialog same as AccessCodes page
+  - "Assign Test" button → `AssignAndScheduleDialog` → creates `educators/{uid}/batchAssignments/{id}` doc
+  - "Remove from Batch" → `deleteDoc` on `batchAssignments/{id}` + `arrayRemove(batchId)` from `my_tests/{testId}.targetBatches`
   - Edit/delete access codes inline — no need to navigate to `/educator/access-codes`
+- **`batchAssignment` doc schema** (`educators/{uid}/batchAssignments/{id}`):
+  - `testId`, `testTitle`, `batchId`, `batchName`
+  - `accessType`: `"scheduled" | "access_code"`
+  - `startTime`, `endTime`, `isScheduleActive` (scheduled type)
+  - `accessCode`, `maxUses`, `expiresAt`, `windowMinutes` (access_code type)
+  - `attemptsAllowed`
+  - `examMode`: `"web" | "desktop" | "both"` — controls whether students use web or desktop app
+  - `proctoringConfig`: `{ faceDetection, phoneDetection, eyeGaze, photoCapture, violationThreshold }` — null when examMode is "web"
+  - `createdAt`, `updatedAt`
+- **Assignment config is per-batch**: same test can be desktop-only for one batch and web-only for another
+- **StudentTestDetails** reads `examMode` from `batchAssignment`; shows "Open in Desktop App" / "Take on Web" / both buttons accordingly
 - **BatchesListing enhancements**:
   - Batch card now subscribes to `my_tests` to compute per-batch live test counts
   - "N live" green badge on Schedule button when tests are active now
@@ -213,6 +223,15 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
 - **ScheduledAssessmentsList enhancement**:
   - Shows actual batch names (resolved from IDs) instead of "N Batch(es) assigned"
   - "Manage by Batch" shortcut button → `/educator/batches`
+
+## Desktop Exam Integration (spider-desktop)
+
+- When `examMode === "desktop"` or `"both"`, student sees "Open in Desktop App" button in `StudentTestDetails`
+- App detection: `fetch("http://localhost:41337/ping")` — spider-desktop runs a ping server on that port
+- Deep link: `preparekaro://launch?testId=X&tenantSlug=Y&idToken=Z&assignmentId=A`
+- `assignmentId` is the `batchAssignment` doc ID — spider-desktop uses it to load `proctoringConfig`
+- Proctoring report viewable at `/educator/proctoring/:attemptId`
+- New educator routes: `GET /api/exam/proctoring/{attemptId}` in monkey-king
 
 ## Dev Commands
 

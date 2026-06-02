@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, Link, useNavigate, useLocation } from "react-router-dom";
-import { Clock, FileText, Award, ArrowLeft, Play, Lock, Timer } from "lucide-react";
+import {
+  Clock,
+  FileText,
+  Award,
+  ArrowLeft,
+  Play,
+  Lock,
+  Timer,
+  Monitor,
+  Download,
+} from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Button } from "@shared/ui/button";
@@ -54,6 +64,7 @@ type Test = {
   markingScheme: { correct: number; incorrect: number; unanswered: number };
   startTime?: number | null;
   endTime?: number | null;
+  examMode?: "web" | "desktop" | "both";
 };
 
 type AttemptRow = {
@@ -147,6 +158,11 @@ export default function StudentTestDetails() {
   const [windowTimeLeft, setWindowTimeLeft] = useState<number | null>(null);
   const [attempts, setAttempts] = useState<AttemptRow[]>([]);
   const [currentTime, setCurrentTime] = useState(Date.now());
+
+  // desktop app detection
+  const [appDetected, setAppDetected] = useState<boolean | null>(null);
+  const [downloadModalOpen, setDownloadModalOpen] = useState(false);
+  const [examModeChoice, setExamModeChoice] = useState<"web" | "desktop" | null>(null);
 
   // unlock dialog
   const [unlockDialogOpen, setUnlockDialogOpen] = useState(false);
@@ -274,6 +290,10 @@ export default function StudentTestDetails() {
                 startTime = null;
                 endTime = null;
               }
+              // examMode and proctoringConfig live on the batchAssignment
+              if (assignment.examMode) {
+                setTest((prev) => (prev ? { ...prev, examMode: assignment.examMode } : prev));
+              }
             }
           } catch {
             // non-fatal — fall back to test doc fields
@@ -304,6 +324,8 @@ export default function StudentTestDetails() {
           markingScheme,
           startTime,
           endTime,
+          // examMode is resolved from batchAssignment below; default to "web" until then
+          examMode: "web",
         });
 
         setLoading(false);
@@ -523,6 +545,30 @@ export default function StudentTestDetails() {
     }
   };
 
+  // Detect if desktop app is running via local ping server
+  useEffect(() => {
+    if (!test || test.examMode === "web") return;
+    fetch("http://localhost:41337/ping", { signal: AbortSignal.timeout(1500) })
+      .then((r) => r.ok && setAppDetected(true))
+      .catch(() => setAppDetected(false));
+  }, [test?.examMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const openOnDesktop = async () => {
+    if (appDetected === false) {
+      setDownloadModalOpen(true);
+      return;
+    }
+    const idToken = await firebaseUser?.getIdToken();
+    if (!idToken || !tenantSlug || !testId) return;
+    const params = new URLSearchParams({
+      testId,
+      tenantSlug,
+      idToken,
+      ...(batchAssignmentId ? { assignmentId: batchAssignmentId } : {}),
+    });
+    window.location.href = `preparekaro://launch?${params.toString()}`;
+  };
+
   const startTest = () => {
     if (!test) return;
     if (isLocked) {
@@ -658,21 +704,60 @@ export default function StudentTestDetails() {
                 </Button>
               ) : (
                 <div className="flex flex-col items-end gap-2">
-                  <Button
-                    className={cn(
-                      "gradient-bg rounded-xl",
-                      (attemptsLeft <= 0 || isUpcoming) && "opacity-60"
-                    )}
-                    onClick={startTest}
-                    disabled={attemptsLeft <= 0 || isUpcoming}
-                  >
-                    {isUpcoming ? (
-                      <Clock className="mr-2 h-4 w-4" />
-                    ) : (
-                      <Play className="mr-2 h-4 w-4" />
-                    )}
-                    {isUpcoming ? "Starts Soon" : "Start Test"}
-                  </Button>
+                  {/* ── Desktop-only mode ── */}
+                  {test.examMode === "desktop" && (
+                    <Button
+                      className="gradient-bg rounded-xl"
+                      onClick={openOnDesktop}
+                      disabled={attemptsLeft <= 0 || isUpcoming}
+                    >
+                      <Monitor className="mr-2 h-4 w-4" />
+                      {isUpcoming ? "Starts Soon" : "Open in Desktop App"}
+                    </Button>
+                  )}
+
+                  {/* ── Both: show two buttons ── */}
+                  {test.examMode === "both" && (
+                    <div className="flex flex-col items-end gap-1.5">
+                      <Button
+                        className="gradient-bg rounded-xl"
+                        onClick={openOnDesktop}
+                        disabled={attemptsLeft <= 0 || isUpcoming}
+                      >
+                        <Monitor className="mr-2 h-4 w-4" />
+                        Open in Desktop App
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="rounded-xl"
+                        onClick={startTest}
+                        disabled={attemptsLeft <= 0 || isUpcoming}
+                      >
+                        <Play className="mr-2 h-4 w-4" />
+                        Take on Web
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* ── Web-only (default) ── */}
+                  {(!test.examMode || test.examMode === "web") && (
+                    <Button
+                      className={cn(
+                        "gradient-bg rounded-xl",
+                        (attemptsLeft <= 0 || isUpcoming) && "opacity-60"
+                      )}
+                      onClick={startTest}
+                      disabled={attemptsLeft <= 0 || isUpcoming}
+                    >
+                      {isUpcoming ? (
+                        <Clock className="mr-2 h-4 w-4" />
+                      ) : (
+                        <Play className="mr-2 h-4 w-4" />
+                      )}
+                      {isUpcoming ? "Starts Soon" : "Start Test"}
+                    </Button>
+                  )}
+
                   {windowTimeLeft !== null && (
                     <span
                       className={cn(
@@ -693,6 +778,52 @@ export default function StudentTestDetails() {
                 </div>
               )}
             </div>
+
+            {/* Desktop App Download Modal */}
+            <Dialog open={downloadModalOpen} onOpenChange={setDownloadModalOpen}>
+              <DialogContent className="rounded-2xl sm:max-w-sm">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <Monitor className="h-5 w-5 text-primary" />
+                    Download Desktop App
+                  </DialogTitle>
+                  <DialogDescription>
+                    This exam requires the PrepareKaro desktop app. Download and install it, then
+                    click the button again.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2 py-2">
+                  {[
+                    { label: "Windows (.exe)", href: "#" },
+                    { label: "macOS (.dmg)", href: "#" },
+                    { label: "Linux (.AppImage)", href: "#" },
+                  ].map(({ label, href }) => (
+                    <a
+                      key={label}
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between rounded-xl border border-border px-4 py-3 text-sm font-medium transition-colors hover:bg-muted"
+                    >
+                      <span>{label}</span>
+                      <Download className="h-4 w-4 text-muted-foreground" />
+                    </a>
+                  ))}
+                </div>
+                <p className="text-center text-xs text-muted-foreground">
+                  Already installed?{" "}
+                  <button
+                    onClick={() => {
+                      setDownloadModalOpen(false);
+                      openOnDesktop();
+                    }}
+                    className="underline underline-offset-2"
+                  >
+                    Try opening again
+                  </button>
+                </p>
+              </DialogContent>
+            </Dialog>
           </div>
         </CardContent>
       </Card>

@@ -1102,7 +1102,7 @@ export default function TestForm() {
   const [description, setDescription] = useState("");
 
   const [durationMinutes, setDurationMinutes] = useState<string>("60");
-  const [attemptsAllowed, setAttemptsAllowed] = useState<string>("3");
+  const [attemptsAllowed, setAttemptsAllowed] = useState<string>("1");
 
   // IMPORTANT: your new rule is “no test without code/pay”
   // keep this true by default.
@@ -1232,7 +1232,9 @@ export default function TestForm() {
         setDescription(String(d?.description || ""));
 
         setDurationMinutes(String(safeNum(d?.durationMinutes ?? d?.duration, 60)));
-        setAttemptsAllowed(String(Math.max(1, safeNum(d?.attemptsAllowed ?? d?.maxAttempts, 3))));
+        setAttemptsAllowed(
+          String(Math.min(2, Math.max(1, safeNum(d?.attemptsAllowed ?? d?.maxAttempts, 1))))
+        );
 
         setRequiresUnlock(d?.requiresUnlock !== false); // default true
         setPrice(String(Math.max(0, safeNum(d?.price, 0))));
@@ -1587,7 +1589,7 @@ export default function TestForm() {
     const dur = safeNum(durationMinutes, 60);
     if (dur <= 0) return toast.error("Duration must be a positive number");
 
-    const attempts = Math.max(1, safeNum(attemptsAllowed, 3));
+    const attempts = Math.min(2, Math.max(1, safeNum(attemptsAllowed, 1)));
     const p = Math.max(0, safeNum(price, 0)); // payment upcoming
 
     let cleanedSections: any[] = [];
@@ -1856,7 +1858,6 @@ export default function TestForm() {
                 <SelectContent className="rounded-xl">
                   <SelectItem value="1">1</SelectItem>
                   <SelectItem value="2">2</SelectItem>
-                  <SelectItem value="3">3</SelectItem>
                 </SelectContent>
               </Select>
             </div>
