@@ -20,6 +20,7 @@ import {
   Bot,
   BarChart2,
   Lock,
+  Video,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
@@ -254,6 +255,7 @@ export default function StudentLayout() {
   >(
     () => [
       { icon: LayoutDashboard, label: "Dashboard", href: "/student/dashboard" },
+      { icon: Video, label: "Live Classes", href: "/student/live-classes" },
       { icon: FileText, label: "Tests", href: "/student/tests" },
       { icon: History, label: "My Attempts", href: "/student/attempts" },
       { icon: BookOpen, label: "Content", href: "/student/content" },

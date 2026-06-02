@@ -11,4 +11,5 @@ export { default as StudentResults } from "./StudentResults";
 export { default as StudentSettings } from "./StudentSettings";
 export { default as StudentTestDetails } from "./StudentTestDetails";
 export { default as StudentTests } from "./StudentTests";
+export { default as StudentLiveClasses } from "./StudentLiveClasses";
 export type { AIReview, Attempt, AttemptStatus, Test } from "./types";

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import {
   FileUp,
   Loader2,
@@ -9,7 +9,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, collection, onSnapshot } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { Button } from "@shared/ui/button";
@@ -19,6 +19,7 @@ import { Label } from "@shared/ui/label";
 import { Textarea } from "@shared/ui/textarea";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@shared/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,6 +48,10 @@ type QPRequest = {
   created_at: string;
   updated_at: string;
 };
+
+type Branch = { id: string; name: string };
+type Course = { id: string; branchId: string; name: string };
+type Batch = { id: string; branchId: string; courseId: string; name: string };
 
 const STATUS_LABEL: Record<RequestStatus, string> = {
   PENDING: "Pending",
@@ -100,6 +105,7 @@ function MonthlyUsage({ requests, limit }: { requests: QPRequest[]; limit: numbe
 
 export default function QuestionPaperRequests() {
   const { profile, firebaseUser } = useAuth();
+  const educatorId = profile?.uid || firebaseUser?.uid || "";
   const isApp =
     new URLSearchParams(window.location.search).get("_app") === "1" ||
     window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
@@ -133,17 +139,36 @@ export default function QuestionPaperRequests() {
     }
     return res.json();
   }
+
   const [requests, setRequests] = useState<QPRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [monthlyLimit, setMonthlyLimit] = useState<number>(5);
 
-  // Create dialog
+  // Audience State
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [batches, setBatches] = useState<Batch[]>([]);
+
+  // Create dialog form variables
   const [createOpen, setCreateOpen] = useState(false);
   const [createTitle, setCreateTitle] = useState("");
   const [createDesc, setCreateDesc] = useState("");
   const [createFile, setCreateFile] = useState<File | null>(null);
   const [createBusy, setCreateBusy] = useState(false);
   const createFileRef = useRef<HTMLInputElement>(null);
+
+  // New form fields
+  const [selectedBranchId, setSelectedBranchId] = useState("");
+  const [selectedBatchId, setSelectedBatchId] = useState("");
+  const [subject, setSubject] = useState("");
+  const [topic, setTopic] = useState("");
+  const [subTopic, setSubTopic] = useState("");
+  const [marks, setMarks] = useState("");
+  const [questionsCount, setQuestionsCount] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
+  const [additionalRequirements, setAdditionalRequirements] = useState("");
+  const [hasAccessCode, setHasAccessCode] = useState<"yes" | "no">("no");
+  const [accessCode, setAccessCode] = useState("");
 
   // Edit dialog
   const [editTarget, setEditTarget] = useState<QPRequest | null>(null);
@@ -163,14 +188,100 @@ export default function QuestionPaperRequests() {
 
   const navigate = useNavigate();
 
+  // Load branches & requests
   useEffect(() => {
-    if (!profile?.uid) return;
+    if (!educatorId) return;
     fetchRequests();
-    getDoc(doc(db, "educators", profile.uid)).then((snap) => {
+    getDoc(doc(db, "educators", educatorId)).then((snap) => {
       const limit = snap.data()?.maxQuestionPaperRequests;
       if (typeof limit === "number") setMonthlyLimit(limit);
     });
-  }, [profile?.uid]);
+
+    const unsubBranches = onSnapshot(collection(db, "educators", educatorId, "branches"), (snap) =>
+      setBranches(snap.docs.map((d) => ({ id: d.id, name: d.data().name })))
+    );
+
+    return () => unsubBranches();
+  }, [educatorId]);
+
+  // Load programs/courses
+  useEffect(() => {
+    if (!educatorId || branches.length === 0) {
+      setCourses([]);
+      return;
+    }
+    const unsubs = branches.map((branch) =>
+      onSnapshot(
+        collection(db, "educators", educatorId, "branches", branch.id, "courses"),
+        (snap) => {
+          const branchCourses = snap.docs.map((d) => ({
+            id: d.id,
+            branchId: branch.id,
+            name: d.data().name,
+          }));
+          setCourses((prev) => [...prev.filter((c) => c.branchId !== branch.id), ...branchCourses]);
+        }
+      )
+    );
+    return () => unsubs.forEach((u) => u());
+  }, [branches, educatorId]);
+
+  // Load batches
+  useEffect(() => {
+    if (!educatorId || courses.length === 0) {
+      setBatches([]);
+      return;
+    }
+    const unsubs = courses.map((course) =>
+      onSnapshot(
+        collection(
+          db,
+          "educators",
+          educatorId,
+          "branches",
+          course.branchId,
+          "courses",
+          course.id,
+          "batches"
+        ),
+        (snap) => {
+          const courseBatches = snap.docs.map((d) => ({
+            id: d.id,
+            branchId: course.branchId,
+            courseId: course.id,
+            name: d.data().name,
+          }));
+          setBatches((prev) => [
+            ...prev.filter((b) => !(b.courseId === course.id && b.branchId === course.branchId)),
+            ...courseBatches,
+          ]);
+        }
+      )
+    );
+    return () => unsubs.forEach((u) => u());
+  }, [courses, educatorId]);
+
+  // Auto-select branch if only one exists
+  useEffect(() => {
+    if (branches.length === 1 && !selectedBranchId) {
+      setSelectedBranchId(branches[0].id);
+    }
+  }, [branches, selectedBranchId]);
+
+  // Filter batches by branch
+  const filteredBatches = useMemo(() => {
+    return batches.filter((b) => b.branchId === selectedBranchId);
+  }, [batches, selectedBranchId]);
+
+  // Auto-select batch if only one exists for the selected branch
+  useEffect(() => {
+    if (filteredBatches.length === 1 && selectedBatchId !== filteredBatches[0].id) {
+      setSelectedBranchId(filteredBatches[0].branchId);
+      setSelectedBatchId(filteredBatches[0].id);
+    } else if (filteredBatches.length === 0 && selectedBatchId) {
+      setSelectedBatchId("");
+    }
+  }, [filteredBatches, selectedBatchId]);
 
   async function fetchRequests() {
     setLoading(true);
@@ -186,19 +297,64 @@ export default function QuestionPaperRequests() {
 
   async function handleCreate() {
     if (!createTitle.trim()) return toast.error("Title is required");
-    if (!createFile) return toast.error("Please select a file");
+    if (!selectedBranchId) return toast.error("Please select a branch");
+    if (!selectedBatchId) return toast.error("Please select a batch");
+    if (hasAccessCode === "yes" && !accessCode.trim())
+      return toast.error("Please provide an access code");
+
     setCreateBusy(true);
     try {
+      const branchName = branches.find((b) => b.id === selectedBranchId)?.name || "—";
+      const batchName = batches.find((b) => b.id === selectedBatchId)?.name || "—";
+
+      // Build structured markdown description containing all custom form attributes
+      const formattedDescription = [
+        `Branch: ${branchName}`,
+        `Batch: ${batchName}`,
+        `Subject: ${subject.trim() || "—"}`,
+        `Topic: ${topic.trim() || "—"}`,
+        `Sub-Topic: ${subTopic.trim() || "—"}`,
+        `Total Marks: ${marks.trim() || "—"}`,
+        `No of Questions: ${questionsCount.trim() || "—"}`,
+        `Schedule Time: ${scheduleTime || "—"}`,
+        `Access Code Protection: ${hasAccessCode === "yes" ? `Yes (${accessCode.trim()})` : "No"}`,
+        additionalRequirements.trim()
+          ? `Additional Requirements: ${additionalRequirements.trim()}`
+          : null,
+        createDesc.trim() ? `Note: ${createDesc.trim()}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
       const fd = new FormData();
       fd.append("title", createTitle.trim());
-      fd.append("description", createDesc.trim());
-      fd.append("file", createFile);
+      fd.append("description", formattedDescription);
+
+      // Question paper file is optional
+      if (createFile) {
+        fd.append("file", createFile);
+      }
+
       const newReq = await apiUpload("/api/question-upload/", fd);
       setRequests((prev) => [newReq, ...prev]);
+
+      // Reset form variables
       setCreateOpen(false);
       setCreateTitle("");
       setCreateDesc("");
       setCreateFile(null);
+      setSelectedBranchId("");
+      setSelectedBatchId("");
+      setSubject("");
+      setTopic("");
+      setSubTopic("");
+      setMarks("");
+      setQuestionsCount("");
+      setScheduleTime("");
+      setAdditionalRequirements("");
+      setHasAccessCode("no");
+      setAccessCode("");
+
       toast.success("Request submitted");
     } catch (e: any) {
       toast.error(e.message);
@@ -336,15 +492,19 @@ export default function QuestionPaperRequests() {
                       {req.title}
                     </TableCell>
                     <TableCell>
-                      <a
-                        href={req.file_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex max-w-[140px] items-center gap-1 truncate text-xs text-primary hover:underline"
-                      >
-                        {req.file_name}
-                        <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                      </a>
+                      {req.file_url ? (
+                        <a
+                          href={req.file_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex max-w-[140px] items-center gap-1 truncate text-xs text-primary hover:underline"
+                        >
+                          {req.file_name || "View Paper"}
+                          <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                        </a>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No file attached</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <span
@@ -405,30 +565,229 @@ export default function QuestionPaperRequests() {
 
       {/* ── Create dialog ── */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>New Question Paper Request</DialogTitle>
+            <DialogTitle className="text-lg font-bold">New Question Paper Request</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label>Title *</Label>
+          <div className="max-h-[65vh] space-y-5 overflow-y-auto p-2 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="createTitle" className="text-sm font-semibold">
+                Title <span className="text-red-500">*</span>
+              </Label>
               <Input
+                id="createTitle"
                 placeholder="e.g. Class 10 Maths Term 2 2024"
                 value={createTitle}
                 onChange={(e) => setCreateTitle(e.target.value)}
+                className="rounded-lg"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label>Description</Label>
+
+            {/* Audience Section */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">
+                  Branch <span className="text-red-500">*</span>
+                </Label>
+                <Select
+                  value={selectedBranchId}
+                  onValueChange={(val) => {
+                    setSelectedBranchId(val);
+                    setSelectedBatchId("");
+                  }}
+                >
+                  <SelectTrigger className="rounded-lg">
+                    <SelectValue placeholder="Select Branch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {branches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">
+                  Batch <span className="text-red-500">*</span>
+                </Label>
+                <Select
+                  value={selectedBatchId}
+                  onValueChange={setSelectedBatchId}
+                  disabled={!selectedBranchId}
+                >
+                  <SelectTrigger className="rounded-lg">
+                    <SelectValue placeholder="Select Batch" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredBatches.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Subject and Topic Section */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="col-span-1 space-y-2">
+                <Label htmlFor="subject" className="text-sm font-semibold">
+                  Subject
+                </Label>
+                <Input
+                  id="subject"
+                  placeholder="e.g. Mathematics"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  className="rounded-lg"
+                />
+              </div>
+              <div className="col-span-1 space-y-2">
+                <Label htmlFor="topic" className="text-sm font-semibold">
+                  Topic
+                </Label>
+                <Input
+                  id="topic"
+                  placeholder="e.g. Trigonometry"
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  className="rounded-lg"
+                />
+              </div>
+              <div className="col-span-1 space-y-2">
+                <Label htmlFor="subTopic" className="text-sm font-semibold">
+                  Sub Topic
+                </Label>
+                <Input
+                  id="subTopic"
+                  placeholder="e.g. Identities"
+                  value={subTopic}
+                  onChange={(e) => setSubTopic(e.target.value)}
+                  className="rounded-lg"
+                />
+              </div>
+            </div>
+
+            {/* Marks & Questions Count Section */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="marks" className="text-sm font-semibold">
+                  Marks
+                </Label>
+                <Input
+                  id="marks"
+                  type="number"
+                  placeholder="e.g. 100"
+                  value={marks}
+                  onChange={(e) => setMarks(e.target.value)}
+                  className="rounded-lg"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="questionsCount" className="text-sm font-semibold">
+                  No of Questions
+                </Label>
+                <Input
+                  id="questionsCount"
+                  type="number"
+                  placeholder="e.g. 30"
+                  value={questionsCount}
+                  onChange={(e) => setQuestionsCount(e.target.value)}
+                  className="rounded-lg"
+                />
+              </div>
+            </div>
+
+            {/* When to Schedule */}
+            <div className="space-y-2">
+              <Label htmlFor="scheduleTime" className="text-sm font-semibold">
+                When to Schedule
+              </Label>
+              <Input
+                id="scheduleTime"
+                type="datetime-local"
+                value={scheduleTime}
+                onChange={(e) => setScheduleTime(e.target.value)}
+                className="rounded-lg"
+              />
+            </div>
+
+            {/* Access Code Selection & Input in One Row */}
+            <div className="grid grid-cols-2 items-end gap-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Access Code Required?</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={hasAccessCode === "yes" ? "default" : "outline"}
+                    onClick={() => setHasAccessCode("yes")}
+                    className="flex-1 rounded-lg text-xs"
+                  >
+                    Yes
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={hasAccessCode === "no" ? "default" : "outline"}
+                    onClick={() => {
+                      setHasAccessCode("no");
+                      setAccessCode("");
+                    }}
+                    className="flex-1 rounded-lg text-xs"
+                  >
+                    No
+                  </Button>
+                </div>
+              </div>
+
+              {hasAccessCode === "yes" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="accessCode" className="text-sm font-semibold">
+                    Enter Access Code <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="accessCode"
+                    placeholder="e.g. MATH10"
+                    value={accessCode}
+                    onChange={(e) => setAccessCode(e.target.value)}
+                    className="rounded-lg"
+                  />
+                </div>
+              ) : (
+                <div className="hidden sm:block" />
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="additionalRequirements" className="text-sm font-semibold">
+                Additional Requirement
+              </Label>
+              <Textarea
+                id="additionalRequirements"
+                placeholder="Any special instructions (optional)"
+                rows={2}
+                value={additionalRequirements}
+                onChange={(e) => setAdditionalRequirements(e.target.value)}
+                className="rounded-lg"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Description / General Note</Label>
               <Textarea
                 placeholder="Any notes for admin (optional)"
-                rows={3}
+                rows={2}
                 value={createDesc}
                 onChange={(e) => setCreateDesc(e.target.value)}
+                className="rounded-lg"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label>Question Paper *</Label>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-semibold">Question Paper File (Optional)</Label>
               <input
                 ref={createFileRef}
                 type="file"
@@ -439,24 +798,28 @@ export default function QuestionPaperRequests() {
               <button
                 type="button"
                 onClick={() => createFileRef.current?.click()}
-                className="flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border py-6 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                className="flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border py-6 text-sm text-muted-foreground transition-colors duration-200 animate-in fade-in-50 hover:border-primary hover:text-primary"
               >
-                <UploadCloud className="h-6 w-6" />
+                <UploadCloud className="h-6 w-6 text-muted-foreground" />
                 {createFile ? (
-                  <span className="max-w-[240px] truncate font-medium text-foreground">
+                  <span className="max-w-[240px] truncate text-xs font-medium text-foreground">
                     {createFile.name}
                   </span>
                 ) : (
-                  <span>Click to select PDF or image</span>
+                  <span className="text-xs">Click to select PDF or image</span>
                 )}
               </button>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+          <DialogFooter className="mt-2 flex flex-col gap-4 border-t pt-4 md:flex-row">
+            <Button
+              variant="outline"
+              onClick={() => setCreateOpen(false)}
+              className="w-full md:w-auto"
+            >
               Cancel
             </Button>
-            <Button onClick={handleCreate} disabled={createBusy}>
+            <Button onClick={handleCreate} disabled={createBusy} className="w-full md:w-auto">
               {createBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Submit Request
             </Button>

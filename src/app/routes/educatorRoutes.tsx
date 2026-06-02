@@ -28,6 +28,7 @@ import {
   ReportedQuestions,
   SubjectiveReviewQueue,
   SubjectiveAttemptGrader,
+  LiveClasses,
 } from "@features/educator";
 import QuestionPaperRequests from "@features/educator/QuestionPaperRequests";
 
@@ -43,6 +44,8 @@ export function getEducatorRoutes() {
     >
       <Route index element={<EducatorDashboard />} />
       <Route path="dashboard" element={<EducatorDashboard />} />
+      <Route path="live-classes" element={<LiveClasses />} />
+
       <Route path="students" element={<StudentsListing />} />
       <Route path="students/:studentId" element={<StudentDetails />} />
       <Route path="batches" element={<BatchesListing />} />

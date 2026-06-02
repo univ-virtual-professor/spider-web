@@ -285,36 +285,27 @@ function HeroSection() {
           <h1
             style={{
               fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontSize: "clamp(36px, 4.5vw, 58px)",
+              fontSize: "clamp(36px, 4.5vw, 52px)",
               fontWeight: 700,
               lineHeight: 1.12,
               color: "#0f0e17",
-              marginBottom: 20,
               letterSpacing: "-1.5px",
             }}
           >
-            Launch Your Coaching
+            Launch Your Coaching Platform in Minutes
             <br />
-            <span style={{ color: PRIMARY }}>Platform in Minutes</span>
           </h1>
-          <p
-            style={{
-              fontSize: 18,
-              lineHeight: 1.7,
-              color: "#5a5970",
-              marginBottom: 24,
-              fontFamily: "'Plus Jakarta Sans','Inter', sans-serif",
-              maxWidth: 480,
-            }}
-          >
+          <h2 style={{ color: PRIMARY, marginTop: 10, fontSize: "clamp(22px, 2.5vw, 32px)" }}>
             with Test, Student Materials & Student Management
-          </p>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 24 }}>
+          </h2>
+          <div
+            style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 24, marginTop: 30 }}
+          >
             {HERO_TAGS.map((tag, i) => (
               <span
                 key={tag}
                 style={{
-                  padding: "5px 14px",
+                  padding: "8px 14px",
                   borderRadius: 100,
                   fontSize: 12,
                   fontWeight: 600,
