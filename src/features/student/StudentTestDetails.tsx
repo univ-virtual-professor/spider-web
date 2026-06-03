@@ -161,7 +161,7 @@ export default function StudentTestDetails() {
   const [currentTime, setCurrentTime] = useState(Date.now());
 
   // desktop app detection
-  const [appDetected, setAppDetected] = useState<boolean | null>(null);
+  const [launchingDesktop, setLaunchingDesktop] = useState(false);
   const [downloadModalOpen, setDownloadModalOpen] = useState(false);
   const [examModeChoice, setExamModeChoice] = useState<"web" | "desktop" | null>(null);
 
@@ -547,19 +547,7 @@ export default function StudentTestDetails() {
     }
   };
 
-  // Detect if desktop app is running via local ping server
-  useEffect(() => {
-    if (!test || test.examMode === "web") return;
-    fetch("http://localhost:41337/ping", { signal: AbortSignal.timeout(1500) })
-      .then((r) => r.ok && setAppDetected(true))
-      .catch(() => setAppDetected(false));
-  }, [test?.examMode]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const openOnDesktop = async () => {
-    if (appDetected === false) {
-      setDownloadModalOpen(true);
-      return;
-    }
     const idToken = await firebaseUser?.getIdToken();
     if (!idToken || !tenantSlug || !testId) return;
     const params = new URLSearchParams({
@@ -568,7 +556,23 @@ export default function StudentTestDetails() {
       idToken,
       ...(batchAssignmentId ? { assignmentId: batchAssignmentId } : {}),
     });
+
+    setLaunchingDesktop(true);
+
+    // Fire the deep link — if app is installed, OS will open it and window will blur
     window.location.href = `preparekaro://launch?${params.toString()}`;
+
+    // If window doesn't blur within 2.5s, app probably isn't installed
+    const timeout = setTimeout(() => {
+      setLaunchingDesktop(false);
+      setDownloadModalOpen(true);
+    }, 2500);
+
+    const onBlur = () => {
+      clearTimeout(timeout);
+      setLaunchingDesktop(false);
+    };
+    window.addEventListener("blur", onBlur, { once: true });
   };
 
   const startTest = () => {
@@ -711,10 +715,10 @@ export default function StudentTestDetails() {
                     <Button
                       className="gradient-bg rounded-xl"
                       onClick={openOnDesktop}
-                      disabled={attemptsLeft <= 0 || isUpcoming}
+                      disabled={attemptsLeft <= 0 || isUpcoming || launchingDesktop}
                     >
                       <Monitor className="mr-2 h-4 w-4" />
-                      {isUpcoming ? "Starts Soon" : "Open in Desktop App"}
+                      {isUpcoming ? "Starts Soon" : launchingDesktop ? "Launching…" : "Open in Desktop App"}
                     </Button>
                   )}
 
@@ -724,10 +728,10 @@ export default function StudentTestDetails() {
                       <Button
                         className="gradient-bg rounded-xl"
                         onClick={openOnDesktop}
-                        disabled={attemptsLeft <= 0 || isUpcoming}
+                        disabled={attemptsLeft <= 0 || isUpcoming || launchingDesktop}
                       >
                         <Monitor className="mr-2 h-4 w-4" />
-                        Open in Desktop App
+                        {launchingDesktop ? "Launching…" : "Open in Desktop App"}
                       </Button>
                       <Button
                         variant="outline"
@@ -796,9 +800,9 @@ export default function StudentTestDetails() {
                 </DialogHeader>
                 <div className="space-y-2 py-2">
                   {[
-                    { label: "Windows (.exe)", href: "#" },
-                    { label: "macOS (.dmg)", href: "#" },
-                    { label: "Linux (.AppImage)", href: "#" },
+                    { label: "Windows (.exe)", href: "https://github.com/univ-virtual-professor/spider-desktop/releases/latest/download/PrepareKaro-Exam-Setup-1.0.2.exe" },
+                    { label: "macOS (.dmg)", href: "https://github.com/univ-virtual-professor/spider-desktop/releases/latest" },
+                    { label: "Linux (.AppImage)", href: "https://github.com/univ-virtual-professor/spider-desktop/releases/latest" },
                   ].map(({ label, href }) => (
                     <a
                       key={label}
