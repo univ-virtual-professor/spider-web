@@ -4,7 +4,6 @@ import { motion } from "framer-motion";
 import {
   Search,
   Plus,
-  Minus,
   Edit,
   Trash2,
   FileText,
@@ -1254,63 +1253,6 @@ export default function TestSeries() {
   return (
     <div className="space-y-6 p-1">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3 rounded-2xl border border-border/50 bg-white px-4 py-2 shadow-sm dark:bg-card">
-          <div className="shrink-0 rounded-xl bg-primary/10 p-2 text-primary">
-            <Award className="h-4 w-4" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold uppercase leading-tight tracking-wider text-muted-foreground">
-              Default Limit
-            </span>
-            <span className="text-xs font-semibold text-foreground">Global Attempts</span>
-          </div>
-          <div className="mx-2 h-8 w-px shrink-0 bg-border/60" />
-          {savingGlobalAttempts ? (
-            <Loader2 className="h-4 w-4 animate-spin text-primary" />
-          ) : (
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => {
-                  const idx = ATTEMPTS_OPTIONS.findIndex(
-                    (o) => o.value === String(globalAttemptsAllowed)
-                  );
-                  const prev =
-                    ATTEMPTS_OPTIONS[(idx - 1 + ATTEMPTS_OPTIONS.length) % ATTEMPTS_OPTIONS.length];
-                  handleSaveGlobalAttempts(Number(prev.value));
-                }}
-                className="flex h-7 w-7 items-center justify-center rounded-lg border bg-muted/50 text-muted-foreground hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
-              >
-                <Minus className="h-3 w-3" />
-              </button>
-              <div className="flex min-w-[52px] flex-col items-center">
-                <span className="text-lg font-black leading-none text-primary">
-                  {globalAttemptsAllowed === 0 ? "∞" : globalAttemptsAllowed}
-                </span>
-                <span className="text-[9px] font-medium text-muted-foreground">
-                  {globalAttemptsAllowed === 0
-                    ? "unlimited"
-                    : globalAttemptsAllowed === 1
-                      ? "attempt"
-                      : "attempts"}
-                </span>
-              </div>
-              <button
-                disabled={globalAttemptsAllowed >= 2}
-                onClick={() => {
-                  const idx = ATTEMPTS_OPTIONS.findIndex(
-                    (o) => o.value === String(globalAttemptsAllowed)
-                  );
-                  const next = ATTEMPTS_OPTIONS[(idx + 1) % ATTEMPTS_OPTIONS.length];
-                  handleSaveGlobalAttempts(Number(next.value));
-                }}
-                className="flex h-7 w-7 items-center justify-center rounded-lg border bg-muted/50 text-muted-foreground hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
-              >
-                <Plus className="h-3 w-3" />
-              </button>
-            </div>
-          )}
-        </div>
-
         <div className="flex items-center gap-2">
           {!isApp && (
             <div

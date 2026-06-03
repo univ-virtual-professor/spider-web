@@ -157,6 +157,7 @@ export default function StudentTestDetails() {
   const [unlockWindowExpiresAt, setUnlockWindowExpiresAt] = useState<number | null>(null);
   const [windowTimeLeft, setWindowTimeLeft] = useState<number | null>(null);
   const [attempts, setAttempts] = useState<AttemptRow[]>([]);
+  const [attemptsResetAtMs, setAttemptsResetAtMs] = useState<number>(0);
   const [currentTime, setCurrentTime] = useState(Date.now());
 
   // desktop app detection
@@ -287,6 +288,7 @@ export default function StudentTestDetails() {
               const assignDoc = sortedAssignDocs[0];
               const assignment = assignDoc.data() as any;
               setBatchAssignmentId(assignDoc.id);
+              setAttemptsResetAtMs(assignment.attemptsResetAt?.toMillis?.() ?? 0);
               if (assignment.attemptsAllowed != null) {
                 assignmentAttemptsAllowed = Number(assignment.attemptsAllowed);
               }
@@ -460,7 +462,9 @@ export default function StudentTestDetails() {
     return false;
   }, [test, unlocked, unlockWindowExpiresAt, isLive, currentTime]);
 
-  const attemptsUsed = attempts.length;
+  const attemptsUsed = attemptsResetAtMs
+    ? attempts.filter((a) => a.createdAtMs >= attemptsResetAtMs).length
+    : attempts.length;
   const attemptsLeft = test ? Math.max(0, test.attemptsAllowed - attemptsUsed) : 0;
 
   const openUnlock = () => {

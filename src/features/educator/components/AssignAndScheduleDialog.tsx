@@ -491,6 +491,7 @@ export default function AssignAndScheduleDialog({
             attemptsAllowed: Number(cfg.attemptsAllowed) || 3,
             examMode: cfg.examMode,
             proctoringConfig: cfg.examMode !== "web" ? cfg.proctoringConfig : null,
+            attemptsResetAt: ts,
             updatedAt: ts,
           };
           if (existingAssignDoc) {
@@ -567,6 +568,7 @@ export default function AssignAndScheduleDialog({
             attemptsAllowed: Number(cfg.attemptsAllowed) || 3,
             examMode: cfg.examMode,
             proctoringConfig: cfg.examMode !== "web" ? cfg.proctoringConfig : null,
+            attemptsResetAt: ts,
             updatedAt: ts,
           };
           if (existingAssignDoc) {
