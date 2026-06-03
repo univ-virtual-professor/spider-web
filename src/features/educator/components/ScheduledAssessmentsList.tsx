@@ -239,10 +239,16 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
     allBatches,
   ]);
 
-  const formatTime = (ts: any) => {
+  const formatTime = (ts: any, includeYear = true) => {
     if (!ts) return "—";
     const d = typeof ts?.toDate === "function" ? ts.toDate() : new Date(ts);
-    return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    if (includeYear) {
+      return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    } else {
+      const dateStr = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      const timeStr = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+      return `${dateStr}, ${timeStr}`;
+    }
   };
 
   const getStatusBadge = (a: AssignmentDoc) => {
@@ -272,10 +278,15 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
     <div className="space-y-6">
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
+          <p className="hidden text-sm text-muted-foreground md:block">
             Filter by branch and program to see scheduled {type === "tests" ? "tests" : "DPPs"}.
           </p>
-          <Button size="sm" variant="outline" onClick={() => navigate("/educator/batches")}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => navigate("/educator/batches")}
+            className="hidden md:block"
+          >
             <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
             Manage by Batch
           </Button>
@@ -355,7 +366,7 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
                 </TableHead>
                 <TableHead className="font-semibold">Batch</TableHead>
                 <TableHead className="font-semibold">Schedule</TableHead>
-                <TableHead className="font-semibold">Status</TableHead>
+                <TableHead className="hidden font-semibold md:table-cell">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -382,21 +393,28 @@ export default function ScheduledAssessmentsList({ type }: ScheduledAssessmentsL
                     <TableCell>
                       <div className="font-medium text-foreground">{a.testTitle}</div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{a.batchName}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground md:text-sm">
+                      {a.batchName}
+                    </TableCell>
                     <TableCell>
-                      <div className="flex flex-col gap-1 text-sm">
-                        <span className="flex items-center gap-1.5">
-                          <CalendarRange className="h-3 w-3 text-muted-foreground" />
-                          {formatTime(a.startTime)}
+                      <div className="flex flex-col gap-1">
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-foreground md:text-sm">
+                          <CalendarRange className="hidden h-3.5 w-3.5 shrink-0 text-muted-foreground md:block" />
+                          <span className="md:hidden">{formatTime(a.startTime, false)}</span>
+                          <span className="hidden md:inline">{formatTime(a.startTime, true)}</span>
                         </span>
                         {a.endTime && (
-                          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <Clock className="h-3 w-3" /> Until {formatTime(a.endTime)}
+                          <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground md:text-xs">
+                            <Clock className="hidden h-3 w-3 shrink-0 md:block" />
+                            <span className="md:hidden">Until {formatTime(a.endTime, false)}</span>
+                            <span className="hidden md:flex">
+                              Until {formatTime(a.endTime, true)}
+                            </span>
                           </span>
                         )}
                       </div>
                     </TableCell>
-                    <TableCell>{getStatusBadge(a)}</TableCell>
+                    <TableCell className="hidden md:table-cell">{getStatusBadge(a)}</TableCell>
                   </TableRow>
                 ))
               ) : (

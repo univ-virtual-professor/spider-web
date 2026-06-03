@@ -23,3 +23,4 @@ export { default as ReportedQuestions } from "./ReportedQuestions";
 export { default as SubjectiveReviewQueue } from "./SubjectiveReviewQueue";
 export { default as SubjectiveAttemptGrader } from "./SubjectiveAttemptGrader";
 export { default as LiveClasses } from "./LiveClasses";
+export { default as NeedsAttention } from "./NeedsAttention";

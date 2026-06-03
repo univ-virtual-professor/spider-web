@@ -104,9 +104,11 @@ export default function LiveClasses() {
   const [activeTab, setActiveTab] = useState<"scheduled" | "live" | "completed">("scheduled");
 
   // YouTube Connection Mock State
-  const [ytConnected, setYtConnected] = useState<boolean>(() => {
-    return localStorage.getItem("yt_connected") === "true";
+  const [ytConnected, setYtConnected] = useState<{ connected: boolean; channelName: string }>({
+    connected: false,
+    channelName: "",
   });
+
   const [connectingYt, setConnectingYt] = useState(false);
 
   // Form State
@@ -290,10 +292,12 @@ export default function LiveClasses() {
   const connectYoutube = async () => {
     setConnectingYt(true);
     try {
-      const response = await fetch("http://localhost:8000/youtube/auth-url");
+      const response = await fetch(
+        `http://localhost:8000/youtube/auth-url?educatorId=${educatorId}`
+      );
 
       const data = await response.json();
-      console.log(data);
+      console.log("data is", data);
 
       if (data.authUrl) {
         window.location.href = data.authUrl;
@@ -306,11 +310,20 @@ export default function LiveClasses() {
     }
   };
 
-  const handleDisconnectYouTube = async () => {
-    setYtConnected(false);
-    localStorage.removeItem("yt_connected");
-    toast.success("Disconnected YouTube account.");
-  };
+  useEffect(() => {
+    if (!educatorId) return;
+
+    const unsub = onSnapshot(doc(db, "educators", educatorId), (snap) => {
+      const data = snap.data();
+
+      setYtConnected({
+        connected: !!data?.youtubeConnected,
+        channelName: data?.youtubeChannelName,
+      });
+    });
+
+    return unsub;
+  }, [educatorId]);
 
   const handleCreateLiveClass = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -925,7 +938,7 @@ export default function LiveClasses() {
                       Streaming Setup
                     </h3>
 
-                    {!ytConnected ? (
+                    {!ytConnected.connected ? (
                       <Card className="flex flex-col gap-4 rounded-xl border-amber-200 bg-amber-50/50 p-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="min-w-0 space-y-1">
                           <h4 className="flex items-center gap-1.5 text-sm font-bold text-amber-900">
@@ -959,31 +972,19 @@ export default function LiveClasses() {
                         <Card className="flex flex-col gap-4 rounded-xl border-green-200 bg-green-50/30 p-4 sm:flex-row sm:items-center sm:justify-between">
                           <div className="flex items-center gap-3">
                             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-600 text-sm font-bold text-white shadow-sm">
-                              PK
+                              {ytConnected.channelName[0]}
                             </div>
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <h4 className="truncate text-sm font-bold text-green-950">
-                                  PrepareKaro Live Channel
+                                  {ytConnected.channelName}
                                 </h4>
-                                <Badge className="shrink-0 rounded-full border-none bg-green-500/10 px-2 py-0 text-[9px] font-extrabold text-green-600 hover:bg-green-500/10">
-                                  CONNECTED
-                                </Badge>
                               </div>
-                              <p className="truncate text-xs text-green-700/80">
-                                youtube.com/c/preparekarolive
-                              </p>
                             </div>
                           </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={handleDisconnectYouTube}
-                            className="shrink-0 text-xs text-destructive hover:bg-destructive/10"
-                          >
-                            Disconnect
-                          </Button>
+                          <Badge className="shrink-0 text-xs text-destructive hover:bg-destructive/10">
+                            Connected
+                          </Badge>
                         </Card>
 
                         <div className="flex items-center space-x-2 rounded-lg border border-border/40 bg-muted/30 p-3">

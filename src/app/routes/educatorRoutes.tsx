@@ -29,6 +29,7 @@ import {
   SubjectiveReviewQueue,
   SubjectiveAttemptGrader,
   LiveClasses,
+  NeedsAttention,
 } from "@features/educator";
 import QuestionPaperRequests from "@features/educator/QuestionPaperRequests";
 
@@ -62,6 +63,7 @@ export function getEducatorRoutes() {
       <Route path="billing" element={<Billing />} />
       <Route path="analytics" element={<EducatorAnalytics />} />
       <Route path="analytics/health/:category" element={<StudentHealthCategoryList />} />
+      <Route path="needs-attention" element={<NeedsAttention />} />
       <Route path="seat-allocation" element={<SeatAllocation />} />
       <Route path="settings" element={<Settings />} />
       <Route path="organization" element={<Divisions />} />
