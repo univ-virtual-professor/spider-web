@@ -22,7 +22,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
-import { Key, Clock, Copy, Check, RotateCcw, Monitor, Globe, Layers } from "lucide-react";
+import { Key, Clock, Copy, Check, RotateCcw, Monitor, Globe, Layers, Unlock } from "lucide-react";
 import { cn } from "@shared/lib/utils";
 
 export type Batch = {
@@ -52,7 +52,7 @@ const DEFAULT_PROCTORING: ProctoringConfig = {
 };
 
 type BatchConfig = {
-  accessType: "scheduled" | "access_code";
+  accessType: "scheduled" | "access_code" | "open";
   startDate: string;
   startTime: string;
   endDate: string;
@@ -78,9 +78,9 @@ function toEndOfDay(s: string): Timestamp | null {
   return Timestamp.fromDate(new Date(y, m - 1, d, 23, 59, 59, 999));
 }
 
-function defaultConfig(attemptsAllowed = "3"): BatchConfig {
+function defaultConfig(attemptsAllowed = "3", isDpp = false): BatchConfig {
   return {
-    accessType: "scheduled",
+    accessType: isDpp ? "open" : "scheduled",
     startDate: "",
     startTime: "09:00",
     endDate: "",
@@ -99,11 +99,11 @@ function defaultConfig(attemptsAllowed = "3"): BatchConfig {
 interface Props {
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  test: { id: string; title?: string; attemptsAllowed?: number } | null;
+  test: { id: string; title?: string; attemptsAllowed?: number; type?: string } | null;
   allBatches: Batch[];
   educatorId: string;
   preselectedBatchId?: string;
-  allTests?: { id: string; title?: string; attemptsAllowed?: number }[];
+  allTests?: { id: string; title?: string; attemptsAllowed?: number; type?: string }[];
 }
 
 export default function AssignAndScheduleDialog({
@@ -116,10 +116,11 @@ export default function AssignAndScheduleDialog({
   allTests = [],
 }: Props) {
   const needsTestPick = !initialTest && !!preselectedBatchId;
-  const [selectedTest, setSelectedTest] = useState<{ id: string; title?: string } | null>(
+  const [selectedTest, setSelectedTest] = useState<{ id: string; title?: string; type?: string } | null>(
     initialTest
   );
   const test = initialTest ?? selectedTest;
+  const isDpp = test?.type === "from_dpp";
 
   // step: 0 = pick test (only when no test given), 1 = pick batches, 2 = access method
   const initialStep = needsTestPick ? 0 : preselectedBatchId ? 2 : 1;
@@ -129,7 +130,7 @@ export default function AssignAndScheduleDialog({
   );
   const [perBatch, setPerBatch] = useState(false);
   const [globalConfig, setGlobalConfig] = useState<BatchConfig>(() =>
-    defaultConfig(String(initialTest?.attemptsAllowed ?? 3))
+    defaultConfig(String(initialTest?.attemptsAllowed ?? 3), initialTest?.type === "from_dpp")
   );
   const [perBatchConfigs, setPerBatchConfigs] = useState<Record<string, BatchConfig>>({});
   const [saving, setSaving] = useState(false);
@@ -140,7 +141,7 @@ export default function AssignAndScheduleDialog({
     setSelectedTest(initialTest);
     setSelectedIds(preselectedBatchId ? [preselectedBatchId] : []);
     setPerBatch(false);
-    setGlobalConfig(defaultConfig(String(initialTest?.attemptsAllowed ?? 3)));
+    setGlobalConfig(defaultConfig(String(initialTest?.attemptsAllowed ?? 3), initialTest?.type === "from_dpp"));
     setPerBatchConfigs({});
     setSaving(false);
     setCopied(null);
@@ -173,7 +174,8 @@ export default function AssignAndScheduleDialog({
   function renderForm(
     cfg: BatchConfig,
     update: (field: keyof BatchConfig, value: any) => void,
-    codeKey: string
+    codeKey: string,
+    formIsDpp = false
   ) {
     return (
       <div className="space-y-3">
@@ -194,22 +196,41 @@ export default function AssignAndScheduleDialog({
               <p className="text-xs text-muted-foreground">Set start/end time</p>
             </div>
           </button>
-          <button
-            type="button"
-            onClick={() => update("accessType", "access_code")}
-            className={cn(
-              "flex flex-1 items-center gap-2 rounded-xl border-2 p-3 text-left transition-all",
-              cfg.accessType === "access_code"
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-muted"
-            )}
-          >
-            <Key className="h-4 w-4 shrink-0 text-primary" />
-            <div>
-              <p className="text-sm font-semibold">Access Code</p>
-              <p className="text-xs text-muted-foreground">Student enters code</p>
-            </div>
-          </button>
+          {formIsDpp ? (
+            <button
+              type="button"
+              onClick={() => update("accessType", "open")}
+              className={cn(
+                "flex flex-1 items-center gap-2 rounded-xl border-2 p-3 text-left transition-all",
+                cfg.accessType === "open"
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-muted"
+              )}
+            >
+              <Unlock className="h-4 w-4 shrink-0 text-primary" />
+              <div>
+                <p className="text-sm font-semibold">Open Access</p>
+                <p className="text-xs text-muted-foreground">Always accessible</p>
+              </div>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => update("accessType", "access_code")}
+              className={cn(
+                "flex flex-1 items-center gap-2 rounded-xl border-2 p-3 text-left transition-all",
+                cfg.accessType === "access_code"
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-muted"
+              )}
+            >
+              <Key className="h-4 w-4 shrink-0 text-primary" />
+              <div>
+                <p className="text-sm font-semibold">Access Code</p>
+                <p className="text-xs text-muted-foreground">Student enters code</p>
+              </div>
+            </button>
+          )}
         </div>
 
         {cfg.accessType === "scheduled" && (
@@ -449,12 +470,13 @@ export default function AssignAndScheduleDialog({
           toast.error(`End must be after start for ${batch.name}`);
           return;
         }
-      } else {
+      } else if (cfg.accessType === "access_code") {
         if (!cfg.code.trim()) {
           toast.error(`Enter a code for ${batch.name}`);
           return;
         }
       }
+      // "open" type requires no validation
     }
 
     setSaving(true);
@@ -480,7 +502,37 @@ export default function AssignAndScheduleDialog({
           await deleteDoc(stale.ref);
         }
 
-        if (cfg.accessType === "scheduled") {
+        if (cfg.accessType === "open") {
+          const openData = {
+            testId: test.id,
+            testTitle: test.title || "",
+            batchId: batch.id,
+            batchName: batch.name,
+            accessType: "open",
+            startTime: null,
+            endTime: null,
+            isScheduleActive: false,
+            accessCode: null,
+            maxUses: null,
+            expiresAt: null,
+            windowMinutes: null,
+            attemptsAllowed: Number(cfg.attemptsAllowed) || 3,
+            examMode: cfg.examMode,
+            proctoringConfig: cfg.examMode !== "web" ? cfg.proctoringConfig : null,
+            updatedAt: ts,
+          };
+          if (existingAssignDoc) {
+            await setDoc(existingAssignDoc.ref, {
+              ...openData,
+              createdAt: existingAssignDoc.data().createdAt,
+            });
+          } else {
+            await addDoc(collection(db, "educators", educatorId, "batchAssignments"), {
+              ...openData,
+              createdAt: ts,
+            });
+          }
+        } else if (cfg.accessType === "scheduled") {
           const start = Timestamp.fromDate(new Date(`${cfg.startDate}T${cfg.startTime}`));
           const end = Timestamp.fromDate(new Date(`${cfg.endDate}T${cfg.endTime}`));
           const scheduledData = {
@@ -631,7 +683,7 @@ export default function AssignAndScheduleDialog({
                     type="button"
                     onClick={() => {
                       setSelectedTest(t);
-                      setGlobalConfig(defaultConfig(String(t.attemptsAllowed ?? 3)));
+                      setGlobalConfig(defaultConfig(String(t.attemptsAllowed ?? 3), t.type === "from_dpp"));
                     }}
                     className={`w-full rounded px-2 py-2 text-left text-sm transition-colors hover:bg-muted ${
                       selectedTest?.id === t.id ? "bg-primary/10 font-medium text-primary" : ""
@@ -731,14 +783,14 @@ export default function AssignAndScheduleDialog({
 
             {!perBatch ? (
               <div className="max-h-[55vh] overflow-y-auto pr-1">
-                {renderForm(globalConfig, updateGlobal, "__global")}
+                {renderForm(globalConfig, updateGlobal, "__global", isDpp)}
               </div>
             ) : (
               <div className="max-h-[360px] space-y-4 overflow-y-auto">
                 {selectedBatches.map((b) => (
                   <div key={b.id} className="space-y-3 rounded-xl border p-3">
                     <p className="text-sm font-semibold">{b.name}</p>
-                    {renderForm(getCfg(b.id), (f, v) => updatePerBatch(b.id, f, v), b.id)}
+                    {renderForm(getCfg(b.id), (f, v) => updatePerBatch(b.id, f, v), b.id, isDpp)}
                   </div>
                 ))}
               </div>

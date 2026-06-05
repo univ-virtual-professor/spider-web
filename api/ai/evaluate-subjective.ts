@@ -1,5 +1,5 @@
 import { VercelRequest, VercelResponse } from "@vercel/node";
-import { GoogleGenerativeAI, SchemaType, type GenerationConfig } from "@google/generative-ai";
+import { VertexAI, SchemaType, type GenerationConfig } from "@google-cloud/vertexai";
 import { getGeminiModelNameFromEnv } from "../_lib/geminiModel.js";
 import { notifyDiscord, sendDiscordEmbed } from "../_lib/discordLogger.js";
 import { parseAiJson } from "../_lib/parseAiJson.js";
@@ -232,13 +232,26 @@ async function buildRequestParts(req: EvaluationRequest) {
 const GEMINI_MAX_RETRIES = 3;
 const GEMINI_RETRY_BASE_MS = 1000;
 
-async function evaluateWithGemini(parts: any[], maxScore: number): Promise<EvaluationResponse> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not configured");
+function parseServiceAccount() {
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || "";
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return JSON.parse(Buffer.from(raw, "base64").toString("utf8"));
+  }
+}
+
+async function evaluateWithGemini(parts: any[], maxScore: number): Promise<{ result: EvaluationResponse; tokens: number }> {
+  if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not configured");
   }
 
-  const genAI = new GoogleGenerativeAI(apiKey);
+  const sa = parseServiceAccount();
+  const vertex = new VertexAI({
+    project: sa.project_id,
+    location: process.env.VERTEX_LOCATION || "us-central1",
+    googleAuthOptions: { credentials: sa },
+  });
 
   const generationConfig: GenerationConfig = {
     temperature: 0.3,
@@ -247,7 +260,7 @@ async function evaluateWithGemini(parts: any[], maxScore: number): Promise<Evalu
     responseSchema: evaluationSchema as any,
   };
 
-  const model = genAI.getGenerativeModel({
+  const model = vertex.getGenerativeModel({
     model: getGeminiModelNameFromEnv(),
     generationConfig,
     systemInstruction: SYSTEM_INSTRUCTION,
@@ -269,6 +282,7 @@ async function evaluateWithGemini(parts: any[], maxScore: number): Promise<Evalu
       }
       const text = result.response.text();
       if (!text) throw new Error("Gemini returned an empty response");
+      const tokensUsed: number = (result.response as any).usageMetadata?.totalTokenCount ?? 0;
 
       let parsed: EvaluationResponse;
       try {
@@ -291,7 +305,7 @@ async function evaluateWithGemini(parts: any[], maxScore: number): Promise<Evalu
       parsed.confidence = Math.max(0, Math.min(1, Number(parsed.confidence) || 0.5));
       parsed.evaluatedAt = Date.now();
 
-      return parsed;
+      return { result: parsed, tokens: tokensUsed };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (attempt < GEMINI_MAX_RETRIES - 1) {
@@ -305,6 +319,19 @@ async function evaluateWithGemini(parts: any[], maxScore: number): Promise<Evalu
   }
 
   throw lastError;
+}
+
+async function reportAiUsage(tokens: number, idToken: string | undefined): Promise<void> {
+  if (!tokens || !idToken || !process.env.VITE_MONKEY_KING_API_URL) return;
+  try {
+    await fetch(`${process.env.VITE_MONKEY_KING_API_URL}/api/ai/report-usage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+      body: JSON.stringify({ feature: "subjEval", tokens }),
+    });
+  } catch {
+    // Non-blocking — eval result still returned
+  }
 }
 
 interface BatchEvaluationRequest {
@@ -329,15 +356,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: "No evaluations provided" });
       }
 
-      if (!process.env.GEMINI_API_KEY) {
-        void sendDiscordEmbed("error", "🔴 GEMINI_API_KEY not configured", [
+      if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+        void sendDiscordEmbed("error", "🔴 FIREBASE_SERVICE_ACCOUNT_JSON not configured", [
           {
             name: "Impact",
             value: `Batch of ${evaluations.length} subjective answers cannot be evaluated`,
           },
-          { name: "Fix", value: "Add GEMINI_API_KEY to Vercel environment variables and redeploy" },
+          { name: "Fix", value: "Add FIREBASE_SERVICE_ACCOUNT_JSON to Vercel environment variables and redeploy" },
         ]);
-        return res.status(500).json({ error: "GEMINI_API_KEY is not configured" });
+        return res.status(500).json({ error: "FIREBASE_SERVICE_ACCOUNT_JSON is not configured" });
       }
 
       void sendDiscordEmbed("info", "📝 Subjective evaluation started", [
@@ -348,11 +375,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const results: Record<string, EvaluationResponse> = {};
       const failed: string[] = [];
+      let batchTokens = 0;
 
       for (const evalReq of evaluations) {
         try {
           const parts = await buildRequestParts(evalReq);
-          const result = await evaluateWithGemini(parts, evalReq.maxScore);
+          const { result, tokens } = await evaluateWithGemini(parts, evalReq.maxScore);
+          batchTokens += tokens;
           results[evalReq.questionId] = result;
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -397,6 +426,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ]
       );
 
+      void reportAiUsage(batchTokens, req.headers["authorization"]?.replace("Bearer ", ""));
+
       return res.status(200).json({ results } as BatchEvaluationResponse);
     }
 
@@ -411,16 +442,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: "Missing questionType" });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      void sendDiscordEmbed("error", "🔴 GEMINI_API_KEY not configured", [
+    if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+      void sendDiscordEmbed("error", "🔴 FIREBASE_SERVICE_ACCOUNT_JSON not configured", [
         { name: "Impact", value: "Single subjective answer cannot be evaluated" },
-        { name: "Fix", value: "Add GEMINI_API_KEY to Vercel environment variables and redeploy" },
+        { name: "Fix", value: "Add FIREBASE_SERVICE_ACCOUNT_JSON to Vercel environment variables and redeploy" },
       ]);
-      return res.status(500).json({ error: "GEMINI_API_KEY is not configured" });
+      return res.status(500).json({ error: "FIREBASE_SERVICE_ACCOUNT_JSON is not configured" });
     }
 
     const parts = await buildRequestParts(evalReq);
-    const result = await evaluateWithGemini(parts, evalReq.maxScore || 5);
+    const { result, tokens } = await evaluateWithGemini(parts, evalReq.maxScore || 5);
+
+    void reportAiUsage(tokens, req.headers["authorization"]?.replace("Bearer ", ""));
 
     void sendDiscordEmbed("success", "✅ Single evaluation complete", [
       { name: "Question ID", value: evalReq.questionId, inline: true },

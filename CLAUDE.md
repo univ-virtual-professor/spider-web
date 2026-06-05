@@ -135,8 +135,8 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
 - **Backend**: `monkey-king /api/chat/*` endpoints (FastAPI)
   - `POST /api/chat/extract-upload` — multipart file upload (STUDENT auth); extracts text from PDF or describes image via Gemini Vision; returns `{ context: str }`
   - `POST /api/chat/message` — `content_ids[]` filters Pinecone (course mode); `uploaded_context` bypasses Pinecone entirely (upload mode); `topic_context` injected into system prompt; returns `contextSources[]`
-  - `GET /api/chat/usage` — tokens used today vs. limit
-- **Token limit**: `educators/{uid}.chatDailyTokenLimit` (default 100,000)
+  - `GET /api/chat/usage` — returns educator's monthly AI credit status (`percentUsed`, `breakdown`, `resetDate`, etc.)
+- **AI Credits**: chatbot usage deducts from educator's monthly AI credit pool; no per-student daily limit; educator can set a `chatCreditCap` sub-limit from their Settings page; HTTP 402 returned when credits exhausted
 
 ## DPP Auto-Scheduling
 
@@ -178,10 +178,19 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
 ## Environment Variables
 
 - `VITE_FIREBASE_*` — Firebase client config
-- Vercel functions use `FIREBASE_SERVICE_ACCOUNT_JSON` (base64 or raw JSON), `GEMINI_API_KEY`, `DISCORD_WEBHOOK_URL`
+- Vercel functions use `FIREBASE_SERVICE_ACCOUNT_JSON` (base64 or raw JSON), `DISCORD_WEBHOOK_URL`, `VITE_MONKEY_KING_API_URL` (for report-usage calls), `VERTEX_LOCATION` (default `us-central1`); `GEMINI_API_KEY` no longer used — replaced by Vertex AI via service account
 - `RAZORPAY_WEBHOOK_SECRET` — still needed for legacy Razorpay webhook handler
 - `ADMIN_MAX_FILE_SIZE_MB` — max upload size for admin content (default 100)
 - `EDUCATOR_MAX_FILE_SIZE_MB` — max upload size for educator content (default 20)
+
+## AI Credits System
+
+- **Educator view**: `Billing.tsx` — AI Credits gauge at top (% used, feature breakdown, warning at ≥80%, red at 100%); resets on 1st of each month
+- **Educator settings**: `Settings.tsx` → `AiTutorSettings` component — toggle chatbot on/off (`features.chatbot`), set optional `chatCreditCap` (max credits chatbot can consume from monthly pool)
+- **Admin view**: `SeatManagement.tsx` AI Credits card — set `aiCreditLimit` (monthly units), optional per-educator `aiCommissionMultiplier`, live usage bar with feature breakdown
+- **Firestore**: `educators/{uid}/aiUsage/{YYYY-MM}` — subscribed to in both Billing and SeatManagement for live updates
+- **HTTP 402**: all AI features return `{ error: "ai_credits_exhausted", message: "...", percentUsed: float }` when limit hit; handle in each feature component with a user-facing message
+- **Vercel → backend**: `evaluate-subjective.ts` and `import-test-questions.ts` call `POST /api/ai/report-usage` on monkey-king after each successful AI call (non-blocking, passes educator's Firebase ID token via `Authorization` header forwarded from frontend)
 
 ## Filter System (Question Bank / Templates / Test Bank)
 

@@ -126,12 +126,12 @@ let geminiLoader: Promise<any> | null = null;
 async function getGeminiAI() {
   try {
     if (!geminiLoader) {
-      geminiLoader = import("@google/generative-ai") as Promise<any>;
+      geminiLoader = import("@google-cloud/vertexai") as Promise<any>;
     }
     const mod = await geminiLoader;
     return mod;
   } catch (err) {
-    console.error("[getGeminiAI] Error loading GoogleGenerativeAI:", err);
+    console.error("[getGeminiAI] Error loading VertexAI:", err);
     throw err;
   }
 }
@@ -595,17 +595,24 @@ async function processWithGemini(
   context: { testTitle?: string; subject?: string; pageText?: string }
 ): Promise<GeminiResponse> {
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY is not configured");
+    if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+      throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not configured");
     }
 
     const modelName = getGeminiModelNameFromEnv();
 
-    // Lazy-load GoogleGenerativeAI
-    const { GoogleGenerativeAI } = await getGeminiAI();
+    // Lazy-load VertexAI
+    const { VertexAI } = await getGeminiAI();
 
-    const genAI = new GoogleGenerativeAI(apiKey);
+    const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+    let sa: any;
+    try { sa = JSON.parse(saRaw); } catch { sa = JSON.parse(Buffer.from(saRaw, "base64").toString("utf8")); }
+
+    const vertex = new VertexAI({
+      project: sa.project_id,
+      location: process.env.VERTEX_LOCATION || "us-central1",
+      googleAuthOptions: { credentials: sa },
+    });
 
     // Build schema dynamically
     const mcqSchema = await buildMcqSchema();
@@ -617,7 +624,7 @@ async function processWithGemini(
       responseSchema: mcqSchema as any, // SDK typing requires cast
     };
 
-    const model = genAI.getGenerativeModel({
+    const model = vertex.getGenerativeModel({
       model: modelName,
       generationConfig,
       systemInstruction: buildSystemInstruction({
@@ -659,6 +666,7 @@ async function processWithGemini(
     if (!text) {
       throw new Error("Gemini returned an empty response");
     }
+    const tokensUsed: number = (result.response as any).usageMetadata?.totalTokenCount ?? 0;
 
     let parsed: GeminiResponse;
     try {
@@ -677,7 +685,7 @@ async function processWithGemini(
       throw new Error("Gemini response did not match expected schema (missing 'items' array)");
     }
 
-    return parsed;
+    return { ...parsed, tokensUsed };
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     const errorStack = err instanceof Error ? err.stack : "No stack";
@@ -1134,8 +1142,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return streamError(res, new Error("imageBase64 is required"));
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      return streamError(res, new Error("GEMINI_API_KEY is not configured"));
+    if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+      return streamError(res, new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not configured"));
     }
 
     sendStreamEvent(res, {
@@ -1168,7 +1176,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       message: "Extracting MCQ questions with AI...",
     });
 
-    let geminiResult: GeminiResponse;
+    let geminiResult: GeminiResponse & { tokensUsed?: number };
     try {
       geminiResult = await processWithGeminiRetry(imageBuffer, mimeType, {
         testTitle,
@@ -1177,6 +1185,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     } catch (modelErr) {
       throw modelErr;
+    }
+
+    if (geminiResult.tokensUsed && process.env.VITE_MONKEY_KING_API_URL) {
+      const idToken = req.headers["authorization"]?.toString().replace("Bearer ", "");
+      if (idToken) {
+        void fetch(`${process.env.VITE_MONKEY_KING_API_URL}/api/ai/report-usage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+          body: JSON.stringify({ feature: "import", tokens: geminiResult.tokensUsed }),
+        }).catch(() => {});
+      }
     }
 
     const rawItems = Array.isArray(geminiResult?.items) ? geminiResult.items : [];

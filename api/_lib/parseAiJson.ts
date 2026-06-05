@@ -38,12 +38,18 @@ function stripCodeBlock(text: string): string {
 }
 
 async function repairWithGemini(rawText: string, schemaHint?: string): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
+  if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON not configured");
 
-  const { GoogleGenerativeAI } = await import("@google/generative-ai");
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
+  const { VertexAI } = await import("@google-cloud/vertexai");
+  const saRaw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  let sa: any;
+  try { sa = JSON.parse(saRaw); } catch { sa = JSON.parse(Buffer.from(saRaw, "base64").toString("utf8")); }
+  const vertex = new VertexAI({
+    project: sa.project_id,
+    location: process.env.VERTEX_LOCATION || "us-central1",
+    googleAuthOptions: { credentials: sa },
+  });
+  const model = vertex.getGenerativeModel({
     model: GEMINI_REPAIR_MODEL,
     generationConfig: { temperature: 0, responseMimeType: "application/json" },
     systemInstruction:
