@@ -96,11 +96,9 @@ function AiTutorSettings({ uid }: { uid: string }) {
 
   useEffect(() => {
     if (!uid) return;
-    const { getAuth } = require("firebase/auth");
-    const fbAuth = getAuth();
-    fbAuth.currentUser?.getIdToken().then((token: string) => {
-      const base = import.meta.env.VITE_MONKEY_KING_API_URL || "";
-      if (!base) return;
+    const base = import.meta.env.VITE_MONKEY_KING_API_URL || "";
+    if (!base) return;
+    auth.currentUser?.getIdToken().then((token) => {
       fetch(`${base}/api/ai/credits`, { headers: { Authorization: `Bearer ${token}` } })
         .then((r) => r.json())
         .then((data) => setCreditStatus(data))

@@ -272,7 +272,10 @@ async function evaluateWithGemini(parts: any[], maxScore: number): Promise<{ res
       await new Promise((r) => setTimeout(r, GEMINI_RETRY_BASE_MS * 2 ** (attempt - 1)));
     }
     try {
-      const result = await model.generateContent(parts);
+      const normalizedParts = parts.map((p: any) => typeof p === "string" ? { text: p } : p);
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: normalizedParts }],
+      });
       const candidate = result.response.candidates?.[0];
       if (candidate?.finishReason === "MAX_TOKENS") {
         void sendDiscordEmbed("warning", "⚠️ Gemini hit MAX_TOKENS — feedback may be truncated", [
