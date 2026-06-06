@@ -62,7 +62,7 @@ interface Assignment {
   testTitle: string;
   batchId: string;
   batchName: string;
-  accessType: "scheduled" | "access_code";
+  accessType: "scheduled" | "access_code" | "open";
   startTime: Timestamp | null;
   endTime: Timestamp | null;
   isScheduleActive: boolean;
@@ -107,7 +107,7 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
   const [activeTab, setActiveTab] = useState("live");
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [allTests, setAllTests] = useState<
-    { id: string; title?: string; attemptsAllowed?: number }[]
+    { id: string; title?: string; attemptsAllowed?: number; type?: string }[]
   >([]);
   const [loading, setLoading] = useState(true);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
@@ -144,7 +144,7 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
             testTitle: String(data.testTitle || "Untitled"),
             batchId: String(data.batchId || ""),
             batchName: String(data.batchName || ""),
-            accessType: data.accessType === "access_code" ? "access_code" : "scheduled",
+            accessType: data.accessType === "access_code" ? "access_code" : data.accessType === "open" ? "open" : "scheduled",
             startTime: data.startTime || null,
             endTime: data.endTime || null,
             isScheduleActive: Boolean(data.isScheduleActive),
@@ -173,6 +173,7 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
           id: d.id,
           title: (d.data() as any).title,
           attemptsAllowed: (d.data() as any).attemptsAllowed,
+          type: (d.data() as any).type,
         }))
       );
     });
@@ -190,7 +191,7 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
   const upcomingAssignments = useMemo(
     () =>
       assignments.filter(
-        (a) => a.accessType === "scheduled" && assignmentStatus(a, now) === "upcoming"
+        (a) => a.accessType === "open" || (a.accessType === "scheduled" && assignmentStatus(a, now) === "upcoming")
       ),
     [assignments, now]
   );
@@ -224,11 +225,12 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
       setEditStartTime(toTimeStr(a.startTime));
       setEditEndDate(toDateStr(a.endTime));
       setEditEndTime(toTimeStr(a.endTime));
-    } else {
+    } else if (a.accessType === "access_code") {
       setEditMaxUses(String(a.maxUses ?? 100));
       setEditExpiry(a.expiresAt ? a.expiresAt.toDate().toISOString().slice(0, 10) : "");
       setEditWindow(String(a.windowMinutes ?? 0));
     }
+    // "open" type: only attemptsAllowed is editable
     setEditOpen(true);
   }
 
@@ -236,7 +238,13 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
     if (!editAssignment || !batch) return;
     setEditBusy(true);
     try {
-      if (editAssignment.accessType === "scheduled") {
+      if (editAssignment.accessType === "open") {
+        await updateDoc(doc(db, "educators", educatorId, "batchAssignments", editAssignment.id), {
+          attemptsAllowed: Number(editAttemptsAllowed) || 3,
+          updatedAt: serverTimestamp(),
+        });
+        toast.success("Updated");
+      } else if (editAssignment.accessType === "scheduled") {
         if (!editStartDate || !editEndDate) {
           toast.error("Set start and end date");
           return;
@@ -328,6 +336,10 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
                   </span>
                 )}
               </>
+            ) : assignment.accessType === "open" ? (
+              <span className="flex items-center gap-1 text-green-700">
+                Open access · no code required
+              </span>
             ) : (
               <span className="flex items-center gap-1.5">
                 <Key className="h-3 w-3" />
@@ -361,6 +373,11 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
           {assignment.accessType === "access_code" && (
             <Badge variant="outline" className="border-amber-300 text-xs text-amber-700">
               Code
+            </Badge>
+          )}
+          {assignment.accessType === "open" && (
+            <Badge variant="outline" className="border-green-300 text-xs text-green-700">
+              Open
             </Badge>
           )}
           <DropdownMenu>
@@ -582,10 +599,27 @@ export default function BatchSchedulePanel({ batch, educatorId, courses, onClose
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {editAssignment?.accessType === "scheduled" ? "Edit Schedule" : "Edit Access Code"}
+              {editAssignment?.accessType === "scheduled" ? "Edit Schedule" : editAssignment?.accessType === "open" ? "Edit Open Assignment" : "Edit Access Code"}
             </DialogTitle>
           </DialogHeader>
-          {editAssignment?.accessType === "scheduled" ? (
+          {editAssignment?.accessType === "open" ? (
+            <div className="space-y-4">
+              <p className="text-xs text-muted-foreground">This DPP is open access — no code required. You can only adjust attempts.</p>
+              <div className="space-y-1">
+                <Label className="text-xs">Attempts Allowed</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={editAttemptsAllowed}
+                  onChange={(e) => setEditAttemptsAllowed(e.target.value)}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+                <Button onClick={handleEdit} disabled={editBusy}>{editBusy ? "Saving..." : "Save"}</Button>
+              </div>
+            </div>
+          ) : editAssignment?.accessType === "scheduled" ? (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">

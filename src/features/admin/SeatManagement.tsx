@@ -236,10 +236,11 @@ export default function SeatManagement() {
   );
 
   // AI config
-  const [chatTokenLimit, setChatTokenLimit] = useState(100000);
-  const [dppDailyLimit, setDppDailyLimit] = useState(3);
+  const [aiCreditLimit, setAiCreditLimit] = useState(500);
+  const [aiCommissionMultiplier, setAiCommissionMultiplier] = useState<number | "">(1.5);
   const [maxQpRequests, setMaxQpRequests] = useState(5);
   const [savingAiConfig, setSavingAiConfig] = useState(false);
+  const [aiUsage, setAiUsage] = useState<{ percentUsed: number; creditsUsed: number; breakdown: Record<string, number>; month: string } | null>(null);
 
   const seatLimit = pools.reduce((sum, p) => sum + p.totalSeats, 0);
   const available = Math.max(0, seatLimit - usedSeats);
@@ -325,10 +326,31 @@ export default function SeatManagement() {
     setMaxBranchesInput(educator.maxBranches ?? 5);
     setAllowedCourseIds((educator as any).allowedCourseIds ?? []);
     setAllowedSubjectIds((educator as any).allowedSubjectIds ?? []);
-    setChatTokenLimit((educator as any).chatDailyTokenLimit ?? 100000);
-    setDppDailyLimit((educator as any).dppDailyLimit ?? 3);
+    setAiCreditLimit((educator as any).aiCreditLimit ?? 500);
+    setAiCommissionMultiplier((educator as any).aiCommissionMultiplier ?? 1.5);
     setMaxQpRequests((educator as any).maxQuestionPaperRequests ?? 5);
   }, [educator]);
+
+  // Load AI usage for selected educator
+  useEffect(() => {
+    if (!targetId) { setAiUsage(null); return; }
+    const month = new Date().toISOString().slice(0, 7);
+    const unsub = onSnapshot(doc(db, "educators", targetId, "aiUsage", month), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as any;
+        const limit = (educator as any)?.aiCreditLimit ?? 500;
+        setAiUsage({
+          percentUsed: limit > 0 ? Math.min(100, (data.creditsUsed / limit) * 100) : 0,
+          creditsUsed: data.creditsUsed ?? 0,
+          breakdown: data.breakdown ?? {},
+          month,
+        });
+      } else {
+        setAiUsage(null);
+      }
+    });
+    return () => unsub();
+  }, [targetId, educator]);
 
   // Subscribe educator + billingSeats + transactions
   useEffect(() => {
@@ -626,12 +648,15 @@ export default function SeatManagement() {
     if (!targetId) return;
     setSavingAiConfig(true);
     try {
-      await updateDoc(doc(db, "educators", targetId), {
-        chatDailyTokenLimit: Math.max(0, Math.floor(chatTokenLimit)),
-        dppDailyLimit: Math.max(0, Math.floor(dppDailyLimit)),
+      const update: Record<string, unknown> = {
+        aiCreditLimit: Math.max(0, aiCreditLimit),
         maxQuestionPaperRequests: Math.max(0, Math.floor(maxQpRequests)),
         updatedAt: serverTimestamp(),
-      });
+      };
+      if (aiCommissionMultiplier !== "") {
+        update.aiCommissionMultiplier = Math.max(1, Number(aiCommissionMultiplier));
+      }
+      await updateDoc(doc(db, "educators", targetId), update);
       toast.success("AI config saved");
     } catch {
       toast.error("Failed to save AI config");
@@ -1262,40 +1287,64 @@ export default function SeatManagement() {
             </CardContent>
           </Card>
 
-          {/* AI Config */}
+          {/* AI Credits Config */}
           <Card>
             <CardHeader>
-              <CardTitle>AI Config</CardTitle>
+              <CardTitle className="flex items-center gap-2"><Zap className="h-4 w-4" /> AI Credits</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Chatbot token limit and DPP generation quota for this educator
+                Monthly AI credit quota for this educator (covers DPP, chatbot, subjective eval, gap-fill, import)
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Usage bar */}
+              {aiUsage && (
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium">Usage this month ({aiUsage.month})</span>
+                    <span className={aiUsage.percentUsed >= 80 ? "text-amber-600 font-semibold" : "text-muted-foreground"}>
+                      {aiUsage.percentUsed.toFixed(1)}% used
+                    </span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-muted">
+                    <div
+                      className={`h-2 rounded-full transition-all ${aiUsage.percentUsed >= 100 ? "bg-red-500" : aiUsage.percentUsed >= 80 ? "bg-amber-500" : "bg-primary"}`}
+                      style={{ width: `${Math.min(100, aiUsage.percentUsed)}%` }}
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground pt-1">
+                    {Object.entries(aiUsage.breakdown).filter(([, v]) => (v as number) > 0).map(([key, val]) => (
+                      <span key={key} className="capitalize">{key}: {(val as number).toFixed(2)}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <Label className="text-sm text-muted-foreground">Chat Daily Token Limit</Label>
+                  <Label className="text-sm text-muted-foreground">Monthly Credit Limit</Label>
                   <Input
                     type="number"
                     min={0}
-                    value={chatTokenLimit}
-                    onChange={(e) => setChatTokenLimit(Number(e.target.value))}
+                    value={aiCreditLimit}
+                    onChange={(e) => setAiCreditLimit(Number(e.target.value))}
                     className="mt-1 max-w-xs"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Tokens per day for the AI chatbot (default 100,000)
+                    Total AI credits per month (default 500). Resets on the 1st.
                   </p>
                 </div>
                 <div>
-                  <Label className="text-sm text-muted-foreground">DPP Daily Limit</Label>
+                  <Label className="text-sm text-muted-foreground">Commission Multiplier (optional override)</Label>
                   <Input
                     type="number"
-                    min={0}
-                    value={dppDailyLimit}
-                    onChange={(e) => setDppDailyLimit(Number(e.target.value))}
+                    min={1}
+                    step={0.1}
+                    placeholder="Use global default"
+                    value={aiCommissionMultiplier}
+                    onChange={(e) => setAiCommissionMultiplier(e.target.value === "" ? "" : Number(e.target.value))}
                     className="mt-1 max-w-xs"
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Max DPP papers generated per day (default 3)
+                    Markup on top of token cost (e.g. 1.5 = 50%). Leave blank to use global.
                   </p>
                 </div>
                 <div>

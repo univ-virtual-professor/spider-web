@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Loader2, ShoppingCart, Tag, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
-import { collection, getDocs, onSnapshot } from "firebase/firestore";
+import { Loader2, ShoppingCart, Tag, CheckCircle2, XCircle, RefreshCw, Zap } from "lucide-react";
+import { collection, doc, getDocs, onSnapshot } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { toast } from "sonner";
@@ -82,6 +82,32 @@ export default function Billing() {
   const [paying, setPaying] = useState(false);
   const [pendingVerifyOrderId, setPendingVerifyOrderId] = useState<string | null>(null);
   const [reverifyingId, setReverifyingId] = useState<string | null>(null);
+
+  type CreditStatus = { percentUsed: number; creditsUsed: number; creditLimit: number; breakdown: Record<string, number>; resetDate: string; isWarning: boolean; isExhausted: boolean; month: string };
+  const [creditStatus, setCreditStatus] = useState<CreditStatus | null>(null);
+
+  useEffect(() => {
+    if (!educatorId) return;
+    const month = new Date().toISOString().slice(0, 7);
+    const unsub = onSnapshot(doc(db, "educators", educatorId, "aiUsage", month), (snap) => {
+      if (!snap.exists()) { setCreditStatus(null); return; }
+      const data = snap.data() as any;
+      const limit = data._limit || 500;
+      const used = data.creditsUsed || 0;
+      const percent = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+      setCreditStatus({
+        percentUsed: percent,
+        creditsUsed: used,
+        creditLimit: limit,
+        breakdown: data.breakdown || {},
+        resetDate: (() => { const d = new Date(); d.setMonth(d.getMonth() + 1, 1); return d.toISOString().slice(0, 10); })(),
+        isWarning: percent >= 80 && percent < 100,
+        isExhausted: percent >= 100,
+        month,
+      });
+    });
+    return () => unsub();
+  }, [educatorId]);
 
   useEffect(() => {
     if (!educatorId) return;
@@ -275,6 +301,46 @@ export default function Billing() {
         <h1 className="text-2xl font-bold">Billing</h1>
         <p className="text-sm text-muted-foreground">Purchase seats and manage your plan.</p>
       </div>
+
+      {/* AI Credits Widget */}
+      <Card className={creditStatus?.isExhausted ? "border-red-300" : creditStatus?.isWarning ? "border-amber-300" : ""}>
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Zap className="h-4 w-4 text-primary" /> AI Credits
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {creditStatus ? (
+            <>
+              {(creditStatus.isWarning || creditStatus.isExhausted) && (
+                <p className={`text-sm font-medium ${creditStatus.isExhausted ? "text-red-600" : "text-amber-600"}`}>
+                  {creditStatus.isExhausted ? "AI credits exhausted — AI features are paused until next month." : "AI credits running low — approaching your monthly limit."}
+                </p>
+              )}
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Usage this month ({creditStatus.month})</span>
+                <span className="font-semibold">{creditStatus.percentUsed.toFixed(1)}%</span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-muted">
+                <div
+                  className={`h-2 rounded-full transition-all ${creditStatus.isExhausted ? "bg-red-500" : creditStatus.isWarning ? "bg-amber-500" : "bg-primary"}`}
+                  style={{ width: `${Math.min(100, creditStatus.percentUsed)}%` }}
+                />
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground pt-1">
+                {Object.entries(creditStatus.breakdown)
+                  .filter(([, v]) => (v as number) > 0)
+                  .map(([key, val]) => (
+                    <span key={key} className="capitalize">{key}: {(val as number).toFixed(2)}</span>
+                  ))}
+              </div>
+              <p className="text-xs text-muted-foreground">Resets on {creditStatus.resetDate}. Contact admin to increase your limit.</p>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">No AI usage this month yet.</p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Seat Balance Widget */}
       {pools.length > 0 &&

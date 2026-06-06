@@ -19,6 +19,8 @@ import {
   Quote,
   Plus,
   Trash2,
+  Zap,
+  BotMessageSquare,
 } from "lucide-react";
 import { Input } from "@shared/ui/input";
 import { Button } from "@shared/ui/button";
@@ -72,6 +74,119 @@ type EducatorProfileDoc = {
   welcomeMessage?: { message?: string; isActive?: boolean };
   quotes?: string[];
 };
+
+function AiTutorSettings({ uid }: { uid: string }) {
+  const [chatbotEnabled, setChatbotEnabled] = useState(true);
+  const [chatCreditCap, setChatCreditCap] = useState<number | "">("");
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [creditStatus, setCreditStatus] = useState<{ percentUsed: number; creditLimit: number; creditsUsed: number; resetDate: string } | null>(null);
+
+  useEffect(() => {
+    if (!uid) return;
+    getDoc(doc(db, "educators", uid)).then((snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as any;
+        setChatbotEnabled(data?.features?.chatbot !== false);
+        setChatCreditCap(data?.chatCreditCap ?? "");
+      }
+      setLoading(false);
+    });
+  }, [uid]);
+
+  useEffect(() => {
+    if (!uid) return;
+    const base = import.meta.env.VITE_MONKEY_KING_API_URL || "";
+    if (!base) return;
+    auth.currentUser?.getIdToken().then((token) => {
+      fetch(`${base}/api/ai/credits`, { headers: { Authorization: `Bearer ${token}` } })
+        .then((r) => r.json())
+        .then((data) => setCreditStatus(data))
+        .catch(() => {});
+    });
+  }, [uid]);
+
+  const save = async () => {
+    if (!uid) return;
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "educators", uid), {
+        "features.chatbot": chatbotEnabled,
+        chatCreditCap: chatCreditCap === "" ? null : Number(chatCreditCap),
+        updatedAt: serverTimestamp(),
+      });
+      toast({ title: "AI Tutor settings saved" });
+    } catch {
+      toast({ title: "Failed to save", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return null;
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <BotMessageSquare className="h-5 w-5" /> AI Tutor
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Credit status banner */}
+          {creditStatus && (
+            <div className={`rounded-lg border p-3 text-sm ${creditStatus.percentUsed >= 100 ? "border-red-300 bg-red-50 text-red-700" : creditStatus.percentUsed >= 80 ? "border-amber-300 bg-amber-50 text-amber-700" : "border-border bg-muted/30 text-muted-foreground"}`}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-medium flex items-center gap-1"><Zap className="h-3 w-3" /> AI Credits</span>
+                <span className="font-semibold">{creditStatus.percentUsed.toFixed(1)}% used</span>
+              </div>
+              <div className="h-1.5 w-full rounded-full bg-muted">
+                <div
+                  className={`h-1.5 rounded-full ${creditStatus.percentUsed >= 100 ? "bg-red-500" : creditStatus.percentUsed >= 80 ? "bg-amber-500" : "bg-primary"}`}
+                  style={{ width: `${Math.min(100, creditStatus.percentUsed)}%` }}
+                />
+              </div>
+              <p className="mt-1 text-xs">Resets on {creditStatus.resetDate}. Contact admin to increase your limit.</p>
+            </div>
+          )}
+
+          {/* Enable toggle */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Enable AI Tutor for students</p>
+              <p className="text-xs text-muted-foreground">Students can use the AI chatbot when enabled</p>
+            </div>
+            <Switch checked={chatbotEnabled} onCheckedChange={setChatbotEnabled} />
+          </div>
+
+          {/* Chatbot credit cap */}
+          {chatbotEnabled && (
+            <div>
+              <Label className="text-sm text-muted-foreground">Monthly chatbot credit cap (optional)</Label>
+              <Input
+                type="number"
+                min={0}
+                placeholder="No cap — shares from total pool"
+                value={chatCreditCap}
+                onChange={(e) => setChatCreditCap(e.target.value === "" ? "" : Number(e.target.value))}
+                className="mt-1 max-w-xs"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Limit how many of your monthly AI credits the chatbot can consume. Leave blank to share freely from your total pool.
+              </p>
+            </div>
+          )}
+
+          <Button onClick={save} disabled={saving} size="sm">
+            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Save
+          </Button>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
 
 export default function Settings() {
   const isApp =
@@ -1079,6 +1194,9 @@ export default function Settings() {
           </CardContent>
         </Card>
       </motion.div> */}
+
+        {/* AI Tutor */}
+        <AiTutorSettings uid={firebaseUser?.uid || ""} />
 
         {/* Danger Zone */}
         <motion.div
