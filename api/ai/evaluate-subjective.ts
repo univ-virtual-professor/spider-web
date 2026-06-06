@@ -74,8 +74,7 @@ const SYSTEM_INSTRUCTION = [
   "- score: Marks awarded (0 to maxScore). Must reflect strict evaluation — not a rounded-up estimate.",
   "- maxScore: Same as input.",
   "- confidence: 0.0–1.0. Use 0.3–0.5 when handwriting is unclear or answer is ambiguous.",
-  "- feedback: For each section of the answer, state what was correct, what was wrong, and what was missing.",
-  "  Explicitly call out every numerical mismatch and every absent section.",
+  "- feedback: 2-3 short sentences. List what was correct, what was wrong/missing, and any numerical mismatches. Be concise.",
   "- keywordMatches: Keywords from the expected list that were correctly used in the student's answer.",
 ].join("\n");
 
