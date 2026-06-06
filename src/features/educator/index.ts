@@ -25,4 +25,3 @@ export { default as SubjectiveAttemptGrader } from "./SubjectiveAttemptGrader";
 export { default as ProctoringReview } from "./ProctoringReview";
 export { default as LiveClasses } from "./LiveClasses";
 export { default as NeedsAttention } from "./NeedsAttention";
-export { default as EducatorJitsiLiveClass } from "./EducatorJitsiLiveClass";

@@ -9,6 +9,7 @@ import {
   orderBy,
   query,
   updateDoc,
+  getDocs,
   where,
 } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
@@ -26,7 +27,9 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@shared/ui/dialog";
+import { Checkbox } from "@shared/ui/checkbox";
 import {
   ArrowLeft,
   Calendar,
@@ -34,8 +37,11 @@ import {
   Trash2,
   VideoOff,
   Loader2,
+  Users,
   Tv,
   Edit2,
+  PlayCircle,
+  Youtube,
   UserCheck,
   Clock,
 } from "lucide-react";
@@ -57,8 +63,7 @@ type LiveClass = {
   scheduledDate: string;
   startTime: string;
   description?: string;
-  youtubeUrl?: string;
-  youtubeVideoId?: string;
+  watchUrl: string;
   scheduledTimestamp: Timestamp;
   educatorId: string;
   status: "scheduled" | "live" | "completed";
@@ -70,7 +75,20 @@ type LiveClass = {
   enrolledCount?: number;
 };
 
-
+// YouTube Link Parser Helper
+function extractYouTubeId(url: string): string | null {
+  if (!url) return null;
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|live\/)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  if (match && match[2].length === 11) {
+    return match[2];
+  }
+  const trimmed = url.trim();
+  if (trimmed.length === 11) {
+    return trimmed;
+  }
+  return null;
+}
 
 export default function LiveClasses() {
   const { profile, firebaseUser } = useAuth();
@@ -85,6 +103,14 @@ export default function LiveClasses() {
   const [loading, setLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [activeTab, setActiveTab] = useState<"scheduled" | "live" | "completed">("scheduled");
+
+  // YouTube Connection Mock State
+  const [ytConnected, setYtConnected] = useState<{ connected: boolean; channelName: string }>({
+    connected: false,
+    channelName: "",
+  });
+
+  const [connectingYt, setConnectingYt] = useState(false);
 
   // Form State
   const [title, setTitle] = useState("");
@@ -300,9 +326,82 @@ export default function LiveClasses() {
   const handleCopyLink = (link: string, id: string) => {
     navigator.clipboard.writeText(link);
     setCopiedId(id);
-    toast.success("Link copied!");
+    toast.success("YouTube link copied!");
     setTimeout(() => setCopiedId(null), 2000);
   };
+
+  const connectYoutube = async () => {
+    setConnectingYt(true);
+    try {
+      const tSnap = await getDocs(
+        query(collection(db, "tenants"), where("educatorId", "==", educatorId))
+      );
+      let tenantSlug = "";
+      if (!tSnap.empty) {
+        tenantSlug = tSnap.docs[0].data().slug || tSnap.docs[0].id;
+      }
+
+      const response = await fetch(
+        `http://localhost:8000/youtube/auth-url?educatorId=${educatorId}&slug=${tenantSlug}`
+      );
+
+      const data = await response.json();
+
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      }
+    } catch (error) {
+      console.error("Failed to connect YouTube", error);
+      toast.error("Failed to connect YouTube.");
+    } finally {
+      setConnectingYt(false);
+    }
+  };
+
+  const disconnectYoutube = async () => {
+    setConnectingYt(true);
+    try {
+      const response = await fetch(
+        `http://localhost:8000/youtube/disconnect?educatorId=${educatorId}`
+      );
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast.success("YouTube Disconnected");
+        setYtConnected({ connected: false, channelName: "" });
+      }
+    } catch (error) {
+      console.error("Failed to disconnect YouTube", error);
+      toast.error("Failed to disconnect YouTube.");
+    } finally {
+      setConnectingYt(false);
+    }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+
+    if (params.get("connected") === "true") {
+      toast.success("YouTube Connected");
+      window.history.replaceState({}, "", "/educator/live-classes");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!educatorId) return;
+
+    const unsub = onSnapshot(doc(db, "educators", educatorId), (snap) => {
+      const data = snap.data();
+
+      setYtConnected({
+        connected: !!data?.youtubeConnected,
+        channelName: data?.youtubeChannelName,
+      });
+    });
+
+    return unsub;
+  }, [educatorId]);
 
   useEffect(() => {
     if (!liveClasses.length || !educatorId) return;
@@ -372,15 +471,15 @@ export default function LiveClasses() {
       const scheduledDate = new Date(`${date}T${time}:00`);
       const scheduledTimestamp = Timestamp.fromDate(scheduledDate);
 
-      const res = await fetch(`${import.meta.env.VITE_MONKEY_KING_API_URL}/youtube/create-live-class`, {
+      const response = await fetch("http://localhost:8000/youtube/create-live-class", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           educatorId: educatorId,
-          title: title.trim(),
-          description: description.trim(),
+          title,
+          description,
           branchId: selectedBranchId,
           courseId: selectedCourseId,
           batchId: selectedBatchId,
@@ -388,14 +487,13 @@ export default function LiveClasses() {
           courseName,
           batchName,
           scheduledDate: scheduledDate.toISOString(),
-          startTime: scheduledDate.toISOString(),
-          scheduledTimestamp,
           enrolledCount,
-          status: "scheduled",
+          startTime: scheduledDate.toISOString(),
         }),
       });
-      const data = await res.json();
-      console.log(data);
+
+      const data = await response.json();
+      console.log("response is", data);
 
       toast.success("Live Class scheduled successfully!");
 
@@ -557,11 +655,27 @@ export default function LiveClasses() {
   };
 
   const formatTimeLabel = (timeStr: string) => {
-    const [hours, minutes] = timeStr.split(":");
-    const hr = parseInt(hours);
-    const ampm = hr >= 12 ? "PM" : "AM";
-    const formattedHr = hr % 12 || 12;
-    return `${formattedHr}:${minutes} ${ampm}`;
+    if (!timeStr) return "";
+    if (timeStr.includes("T") || (timeStr.includes("-") && timeStr.length > 5)) {
+      const d = new Date(timeStr);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        });
+      }
+    }
+    console.log("time is", timeStr);
+    const parts = timeStr.split(":");
+    if (parts.length >= 2) {
+      const hr = parseInt(parts[0], 10);
+      const min = parts[1];
+      const ampm = hr >= 12 ? "PM" : "AM";
+      const formattedHr = hr % 12 || 12;
+      return `${formattedHr}:${min} ${ampm}`;
+    }
+    return timeStr;
   };
 
   // Mock Attendance List generator
@@ -745,10 +859,10 @@ export default function LiveClasses() {
                             <Button
                               size="sm"
                               className="py-4.5 flex-1 rounded-lg bg-red-600 text-xs hover:bg-red-700 gap-1.5"
-                              onClick={() => navigate(`/educator/live-class/${item.id}`)}
+                              onClick={() => setSelectedWatchClass(item)}
                             >
                               <Tv className="h-4 w-4" />
-                              Start Live Class
+                              Join
                             </Button>
                             <Button
                               size="sm"
@@ -989,7 +1103,77 @@ export default function LiveClasses() {
                     </div>
                   </div>
 
+                  {/* Section 4: Streaming Setup */}
+                  <div className="space-y-4">
+                    <h3 className="flex items-center gap-2 border-b pb-2 text-sm font-bold text-primary">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px]">
+                        4
+                      </span>
+                      Streaming Setup
+                    </h3>
 
+                    {!ytConnected.connected ? (
+                      <Card className="flex flex-col gap-4 rounded-xl border-amber-200 bg-amber-50/50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0 space-y-1">
+                          <h4 className="flex items-center gap-1.5 text-sm font-bold text-amber-900">
+                            <Youtube className="h-5 w-5 shrink-0 text-red-600" />
+                            YouTube Account Not Connected
+                          </h4>
+                          <p className="max-w-md text-xs leading-normal text-amber-700/90">
+                            Connect your YouTube channel to automatically create and manage live
+                            streams for your classes.
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={connectingYt}
+                          onClick={connectYoutube}
+                          className="shrink-0 self-start border-amber-300 bg-amber-100/50 text-amber-900 hover:bg-amber-100 sm:self-center"
+                        >
+                          {connectingYt ? (
+                            <>
+                              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                              Connecting...
+                            </>
+                          ) : (
+                            "Connect YouTube"
+                          )}
+                        </Button>
+                      </Card>
+                    ) : (
+                      <div className="space-y-4">
+                        <Card className="flex flex-col gap-4 rounded-xl border-green-200 bg-green-50/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-600 text-sm font-bold text-white shadow-sm">
+                              {ytConnected.channelName[0]}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <h4 className="truncate text-sm font-bold text-green-950">
+                                  {ytConnected.channelName}
+                                </h4>
+                              </div>
+                            </div>
+                          </div>
+                          <Button variant="outline" className="border-green-200 bg-green-50/30 text-green-900 hover:bg-green-100" onClick={disconnectYoutube} disabled={connectingYt}  >
+                            {connectingYt ? (
+                              <>
+                                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                                Disconnecting...
+                              </>
+                            ) : (
+                              "Disconnect"
+                            )}
+                          </Button>
+                        </Card>
+
+
+                      </div>
+                    )}
+
+
+                  </div>
 
                   <div className="flex justify-end gap-3 border-t border-border/40 pt-6">
                     <Button
@@ -1014,7 +1198,7 @@ export default function LiveClasses() {
                     <Button
                       type="submit"
                       className="gradient-bg rounded-lg text-white shadow-soft"
-                      disabled={submitting}
+                      disabled={submitting || !ytConnected.connected || connectingYt}
                     >
                       {submitting ? (
                         <>
@@ -1047,10 +1231,10 @@ export default function LiveClasses() {
               Batch: {selectedWatchClass?.batchName} · Program: {selectedWatchClass?.courseName}
             </CardDescription>
           </DialogHeader>
-          {selectedWatchClass?.youtubeVideoId && (
-            <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-black shadow-md">
+          {selectedWatchClass?.watchUrl && (
+            <div className="relative aspect-video w-full overflow-hidden">
               <iframe
-                src={`https://www.youtube.com/embed/${selectedWatchClass.youtubeVideoId}?autoplay=1`}
+                src={`${selectedWatchClass.watchUrl}?autoplay=1`}
                 title={selectedWatchClass.title}
                 className="absolute inset-0 h-full w-full border-none"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"

@@ -31,7 +31,6 @@ import {
   ProctoringReview,
   LiveClasses,
   NeedsAttention,
-  EducatorJitsiLiveClass
 } from "@features/educator";
 import QuestionPaperRequests from "@features/educator/QuestionPaperRequests";
 
@@ -48,7 +47,6 @@ export function getEducatorRoutes() {
       <Route index element={<EducatorDashboard />} />
       <Route path="dashboard" element={<EducatorDashboard />} />
       <Route path="live-classes" element={<LiveClasses />} />
-      <Route path="live-class/:id" element={<EducatorJitsiLiveClass />} />
 
       <Route path="students" element={<StudentsListing />} />
       <Route path="students/:studentId" element={<StudentDetails />} />

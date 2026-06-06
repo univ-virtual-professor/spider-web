@@ -1,5 +1,4 @@
 import { useEffect, useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { collection, doc, getDoc, onSnapshot, query, where, orderBy, Timestamp } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
@@ -25,14 +24,12 @@ type LiveClass = {
   description?: string;
   youtubeUrl: string;
   youtubeVideoId: string;
-  roomName?: string;
   scheduledTimestamp: Timestamp;
   educatorId: string;
   status: "scheduled" | "live" | "completed";
 };
 
 export default function StudentLiveClasses() {
-  const navigate = useNavigate();
   const { firebaseUser, profile, loading: authLoading } = useAuth();
   const { tenant } = useTenant();
 
@@ -356,30 +353,13 @@ export default function StudentLiveClasses() {
                           No Recording Available
                         </Button>
                       )
-                    ) : isLive ? (
-                      item.roomName ? (
-                        <Button
-                          className="gradient-bg w-full rounded-lg py-5 text-xs font-semibold shadow-sm"
-                          onClick={() => navigate(`/student/live-class/${item.id}`)}
-                        >
-                          <Play className="mr-1.5 h-3.5 w-3.5 fill-current" /> Join Live Class
-                        </Button>
-                      ) : item.youtubeVideoId ? (
-                        <Button
-                          className="gradient-bg w-full rounded-lg py-5 text-xs font-semibold shadow-sm"
-                          onClick={() => setSelectedWatchClass(item)}
-                        >
-                          <Play className="mr-1.5 h-3.5 w-3.5 fill-current" /> Watch Class
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          className="w-full cursor-not-allowed rounded-lg py-5 text-xs font-semibold opacity-60"
-                          disabled
-                        >
-                          No Stream Available
-                        </Button>
-                      )
+                    ) : isLive && item.youtubeVideoId ? (
+                      <Button
+                        className="gradient-bg w-full rounded-lg py-5 text-xs font-semibold shadow-sm"
+                        onClick={() => setSelectedWatchClass(item)}
+                      >
+                        <Play className="mr-1.5 h-3.5 w-3.5 fill-current" /> Watch Class
+                      </Button>
                     ) : (
                       <Button
                         variant="outline"

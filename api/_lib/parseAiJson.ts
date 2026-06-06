@@ -71,23 +71,23 @@ export async function parseAiJson<T>(rawText: string, schemaHint?: string): Prom
   // 1. Plain parse
   try {
     return JSON.parse(rawText) as T;
-  } catch { }
+  } catch {}
 
   // 2. Escape control characters inside strings
   try {
     return JSON.parse(escapeControlCharsInJsonStrings(rawText)) as T;
-  } catch { }
+  } catch {}
 
   // 3. Strip markdown code block wrapper
   const stripped = stripCodeBlock(rawText);
   if (stripped !== rawText.trim()) {
     try {
       return JSON.parse(stripped) as T;
-    } catch { }
+    } catch {}
 
     try {
       return JSON.parse(escapeControlCharsInJsonStrings(stripped)) as T;
-    } catch { }
+    } catch {}
   }
 
   // 4. Gemini repair fallback
