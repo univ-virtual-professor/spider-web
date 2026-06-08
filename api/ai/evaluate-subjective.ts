@@ -316,7 +316,7 @@ async function evaluateWithGemini(
     responseSchema: evaluationSchema as any,
     // Enable thinking for image-based evaluation — visual comparison requires explicit reasoning.
     // Disable only for text-only SHORT_ANSWER to keep costs low.
-    thinkingConfig: { thinkingBudget: hasImages ? 2048 : 0 },
+    thinkingConfig: { thinkingBudget: hasImages ? 1024 : 0 },
   } as any;
 
   const model = vertex.getGenerativeModel({
