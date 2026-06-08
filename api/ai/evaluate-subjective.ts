@@ -261,6 +261,7 @@ async function evaluateWithGemini(
   tokens: number;
   inputTokens: number;
   outputTokens: number;
+  thinkingTokens: number;
 }> {
   if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
     throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not configured");
@@ -275,10 +276,13 @@ async function evaluateWithGemini(
 
   const generationConfig: GenerationConfig = {
     temperature: 0.3,
-    maxOutputTokens: 8192,
+    maxOutputTokens: 1024,
     responseMimeType: "application/json",
     responseSchema: evaluationSchema as any,
-  };
+    // Disable thinking — structured rubric in system prompt makes it unnecessary,
+    // and thinking tokens cost $3.50/M vs $0.60/M for output on Gemini 2.5 Flash.
+    thinkingConfig: { thinkingBudget: 0 },
+  } as any;
 
   const model = vertex.getGenerativeModel({
     model: getGeminiModelNameFromEnv(),
@@ -307,7 +311,8 @@ async function evaluateWithGemini(
       if (!text) throw new Error("Gemini returned an empty response");
       const inputTokens = result.response.usageMetadata?.promptTokenCount ?? 0;
       const outputTokens = result.response.usageMetadata?.candidatesTokenCount ?? 0;
-      const tokensUsed: number = inputTokens + outputTokens;
+      const thinkingTokens = (result.response.usageMetadata as any)?.thoughtsTokenCount ?? 0;
+      const tokensUsed: number = inputTokens + outputTokens + thinkingTokens;
 
       let parsed: EvaluationResponse;
       try {
@@ -330,7 +335,7 @@ async function evaluateWithGemini(
       parsed.confidence = Math.max(0, Math.min(1, Number(parsed.confidence) || 0.5));
       parsed.evaluatedAt = Date.now();
 
-      return { result: parsed, tokens: tokensUsed, inputTokens, outputTokens };
+      return { result: parsed, tokens: tokensUsed, inputTokens, outputTokens, thinkingTokens };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (attempt < GEMINI_MAX_RETRIES - 1) {
@@ -406,6 +411,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let batchTokens = 0;
       let batchInputTokens = 0;
       let batchOutputTokens = 0;
+      let batchThinkingTokens = 0;
 
       for (const evalReq of evaluations) {
         try {
@@ -415,10 +421,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             tokens,
             inputTokens: inTok,
             outputTokens: outTok,
+            thinkingTokens: thinkTok,
           } = await evaluateWithGemini(parts, evalReq.maxScore);
           batchTokens += tokens;
           batchInputTokens += inTok;
           batchOutputTokens += outTok;
+          batchThinkingTokens += thinkTok;
           results[evalReq.questionId] = result;
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -461,12 +469,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           { name: "Avg Confidence", value: `${Math.round(avgConfidence * 100)}%`, inline: true },
           {
             name: "Tokens",
-            value: `${batchInputTokens.toLocaleString()} in / ${batchOutputTokens.toLocaleString()} out`,
+            value: `${batchInputTokens.toLocaleString()} in / ${batchOutputTokens.toLocaleString()} out / ${batchThinkingTokens.toLocaleString()} think`,
             inline: true,
           },
           {
             name: "Est. Cost",
-            value: `₹${(batchInputTokens * 0.000007151 + batchOutputTokens * 0.0000286).toFixed(4)}`,
+            // Gemini 2.5 Flash on Vertex AI: $0.30/M input, $2.50/M output (thinking billed at output rate) @ 95 ₹/USD
+            value: `₹${(batchInputTokens * 0.0000285 + (batchOutputTokens + batchThinkingTokens) * 0.0002375).toFixed(4)}`,
             inline: true,
           },
           ...(failed.length > 0 ? [{ name: "Failed IDs", value: failed.join(", ") }] : []),
@@ -501,7 +510,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const parts = await buildRequestParts(evalReq);
-    const { result, tokens, inputTokens, outputTokens } = await evaluateWithGemini(
+    const { result, tokens, inputTokens, outputTokens, thinkingTokens } = await evaluateWithGemini(
       parts,
       evalReq.maxScore || 5
     );
@@ -512,10 +521,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       { name: "Question ID", value: evalReq.questionId, inline: true },
       { name: "Score", value: `${result.score}/${result.maxScore}`, inline: true },
       { name: "Confidence", value: `${Math.round(result.confidence * 100)}%`, inline: true },
-      { name: "Tokens", value: `${inputTokens} in / ${outputTokens} out`, inline: true },
+      {
+        name: "Tokens",
+        value: `${inputTokens} in / ${outputTokens} out / ${thinkingTokens} think`,
+        inline: true,
+      },
       {
         name: "Est. Cost",
-        value: `₹${(inputTokens * 0.000007151 + outputTokens * 0.0000286).toFixed(4)}`,
+        // Gemini 2.5 Flash on Vertex AI: $0.30/M input, $2.50/M output (thinking billed at output rate) @ 95 ₹/USD
+        value: `₹${(inputTokens * 0.0000285 + (outputTokens + thinkingTokens) * 0.0002375).toFixed(4)}`,
         inline: true,
       },
     ]);

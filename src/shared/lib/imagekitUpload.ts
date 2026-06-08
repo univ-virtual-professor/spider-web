@@ -43,6 +43,22 @@ export async function getContentUploadLimit(): Promise<number> {
   return typeof data.maxFileSizeMB === "number" ? data.maxFileSizeMB : 20;
 }
 
+async function withRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 1000): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      lastErr = err;
+      const isNetworkError =
+        err instanceof TypeError && err.message.toLowerCase().includes("fetch");
+      if (!isNetworkError || attempt === retries) throw err;
+      await new Promise((r) => setTimeout(r, delayMs * (attempt + 1)));
+    }
+  }
+  throw lastErr;
+}
+
 export async function uploadToImageKit(
   file: Blob,
   fileName: string,
@@ -54,10 +70,12 @@ export async function uploadToImageKit(
   async function fetchAuthParams(authScope: ImageKitScope): Promise<ImageKitAuthParams> {
     const url = `/api/imagekit-auth?scope=${encodeURIComponent(authScope)}`;
 
-    const authRes = await fetch(url, {
-      method: "GET",
-      headers: { Authorization: `Bearer ${idToken}` },
-    });
+    const authRes = await withRetry(() =>
+      fetch(url, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${idToken}` },
+      })
+    );
 
     const rawText = await authRes.text();
 
@@ -122,10 +140,12 @@ export async function uploadToImageKit(
   form.append("folder", folder);
   form.append("useUniqueFileName", "true");
 
-  const uploadRes = await fetch("https://upload.imagekit.io/api/v1/files/upload", {
-    method: "POST",
-    body: form,
-  });
+  const uploadRes = await withRetry(() =>
+    fetch("https://upload.imagekit.io/api/v1/files/upload", {
+      method: "POST",
+      body: form,
+    })
+  );
 
   if (!uploadRes.ok) {
     const txt = await uploadRes.text().catch(() => "");

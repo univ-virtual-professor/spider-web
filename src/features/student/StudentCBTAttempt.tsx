@@ -1413,12 +1413,12 @@ export default function StudentCBTAttempt() {
         }
       }
 
-      if (nextCount > 3) {
-        toast.error("Maximum warnings exceeded. Submitting test automatically.");
-        handleSubmit(true);
-      } else {
-        setViolationModalOpen(true);
-      }
+      // if (nextCount > 3) {
+      //   toast.error("Maximum warnings exceeded. Submitting test automatically.");
+      //   handleSubmit(true);
+      // } else {
+      setViolationModalOpen(true);
+      // }
     },
     [queueAttemptUpdate, handleSubmit, educatorId, firebaseUser, profile, testMeta, tenantSlug]
   );
@@ -3187,7 +3187,7 @@ export default function StudentCBTAttempt() {
                 You have left the test environment (Tab Switch or Full-screen Exit). <br />
                 This is a violation of the test rules.
               </p>
-              <div
+              {/* <div
                 style={{
                   marginTop: 20,
                   padding: "12px",
@@ -3198,10 +3198,10 @@ export default function StudentCBTAttempt() {
                 }}
               >
                 Warning {exitCount} of 3
-              </div>
-              <p style={{ fontSize: 13, color: "#6b7280", marginTop: 12 }}>
+              </div> */}
+              {/* <p style={{ fontSize: 13, color: "#6b7280", marginTop: 12 }}>
                 The test will be automatically submitted after the 3rd warning.
-              </p>
+              </p> */}
             </div>
             <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
               <button
