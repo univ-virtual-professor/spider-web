@@ -15,7 +15,7 @@ import {
   syncSessionWithFirestore,
 } from "@shared/lib/session";
 import { toast } from "sonner";
-import { Loader2, GraduationCap } from "lucide-react";
+import { Loader2, GraduationCap, Clock } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Input } from "@shared/ui/input";
 import { Label } from "@shared/ui/label";
@@ -63,6 +63,64 @@ async function finalizeEnrollment(
   const sid = generateSessionId();
   setLocalSessionId(sid);
   await syncSessionWithFirestore(uid, sid);
+}
+
+function InviteErrorPage({ expired, message }: { expired: boolean; message: string }) {
+  const [countdown, setCountdown] = useState(5);
+
+  useEffect(() => {
+    if (!expired) return;
+    const interval = setInterval(() => {
+      setCountdown((n) => {
+        if (n <= 1) {
+          clearInterval(interval);
+          const slug = getTenantSlugFromHostname();
+          window.location.href = slug ? buildTenantUrl(slug, "/") : "/";
+        }
+        return n - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [expired]);
+
+  return (
+    <div className="flex min-h-screen items-center justify-center p-4">
+      <Card className="w-full max-w-sm text-center">
+        <CardHeader>
+          {expired ? (
+            <>
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+                <Clock className="h-6 w-6 text-destructive" />
+              </div>
+              <CardTitle>Invite Link Expired</CardTitle>
+              <CardDescription>
+                This invite link is no longer valid. Ask your educator to share a new one.
+              </CardDescription>
+            </>
+          ) : (
+            <>
+              <CardTitle>Invite Unavailable</CardTitle>
+              <CardDescription>{message}</CardDescription>
+            </>
+          )}
+        </CardHeader>
+        {expired && (
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              Redirecting to home in{" "}
+              <span className="font-semibold tabular-nums text-foreground">{countdown}</span>s…
+            </p>
+            <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full bg-primary transition-all duration-1000 ease-linear"
+                style={{ width: `${(countdown / 5) * 100}%` }}
+              />
+            </div>
+          </CardContent>
+        )}
+      </Card>
+    </div>
+  );
 }
 
 export default function Join() {
@@ -210,16 +268,8 @@ export default function Join() {
   }
 
   if (inviteError) {
-    return (
-      <div className="flex min-h-screen items-center justify-center p-4">
-        <Card className="w-full max-w-sm">
-          <CardHeader>
-            <CardTitle>Invite Unavailable</CardTitle>
-            <CardDescription>{inviteError}</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
+    const isExpired = inviteError.toLowerCase().includes("expired");
+    return <InviteErrorPage expired={isExpired} message={inviteError} />;
   }
 
   return (
