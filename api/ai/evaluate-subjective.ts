@@ -474,8 +474,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           },
           {
             name: "Est. Cost",
-            // Gemini 2.5 Flash: $0.15/M input, $0.60/M output, $3.50/M thinking @ 85 ₹/USD
-            value: `₹${(batchInputTokens * 0.00001275 + batchOutputTokens * 0.000051 + batchThinkingTokens * 0.0002975).toFixed(4)}`,
+            // Gemini 2.5 Flash: $0.15/M input, $0.60/M output, $3.50/M thinking @ 95 ₹/USD
+            value: `₹${(batchInputTokens * 0.00001425 + batchOutputTokens * 0.000057 + batchThinkingTokens * 0.0003325).toFixed(4)}`,
             inline: true,
           },
           ...(failed.length > 0 ? [{ name: "Failed IDs", value: failed.join(", ") }] : []),
@@ -528,8 +528,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       },
       {
         name: "Est. Cost",
-        // Gemini 2.5 Flash: $0.15/M input, $0.60/M output, $3.50/M thinking @ 85 ₹/USD
-        value: `₹${(inputTokens * 0.00001275 + outputTokens * 0.000051 + thinkingTokens * 0.0002975).toFixed(4)}`,
+        // Gemini 2.5 Flash: $0.15/M input, $0.60/M output, $3.50/M thinking @ 95 ₹/USD
+        value: `₹${(inputTokens * 0.00001425 + outputTokens * 0.000057 + thinkingTokens * 0.0003325).toFixed(4)}`,
         inline: true,
       },
     ]);
