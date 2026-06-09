@@ -24,4 +24,6 @@ export { default as SubjectiveReviewQueue } from "./SubjectiveReviewQueue";
 export { default as SubjectiveAttemptGrader } from "./SubjectiveAttemptGrader";
 export { default as ProctoringReview } from "./ProctoringReview";
 export { default as LiveClasses } from "./LiveClasses";
+export { default as EducatorLiveWatch } from "./EducatorLiveWatch";
 export { default as NeedsAttention } from "./NeedsAttention";
+export { default as StreamingGuide } from "./StreamingGuide";

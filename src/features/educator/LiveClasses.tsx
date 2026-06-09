@@ -17,7 +17,7 @@ import { useAuth } from "@app/providers/AuthProvider";
 import { toast } from "sonner";
 import { Button } from "@shared/ui/button";
 import { Input } from "@shared/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@shared/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { Label } from "@shared/ui/label";
 import { Badge } from "@shared/ui/badge";
@@ -29,21 +29,21 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@shared/ui/dialog";
-import { Checkbox } from "@shared/ui/checkbox";
 import {
   ArrowLeft,
   Calendar,
   Plus,
-  Trash2,
   VideoOff,
   Loader2,
-  Users,
   Tv,
   Edit2,
-  PlayCircle,
   Youtube,
-  UserCheck,
   Clock,
+  Key,
+  Copy,
+  Eye,
+  EyeOff,
+  HelpCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -73,6 +73,8 @@ type LiveClass = {
   notifyStudents: boolean;
   createdAt: Timestamp;
   enrolledCount?: number;
+  youtubeRtmpUrl?: string;
+  youtubeStreamKey?: string;
 };
 
 // YouTube Link Parser Helper
@@ -135,9 +137,18 @@ export default function LiveClasses() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   // Modal Views State
-  const [selectedWatchClass, setSelectedWatchClass] = useState<LiveClass | null>(null);
   const [selectedAttendanceClass, setSelectedAttendanceClass] = useState<LiveClass | null>(null);
   const [editingClass, setEditingClass] = useState<LiveClass | null>(null);
+  const [credentialsModal, setCredentialsModal] = useState<{
+    rtmpUrl: string;
+    streamKey: string;
+  } | null>(null);
+  const [showStreamKey, setShowStreamKey] = useState(false);
+
+  const handleCopyText = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} copied to clipboard!`);
+  };
 
   // Student Counts by Batch
   const [studentCounts, setStudentCounts] = useState<Record<string, number>>({});
@@ -173,8 +184,6 @@ export default function LiveClasses() {
         setLoading(false);
       }
     );
-
-    console.log(liveClasses)
 
     // Fetch students list to compute enrolled count per batch
     const unsubStudents = onSnapshot(
@@ -322,13 +331,6 @@ export default function LiveClasses() {
 
     return { total, upcoming, live, completed };
   }, [liveClasses]);
-
-  const handleCopyLink = (link: string, id: string) => {
-    navigator.clipboard.writeText(link);
-    setCopiedId(id);
-    toast.success("YouTube link copied!");
-    setTimeout(() => setCopiedId(null), 2000);
-  };
 
   const connectYoutube = async () => {
     setConnectingYt(true);
@@ -496,6 +498,11 @@ export default function LiveClasses() {
       console.log("response is", data);
 
       toast.success("Live Class scheduled successfully!");
+
+      const rtmpUrl = data.rtmpUrl;
+      const streamKey = data.streamKey;
+
+      setCredentialsModal({ rtmpUrl, streamKey });
 
       // Reset form states
       setTitle("");
@@ -666,7 +673,6 @@ export default function LiveClasses() {
         });
       }
     }
-    console.log("time is", timeStr);
     const parts = timeStr.split(":");
     if (parts.length >= 2) {
       const hr = parseInt(parts[0], 10);
@@ -710,19 +716,40 @@ export default function LiveClasses() {
             className="space-y-6"
           >
             {/* Header */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight">Live Classes</h1>
-                <p className="hidden text-sm text-muted-foreground md:block">
-                  Schedule, broadcast, and track attendance of live classes
-                </p>
+            <div className="flex flex-col items-start justify-between gap-5 md:flex-row md:items-center">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => navigate("/educator")}
+                    className="hidden rounded-full hover:bg-primary md:flex"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  <h1 className="text-2xl font-bold tracking-tight">Live Classes</h1>
+                  <p className="hidden text-sm text-muted-foreground md:block">
+                    Schedule, broadcast, and track attendance of live classes
+                  </p>
+                </div>
               </div>
-              <Button
-                onClick={() => setShowCreateForm(true)}
-                className="gradient-bg rounded-lg shadow-sm"
-              >
-                <Plus className="mr-2 h-4 w-4" /> Create Live Class
-              </Button>
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  onClick={() => navigate("/educator/live-classes/guide")}
+                  className="gap-1.5 rounded-lg border-border text-xs hover:bg-primary"
+                >
+                  <HelpCircle className="h-4 w-4" /> Creation Guide
+                </Button>
+                <Button
+                  onClick={() => setShowCreateForm(true)}
+                  className="gradient-bg rounded-lg shadow-sm"
+                >
+                  <Plus className="mr-2 h-4 w-4" /> Create Live Class
+                </Button>
+              </div>
             </div>
 
             {/* Tabs & Filters */}
@@ -732,20 +759,22 @@ export default function LiveClasses() {
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`relative pb-3 text-sm font-semibold capitalize transition-colors ${activeTab === tab
-                      ? "border-b-2 border-primary text-primary"
-                      : "text-muted-foreground hover:text-foreground"
-                      }`}
+                    className={`relative pb-3 text-sm font-semibold capitalize transition-colors ${
+                      activeTab === tab
+                        ? "border-b-2 border-primary text-primary"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
                   >
                     {tab === "scheduled" ? "Upcoming" : tab}
                     {stats[tab === "scheduled" ? "upcoming" : tab] > 0 && (
                       <span
-                        className={`ml-2 rounded-full px-2 py-0.5 text-xs font-bold ${tab === "live"
-                          ? "animate-pulse bg-red-500/10 text-red-600"
-                          : tab === "scheduled"
-                            ? "bg-primary/10 text-primary"
-                            : "bg-muted text-muted-foreground"
-                          }`}
+                        className={`ml-2 rounded-full px-2 py-0.5 text-xs font-bold ${
+                          tab === "live"
+                            ? "animate-pulse bg-red-500/10 text-red-600"
+                            : tab === "scheduled"
+                              ? "bg-primary/10 text-primary"
+                              : "bg-muted text-muted-foreground"
+                        }`}
                       >
                         {stats[tab === "scheduled" ? "upcoming" : tab]}
                       </span>
@@ -823,9 +852,7 @@ export default function LiveClasses() {
                         </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <Clock className="h-4 w-4 text-primary/65" />
-                          <span>
-                            {formatTimeLabel(item.startTime)}
-                          </span>
+                          <span>{formatTimeLabel(item.startTime)}</span>
                         </div>
                       </div>
 
@@ -836,20 +863,25 @@ export default function LiveClasses() {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="flex-1 rounded-lg border-border text-xs gap-1.5"
+                              className="flex-1 gap-1.5 rounded-lg border-border text-xs"
                               onClick={() => handleEditClick(item)}
                             >
-                              <Edit2 className="h-3.5 w-3.5 text-primary" />
+                              <Edit2 className="h-3.5 w-3.5" />
                               Edit
                             </Button>
                             <Button
                               size="sm"
-                              variant="ghost"
-                              className="flex-1 rounded-lg text-xs text-destructive hover:bg-destructive/10 hover:text-destructive gap-1.5"
-                              onClick={() => handleDeleteClass(item.id, item.title)}
+                              variant="outline"
+                              className="flex-1 gap-1.5 rounded-lg border-border text-xs hover:bg-primary"
+                              onClick={() => {
+                                setCredentialsModal({
+                                  rtmpUrl: item.youtubeRtmpUrl,
+                                  streamKey: item.youtubeStreamKey,
+                                });
+                              }}
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              Delete
+                              <Key className="h-3.5 w-3.5" />
+                              Credentials
                             </Button>
                           </>
                         )}
@@ -858,8 +890,8 @@ export default function LiveClasses() {
                           <>
                             <Button
                               size="sm"
-                              className="py-4.5 flex-1 rounded-lg bg-red-600 text-xs hover:bg-red-700 gap-1.5"
-                              onClick={() => setSelectedWatchClass(item)}
+                              className="py-4.5 flex-1 gap-1.5 rounded-lg bg-red-600 text-xs hover:bg-red-700"
+                              onClick={() => navigate(`/educator/live-classes/${item.id}`)}
                             >
                               <Tv className="h-4 w-4" />
                               Join
@@ -867,7 +899,7 @@ export default function LiveClasses() {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="py-4.5 flex-1 rounded-lg border-red-200 text-xs text-red-600 hover:bg-red-50 hover:text-red-700 gap-1.5"
+                              className="py-4.5 flex-1 gap-1.5 rounded-lg border-red-200 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
                               onClick={() => handleUpdateStatus(item.id, "completed")}
                             >
                               End Live
@@ -880,20 +912,11 @@ export default function LiveClasses() {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="flex-1 rounded-lg border-border text-xs gap-1.5"
-                              onClick={() => setSelectedWatchClass(item)}
+                              className="flex-1 gap-1.5 rounded-lg border-border text-xs"
+                              onClick={() => navigate(`/educator/live-classes/${item.id}`)}
                             >
                               <Tv className="h-3.5 w-3.5 text-primary" />
                               Recording
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="flex-1 rounded-lg border-border text-xs gap-1.5"
-                              onClick={() => setSelectedAttendanceClass(item)}
-                            >
-                              <UserCheck className="h-3.5 w-3.5 text-primary" />
-                              Attendance
                             </Button>
                           </>
                         )}
@@ -947,7 +970,10 @@ export default function LiveClasses() {
 
             <Card className="border-border/60 shadow-card">
               <CardContent className="space-y-8 p-6">
-                <form onSubmit={editingClass ? handleUpdateClass : handleCreateLiveClass} className="space-y-8">
+                <form
+                  onSubmit={editingClass ? handleUpdateClass : handleCreateLiveClass}
+                  className="space-y-8"
+                >
                   {/* Section 1: Basic Details */}
                   <div className="space-y-4">
                     <h3 className="flex items-center gap-2 border-b pb-2 text-sm font-bold text-primary">
@@ -1156,7 +1182,12 @@ export default function LiveClasses() {
                               </div>
                             </div>
                           </div>
-                          <Button variant="outline" className="border-green-200 bg-green-50/30 text-green-900 hover:bg-green-100" onClick={disconnectYoutube} disabled={connectingYt}  >
+                          <Button
+                            variant="outline"
+                            className="border-green-200 bg-green-50/30 text-green-900 hover:bg-green-100"
+                            onClick={disconnectYoutube}
+                            disabled={connectingYt}
+                          >
                             {connectingYt ? (
                               <>
                                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
@@ -1167,12 +1198,8 @@ export default function LiveClasses() {
                             )}
                           </Button>
                         </Card>
-
-
                       </div>
                     )}
-
-
                   </div>
 
                   <div className="flex justify-end gap-3 border-t border-border/40 pt-6">
@@ -1202,10 +1229,13 @@ export default function LiveClasses() {
                     >
                       {submitting ? (
                         <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {editingClass ? "Saving..." : "Scheduling..."}
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />{" "}
+                          {editingClass ? "Saving..." : "Scheduling..."}
                         </>
+                      ) : editingClass ? (
+                        "Save Changes"
                       ) : (
-                        editingClass ? "Save Changes" : "Create Live Class"
+                        "Create Live Class"
                       )}
                     </Button>
                   </div>
@@ -1216,85 +1246,98 @@ export default function LiveClasses() {
         )}
       </AnimatePresence>
 
-
-      {/* Watch Stream Dialog */}
+      {/* Credentials Dialog */}
       <Dialog
-        open={!!selectedWatchClass}
-        onOpenChange={(open) => !open && setSelectedWatchClass(null)}
+        open={!!credentialsModal}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCredentialsModal(null);
+            setShowStreamKey(false);
+          }
+        }}
       >
-        <DialogContent className="max-w-3xl rounded-xl">
-          <DialogHeader>
-            <DialogTitle className="truncate text-lg font-bold">
-              {selectedWatchClass?.title}
-            </DialogTitle>
-            <CardDescription>
-              Batch: {selectedWatchClass?.batchName} · Program: {selectedWatchClass?.courseName}
-            </CardDescription>
+        <DialogContent className="max-w-md rounded-xl p-6">
+          <DialogHeader className="space-y-1.5">
+            <div className="flex items-center gap-2 text-primary">
+              <Key className="h-5 w-5 text-primary" />
+              <DialogTitle className="text-xl font-bold">YouTube Stream Credentials</DialogTitle>
+            </div>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Use these streaming credentials in your software (e.g. OBS, Streamlabs) to stream to
+              YouTube.
+            </DialogDescription>
           </DialogHeader>
-          {selectedWatchClass?.watchUrl && (
-            <div className="relative aspect-video w-full overflow-hidden">
-              <iframe
-                src={`${selectedWatchClass.watchUrl}?autoplay=1`}
-                title={selectedWatchClass.title}
-                className="absolute inset-0 h-full w-full border-none"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            </div>
-          )}
-          {selectedWatchClass?.description && (
-            <div className="mt-2 max-h-[150px] space-y-1 overflow-y-auto pr-1">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground">
-                Description
-              </h4>
-              <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
-                {selectedWatchClass.description}
-              </p>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
-      {/* View Attendance Dialog */}
-      <Dialog
-        open={!!selectedAttendanceClass}
-        onOpenChange={(open) => !open && setSelectedAttendanceClass(null)}
-      >
-        <DialogContent className="max-w-md rounded-xl">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold">Class Attendance Report</DialogTitle>
-            <CardDescription className="line-clamp-1">
-              {selectedAttendanceClass?.title} · Batch: {selectedAttendanceClass?.batchName}
-            </CardDescription>
-          </DialogHeader>
-          <div className="mt-4 divide-y overflow-hidden rounded-lg border bg-card">
-            <div className="flex bg-muted/30 px-4 py-2 text-xs font-bold text-muted-foreground">
-              <span className="flex-1">Student Name</span>
-              <span className="w-24 text-right">Status</span>
-              <span className="w-24 text-right">Join Time</span>
-            </div>
-            {mockAttendance.map((student, idx) => (
-              <div key={idx} className="flex items-center px-4 py-2.5 text-xs">
-                <span className="flex-1 font-semibold text-foreground">{student.name}</span>
-                <span className="w-24 text-right">
-                  <Badge
-                    variant={student.status === "Joined" ? "secondary" : "outline"}
-                    className={
-                      student.status === "Joined"
-                        ? "border-none bg-green-100 text-green-700 hover:bg-green-100"
-                        : "text-muted-foreground"
-                    }
-                  >
-                    {student.status}
-                  </Badge>
-                </span>
-                <span className="w-24 text-right text-muted-foreground">{student.time}</span>
+          <div className="mt-4 space-y-4">
+            {/* YouTube RTMP URL */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  YouTube RTMP URL
+                </label>
+                <span className="text-[10px] text-muted-foreground">Recommended</span>
               </div>
-            ))}
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  readOnly
+                  value={credentialsModal?.rtmpUrl || ""}
+                  className="w-full select-all rounded-lg border border-input bg-muted/40 py-2.5 pl-3 pr-10 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleCopyText(credentialsModal?.rtmpUrl || "", "RTMP URL")}
+                  className="absolute right-2 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <Copy className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* YouTube Stream Key */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  YouTube Stream Key
+                </label>
+                <span className="text-[10px] font-medium text-red-500">Keep this secret!</span>
+              </div>
+              <div className="relative flex items-center">
+                <input
+                  type={showStreamKey ? "text" : "password"}
+                  readOnly
+                  value={credentialsModal?.streamKey || ""}
+                  className="w-full select-all rounded-lg border border-input bg-muted/40 py-2.5 pl-3 pr-20 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <div className="absolute right-2 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowStreamKey(!showStreamKey)}
+                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    {showStreamKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText(credentialsModal?.streamKey || "", "Stream Key")}
+                    className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="flex justify-end pt-3">
-            <Button variant="outline" size="sm" onClick={() => setSelectedAttendanceClass(null)}>
-              Close
+
+          <div className="mt-6 flex justify-end">
+            <Button
+              className="gradient-bg w-24 rounded-lg font-medium text-white hover:opacity-90"
+              onClick={() => {
+                setCredentialsModal(null);
+                setShowStreamKey(false);
+              }}
+            >
+              Done
             </Button>
           </div>
         </DialogContent>

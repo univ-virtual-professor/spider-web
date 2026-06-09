@@ -1,12 +1,21 @@
 import { useEffect, useState, useMemo } from "react";
-import { collection, doc, getDoc, onSnapshot, query, where, orderBy, Timestamp } from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
+import {
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  query,
+  where,
+  orderBy,
+  Timestamp,
+} from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { useTenant } from "@app/providers/TenantProvider";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@shared/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Button } from "@shared/ui/button";
 import { Badge } from "@shared/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@shared/ui/dialog";
 import { Calendar, Clock, Loader2, VideoOff, Play } from "lucide-react";
 import { toast } from "sonner";
 
@@ -37,15 +46,12 @@ export default function StudentLiveClasses() {
   const batchId = profile?.batchId || null;
   const branchId = profile?.branchId || null;
   const courseId = profile?.courseId || null;
-
+  const navigate = useNavigate();
 
   const [classes, setClasses] = useState<LiveClass[]>([]);
   const [educatorName, setEducatorName] = useState("");
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"scheduled" | "live" | "completed">("scheduled");
-
-  // Watch Dialog State
-  const [selectedWatchClass, setSelectedWatchClass] = useState<LiveClass | null>(null);
 
   // Fetch educator details
   useEffect(() => {
@@ -173,11 +179,26 @@ export default function StudentLiveClasses() {
   };
 
   const formatTimeLabel = (timeStr: string) => {
-    const [hours, minutes] = timeStr.split(":");
-    const hr = parseInt(hours);
-    const ampm = hr >= 12 ? "PM" : "AM";
-    const formattedHr = hr % 12 || 12;
-    return `${formattedHr}:${minutes} ${ampm}`;
+    if (!timeStr) return "";
+    if (timeStr.includes("T") || (timeStr.includes("-") && timeStr.length > 5)) {
+      const d = new Date(timeStr);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        });
+      }
+    }
+    const parts = timeStr.split(":");
+    if (parts.length >= 2) {
+      const hr = parseInt(parts[0], 10);
+      const min = parts[1];
+      const ampm = hr >= 12 ? "PM" : "AM";
+      const formattedHr = hr % 12 || 12;
+      return `${formattedHr}:${min} ${ampm}`;
+    }
+    return timeStr;
   };
 
   if (authLoading || loading) {
@@ -218,20 +239,22 @@ export default function StudentLiveClasses() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`relative pb-3 text-sm font-semibold capitalize transition-colors ${activeTab === tab
-                ? "border-b-2 border-primary text-primary"
-                : "text-muted-foreground hover:text-foreground"
-                }`}
+              className={`relative pb-3 text-sm font-semibold capitalize transition-colors ${
+                activeTab === tab
+                  ? "border-b-2 border-primary text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
             >
               {tab === "scheduled" ? "Upcoming" : tab}
               {stats[tab === "scheduled" ? "upcoming" : tab] > 0 && (
                 <span
-                  className={`ml-2 rounded-full px-2 py-0.5 text-xs font-bold ${tab === "live"
-                    ? "animate-pulse bg-red-500/10 text-red-600"
-                    : tab === "scheduled"
-                      ? "bg-primary/10 text-primary"
-                      : "bg-muted text-muted-foreground"
-                    }`}
+                  className={`ml-2 rounded-full px-2 py-0.5 text-xs font-bold ${
+                    tab === "live"
+                      ? "animate-pulse bg-red-500/10 text-red-600"
+                      : tab === "scheduled"
+                        ? "bg-primary/10 text-primary"
+                        : "bg-muted text-muted-foreground"
+                  }`}
                 >
                   {stats[tab === "scheduled" ? "upcoming" : tab]}
                 </span>
@@ -262,7 +285,6 @@ export default function StudentLiveClasses() {
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {filteredClasses.map((item) => {
-            console.log(item.startTime, "line 332")
             const now = new Date();
             let scheduledDate: Date | null = null;
             if (item.scheduledTimestamp) {
@@ -281,10 +303,9 @@ export default function StudentLiveClasses() {
             return (
               <Card
                 key={item.id}
-                className={`relative flex flex-col justify-between overflow-hidden border-border/50 shadow-soft transition-all duration-200 ${isLive
-                  ? "border-red-500/40 ring-1 ring-red-500/20"
-                  : "hover:border-primary/30"
-                  }`}
+                className={`relative flex flex-col justify-between overflow-hidden border-border/50 shadow-soft transition-all duration-200 ${
+                  isLive ? "border-red-500/40 ring-1 ring-red-500/20" : "hover:border-primary/30"
+                }`}
               >
                 {isLive && (
                   <div className="absolute left-0 top-0 h-[3.5px] w-full animate-pulse bg-red-500" />
@@ -329,9 +350,7 @@ export default function StudentLiveClasses() {
                     </div>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Clock className="h-4 w-4 text-primary/65" />
-                      <span>
-                        {formatTimeLabel(item.startTime)}
-                      </span>
+                      <span>{formatTimeLabel(item.startTime)}</span>
                     </div>
                   </div>
 
@@ -340,7 +359,7 @@ export default function StudentLiveClasses() {
                       item.youtubeVideoId ? (
                         <Button
                           className="gradient-bg w-full rounded-lg py-5 text-xs font-semibold shadow-sm"
-                          onClick={() => setSelectedWatchClass(item)}
+                          onClick={() => navigate(`/student/live-classes/${item.id}`)}
                         >
                           <Play className="mr-1.5 h-3.5 w-3.5 fill-current" /> Watch Recording
                         </Button>
@@ -356,7 +375,7 @@ export default function StudentLiveClasses() {
                     ) : isLive && item.youtubeVideoId ? (
                       <Button
                         className="gradient-bg w-full rounded-lg py-5 text-xs font-semibold shadow-sm"
-                        onClick={() => setSelectedWatchClass(item)}
+                        onClick={() => navigate(`/student/live-classes/${item.id}`)}
                       >
                         <Play className="mr-1.5 h-3.5 w-3.5 fill-current" /> Watch Class
                       </Button>
@@ -376,42 +395,6 @@ export default function StudentLiveClasses() {
           })}
         </div>
       )}
-
-      {/* Watch Stream Dialog */}
-      <Dialog
-        open={!!selectedWatchClass}
-        onOpenChange={(open) => !open && setSelectedWatchClass(null)}
-      >
-        <DialogContent className="max-w-3xl rounded-xl">
-          <DialogHeader>
-            <DialogTitle className="truncate text-lg font-bold">
-              {selectedWatchClass?.title}
-            </DialogTitle>
-            <CardDescription>Educator: {educatorName}</CardDescription>
-          </DialogHeader>
-          {selectedWatchClass?.youtubeVideoId && (
-            <div className="relative aspect-video w-full overflow-hidden rounded-lg border bg-black shadow-md">
-              <iframe
-                src={`https://www.youtube.com/embed/${selectedWatchClass.youtubeVideoId}?autoplay=1`}
-                title={selectedWatchClass.title}
-                className="absolute inset-0 h-full w-full border-none"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            </div>
-          )}
-          {selectedWatchClass?.description && (
-            <div className="mt-2 max-h-[150px] space-y-1 overflow-y-auto pr-1">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground">
-                Description
-              </h4>
-              <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
-                {selectedWatchClass.description}
-              </p>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

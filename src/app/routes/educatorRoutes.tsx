@@ -30,7 +30,9 @@ import {
   SubjectiveAttemptGrader,
   ProctoringReview,
   LiveClasses,
+  EducatorLiveWatch,
   NeedsAttention,
+  StreamingGuide,
 } from "@features/educator";
 import QuestionPaperRequests from "@features/educator/QuestionPaperRequests";
 
@@ -47,6 +49,8 @@ export function getEducatorRoutes() {
       <Route index element={<EducatorDashboard />} />
       <Route path="dashboard" element={<EducatorDashboard />} />
       <Route path="live-classes" element={<LiveClasses />} />
+      <Route path="live-classes/guide" element={<StreamingGuide />} />
+      <Route path="live-classes/:classId" element={<EducatorLiveWatch />} />
 
       <Route path="students" element={<StudentsListing />} />
       <Route path="students/:studentId" element={<StudentDetails />} />
