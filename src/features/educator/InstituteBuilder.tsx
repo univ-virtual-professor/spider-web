@@ -2224,18 +2224,22 @@ function ContactFormComponent({ data, theme: t, selected, onClick, previewMode, 
     }
     setBusy(true);
     setError("");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
     try {
       const base = import.meta.env.VITE_MONKEY_KING_API_URL || "";
       const res = await fetch(`${base}/api/contact/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tenantSlug, ...form }),
+        signal: controller.signal,
       });
       if (!res.ok) throw new Error("Failed");
       setSubmitted(true);
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (err: any) {
+      setError(err?.name === "AbortError" ? "Request timed out. Please try again." : "Something went wrong. Please try again.");
     } finally {
+      clearTimeout(timeout);
       setBusy(false);
     }
   }

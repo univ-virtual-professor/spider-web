@@ -8,6 +8,8 @@ export type TestSection = {
   attemptsLimit?: number | null;
   timeLimit?: number | null;
   topics?: string[];
+  tags?: string[];
+  chapters?: string[];
   format?: string;
   difficultyLevel?: number;
   markingScheme?: {

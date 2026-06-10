@@ -198,6 +198,32 @@ const CreateCustomTest = ({
   const allowedSubjectIds = accessibleSubjects.map((s) => s.id);
   const qbOptions = useQBOptions(allowedSubjectIds);
 
+  // Cascading filter options: narrow topics/tags based on what's selected
+  const filteredTopicOptions = useMemo(() => {
+    if (formGlobalChapters.length === 0) return qbOptions.topics;
+    const chapSet = new Set(formGlobalChapters);
+    return [...new Set(
+      qbOptions.rawQuestions
+        .filter((q) => chapSet.has(q.chapter))
+        .flatMap((q) => q.topics)
+    )].sort();
+  }, [formGlobalChapters, qbOptions.rawQuestions, qbOptions.topics]);
+
+  const filteredTagOptions = useMemo(() => {
+    const chapSet = new Set(formGlobalChapters);
+    const topicSet = new Set(formGlobalTopics);
+    if (chapSet.size === 0 && topicSet.size === 0) return qbOptions.tags;
+    return [...new Set(
+      qbOptions.rawQuestions
+        .filter((q) => {
+          if (chapSet.size > 0 && !chapSet.has(q.chapter)) return false;
+          if (topicSet.size > 0 && !q.topics.some((t) => topicSet.has(t))) return false;
+          return true;
+        })
+        .flatMap((q) => q.tags)
+    )].sort();
+  }, [formGlobalChapters, formGlobalTopics, qbOptions.rawQuestions, qbOptions.tags]);
+
   // Reset form & template selection when dialog opens
   useEffect(() => {
     if (createOpen) {
@@ -814,23 +840,31 @@ const CreateCustomTest = ({
                       <MultiSelect
                         options={qbOptions.chapters}
                         selected={formGlobalChapters}
-                        onChange={setFormGlobalChapters}
+                        onChange={(val) => {
+                          setFormGlobalChapters(val);
+                          // clear topics/tags that no longer exist under new chapter selection
+                          setFormGlobalTopics([]);
+                          setFormGlobalTags([]);
+                        }}
                         placeholder="Any chapter..."
                       />
                     </div>
                     <div className="space-y-2">
                       <Label>Topics (optional)</Label>
                       <MultiSelect
-                        options={qbOptions.topics}
+                        options={filteredTopicOptions}
                         selected={formGlobalTopics}
-                        onChange={setFormGlobalTopics}
+                        onChange={(val) => {
+                          setFormGlobalTopics(val);
+                          setFormGlobalTags([]);
+                        }}
                         placeholder="Select topics..."
                       />
                     </div>
                     <div className="space-y-2">
                       <Label>Tags (optional)</Label>
                       <MultiSelect
-                        options={qbOptions.tags}
+                        options={filteredTagOptions}
                         selected={formGlobalTags}
                         onChange={setFormGlobalTags}
                         placeholder="Select tags..."
