@@ -237,6 +237,7 @@ const SectionCard = ({
           </div>
           <div className="flex gap-2">
             <Button
+              type="button"
               variant="ghost"
               size="icon"
               onClick={openEdit}
@@ -245,6 +246,7 @@ const SectionCard = ({
               <Edit className="h-4 w-4" />
             </Button>
             <Button
+              type="button"
               variant="ghost"
               size="icon"
               className="mb-0.5 shrink-0 rounded-xl text-destructive"

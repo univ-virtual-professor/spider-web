@@ -136,6 +136,8 @@ type CreateCustomTestProps = {
   accessibleCourses?: { id: string; name: string }[];
   accessibleSubjects?: { id: string; name: string; courseId: string }[];
   onCreateTemplate?: () => void;
+  initialValues?: Record<string, any>;
+  isEditing?: boolean;
 };
 
 function safeNum(v: any, fallback: number) {
@@ -155,6 +157,8 @@ const CreateCustomTest = ({
   accessibleCourses = [],
   accessibleSubjects = [],
   onCreateTemplate,
+  initialValues,
+  isEditing = false,
 }: CreateCustomTestProps) => {
   const [formTitle, setFormTitle] = useState("");
   const [formDescription, setFormDescription] = useState("");
@@ -227,22 +231,23 @@ const CreateCustomTest = ({
   // Reset form & template selection when dialog opens
   useEffect(() => {
     if (createOpen) {
-      setFormTitle("");
-      setFormDescription("");
-      setFormCourseId("");
-      setFormCourseName("");
-      setFormSubject("");
-      setSubjectMode("single");
-      setFormDuration("60");
-      setFormSections([]);
-      setFormMarkingScheme({ correct: 1, incorrect: 0, unanswered: 0 });
+      const iv = initialValues;
+      setFormTitle(iv?.title ?? "");
+      setFormDescription(iv?.description ?? "");
+      setFormCourseId(iv?.courseId ?? "");
+      setFormCourseName(iv?.courseName ?? "");
+      setFormSubject(iv?.subject ?? "");
+      setSubjectMode(iv?.subjectMode ?? "single");
+      setFormDuration(String(iv?.durationMinutes ?? 60));
+      setFormSections(Array.isArray(iv?.sections) ? iv.sections : []);
+      setFormMarkingScheme(iv?.markingScheme ?? { correct: 1, incorrect: 0, unanswered: 0 });
       setSelectedTemplateId("none");
-      setUseSections(false);
-      setFormQuestionFormat("MCQ_SINGLE");
-      setFormQuestionsCount("");
-      setFormGlobalChapters([]);
-      setFormGlobalTopics([]);
-      setFormGlobalTags([]);
+      setUseSections(iv?.useSections ?? false);
+      setFormQuestionFormat(iv?.questionFormat ?? "MCQ_SINGLE");
+      setFormQuestionsCount(iv?.questionsTarget != null ? String(iv.questionsTarget) : (iv?.questionsCount != null ? String(iv.questionsCount) : ""));
+      setFormGlobalChapters(Array.isArray(iv?.chapters) ? iv.chapters : []);
+      setFormGlobalTopics(Array.isArray(iv?.topics) ? iv.topics : []);
+      setFormGlobalTags(Array.isArray(iv?.tags) ? iv.tags : []);
       setGlobalAdvancedOpen(false);
       setNewSectionUseMarkingScheme(false);
       setNewSectionMarkingCorrect("1");
@@ -489,15 +494,16 @@ const CreateCustomTest = ({
   return (
     <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto rounded-2xl">
       <DialogHeader>
-        <DialogTitle>Create New Test</DialogTitle>
+        <DialogTitle>{isEditing ? "Edit Test Settings" : "Create New Test"}</DialogTitle>
         <DialogDescription>
-          Start from an admin template or one of your saved templates, then create a new test with
-          the same settings.
+          {isEditing
+            ? "Update the test title, sections, question counts, filters, and marking scheme."
+            : "Start from an admin template or one of your saved templates, then create a new test with the same settings."}
         </DialogDescription>
       </DialogHeader>
 
       <form onSubmit={handleSubmit} className="mt-2 space-y-4">
-        <div className="space-y-2">
+        {!isEditing && (<><div className="space-y-2">
           <Label>Template</Label>
           <Select value={selectedTemplateId} onValueChange={handleTemplateChange}>
             <SelectTrigger className="rounded-xl">
@@ -597,7 +603,7 @@ const CreateCustomTest = ({
               Template loaded! You can modify its settings below.
             </p>
           </div>
-        )}
+        )}</>)}
 
         <div className="space-y-2">
           <Label>Title</Label>
@@ -895,6 +901,7 @@ const CreateCustomTest = ({
                 availableChapters={qbOptions.chapters}
                 availableTopics={qbOptions.topics}
                 availableTagOptions={qbOptions.tags}
+                rawQuestions={qbOptions.rawQuestions}
                 sectionFormat={sec.format}
                 markingScheme={sec.markingScheme}
                 defaultMarkingScheme={formMarkingScheme}
@@ -1153,7 +1160,7 @@ const CreateCustomTest = ({
         </Dialog>
 
         <Button type="submit" className="mt-6 w-full rounded-xl" disabled={creating}>
-          {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create Test"}
+          {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : isEditing ? "Save Changes" : "Create Test"}
         </Button>
 
         <p className="text-xs text-muted-foreground">
