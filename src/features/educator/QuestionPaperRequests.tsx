@@ -1,21 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  BookOpen,
+  ExternalLink,
   FileUp,
   Loader2,
   Pencil,
+  Plus,
   Trash2,
   UploadCloud,
-  ExternalLink,
+  X,
   ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
-import { doc, getDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { Button } from "@shared/ui/button";
+import { Badge } from "@shared/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Input } from "@shared/ui/input";
 import { Label } from "@shared/ui/label";
+import { Tabs, TabsList, TabsTrigger } from "@shared/ui/tabs";
 import { Textarea } from "@shared/ui/textarea";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@shared/ui/dialog";
@@ -29,24 +34,38 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@shared/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@shared/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@shared/ui/table";
 
 const API = import.meta.env.VITE_MONKEY_KING_API_URL;
 const ACCEPTED = ".pdf,image/jpeg,image/png";
 
 type RequestStatus = "PENDING" | "IN_PROGRESS" | "COMPLETE" | "CANCELLED";
+type RequestType = "file" | "syllabus";
 
 type QPRequest = {
   id: number;
   title: string;
   description: string;
-  file_url: string;
-  file_name: string;
+  request_type: RequestType;
+  file_url: string | null;
+  file_name: string | null;
+  subject: string | null;
+  chapter: string | null;
+  topics: string[] | null;
   status: RequestStatus;
   admin_note: string | null;
   created_at: string;
   updated_at: string;
 };
+
+type SubjectOption = { id: string; name: string };
 
 const STATUS_LABEL: Record<RequestStatus, string> = {
   PENDING: "Pending",
@@ -133,17 +152,27 @@ export default function QuestionPaperRequests() {
     }
     return res.json();
   }
+
   const [requests, setRequests] = useState<QPRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [monthlyLimit, setMonthlyLimit] = useState<number>(5);
+  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
 
   // Create dialog
   const [createOpen, setCreateOpen] = useState(false);
+  const [createMode, setCreateMode] = useState<RequestType>("file");
   const [createTitle, setCreateTitle] = useState("");
   const [createDesc, setCreateDesc] = useState("");
+  // file mode
   const [createFile, setCreateFile] = useState<File | null>(null);
-  const [createBusy, setCreateBusy] = useState(false);
   const createFileRef = useRef<HTMLInputElement>(null);
+  // syllabus mode
+  const [createSubject, setCreateSubject] = useState("");
+  const [createChapter, setCreateChapter] = useState("");
+  const [createTopics, setCreateTopics] = useState<string[]>([]);
+  const [topicInput, setTopicInput] = useState("");
+
+  const [createBusy, setCreateBusy] = useState(false);
 
   // Edit dialog
   const [editTarget, setEditTarget] = useState<QPRequest | null>(null);
@@ -167,10 +196,35 @@ export default function QuestionPaperRequests() {
     if (!profile?.uid) return;
     fetchRequests();
     getDoc(doc(db, "educators", profile.uid)).then((snap) => {
-      const limit = snap.data()?.maxQuestionPaperRequests;
-      if (typeof limit === "number") setMonthlyLimit(limit);
+      const data = snap.data();
+      if (typeof data?.maxQuestionPaperRequests === "number") {
+        setMonthlyLimit(data.maxQuestionPaperRequests);
+      }
+      const allowedSubjectIds: string[] = data?.allowedSubjectIds || [];
+      if (allowedSubjectIds.length > 0) {
+        loadSubjects(allowedSubjectIds);
+      }
     });
   }, [profile?.uid]);
+
+  async function loadSubjects(ids: string[]) {
+    try {
+      // Firestore `in` supports up to 30 items per query
+      const chunks: string[][] = [];
+      for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30));
+      const results: SubjectOption[] = [];
+      for (const chunk of chunks) {
+        const snap = await getDocs(
+          query(collection(db, "subjects"), where("__name__", "in", chunk))
+        );
+        snap.forEach((d) => results.push({ id: d.id, name: d.data().name }));
+      }
+      results.sort((a, b) => a.name.localeCompare(b.name));
+      setSubjects(results);
+    } catch {
+      // non-fatal
+    }
+  }
 
   async function fetchRequests() {
     setLoading(true);
@@ -184,27 +238,71 @@ export default function QuestionPaperRequests() {
     }
   }
 
+  function resetCreateForm() {
+    setCreateTitle("");
+    setCreateDesc("");
+    setCreateFile(null);
+    setCreateSubject("");
+    setCreateChapter("");
+    setCreateTopics([]);
+    setTopicInput("");
+    setCreateMode("file");
+  }
+
   async function handleCreate() {
     if (!createTitle.trim()) return toast.error("Title is required");
-    if (!createFile) return toast.error("Please select a file");
+
     setCreateBusy(true);
     try {
-      const fd = new FormData();
-      fd.append("title", createTitle.trim());
-      fd.append("description", createDesc.trim());
-      fd.append("file", createFile);
-      const newReq = await apiUpload("/api/question-upload/", fd);
+      let newReq: QPRequest;
+      if (createMode === "file") {
+        if (!createFile) return toast.error("Please select a file");
+        const fd = new FormData();
+        fd.append("title", createTitle.trim());
+        fd.append("description", createDesc.trim());
+        fd.append("file", createFile);
+        newReq = await apiUpload("/api/question-upload/", fd);
+      } else {
+        if (!createSubject) return toast.error("Please select a subject");
+        const token = await firebaseUser?.getIdToken();
+        const res = await fetch(`${API}/api/question-upload/syllabus`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            title: createTitle.trim(),
+            description: createDesc.trim(),
+            subject: createSubject,
+            chapter: createChapter.trim(),
+            topics: createTopics,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || "Request failed");
+        }
+        newReq = await res.json();
+      }
+
       setRequests((prev) => [newReq, ...prev]);
       setCreateOpen(false);
-      setCreateTitle("");
-      setCreateDesc("");
-      setCreateFile(null);
+      resetCreateForm();
       toast.success("Request submitted");
     } catch (e: any) {
       toast.error(e.message);
     } finally {
       setCreateBusy(false);
     }
+  }
+
+  function addTopic() {
+    const t = topicInput.trim();
+    if (!t) return;
+    if (!createTopics.includes(t)) setCreateTopics((prev) => [...prev, t]);
+    setTopicInput("");
+  }
+
+  function removeTopic(t: string) {
+    setCreateTopics((prev) => prev.filter((x) => x !== t));
   }
 
   async function handleEdit() {
@@ -290,13 +388,13 @@ export default function QuestionPaperRequests() {
           <div>
             <h1 className="text-2xl font-semibold">Question Paper Requests</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Upload a question paper and request admin to add it to your panel.
+              Upload a paper or specify subject/topics for admin to create one.
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <MonthlyUsage requests={requests} limit={monthlyLimit} />
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button onClick={() => { resetCreateForm(); setCreateOpen(true); }}>
             <FileUp className="mr-2 h-4 w-4" />
             New Request
           </Button>
@@ -322,7 +420,7 @@ export default function QuestionPaperRequests() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Title</TableHead>
-                  <TableHead>File</TableHead>
+                  <TableHead>Type / Details</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Admin Note</TableHead>
                   <TableHead>Submitted</TableHead>
@@ -336,15 +434,39 @@ export default function QuestionPaperRequests() {
                       {req.title}
                     </TableCell>
                     <TableCell>
-                      <a
-                        href={req.file_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex max-w-[140px] items-center gap-1 truncate text-xs text-primary hover:underline"
-                      >
-                        {req.file_name}
-                        <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                      </a>
+                      {req.request_type === "syllabus" ? (
+                        <div className="space-y-0.5 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <BookOpen className="h-3 w-3 flex-shrink-0" />
+                            <span className="font-medium text-foreground">{req.subject}</span>
+                          </div>
+                          {req.chapter && <div>Ch: {req.chapter}</div>}
+                          {Array.isArray(req.topics) && req.topics.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {req.topics.slice(0, 3).map((t) => (
+                                <span key={t} className="rounded bg-muted px-1.5 py-0.5 text-[10px]">{t}</span>
+                              ))}
+                              {req.topics.length > 3 && (
+                                <span className="text-[10px]">+{req.topics.length - 3} more</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        req.file_url ? (
+                          <a
+                            href={req.file_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex max-w-[140px] items-center gap-1 truncate text-xs text-primary hover:underline"
+                          >
+                            {req.file_name}
+                            <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                          </a>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )
+                      )}
                     </TableCell>
                     <TableCell>
                       <span
@@ -371,18 +493,20 @@ export default function QuestionPaperRequests() {
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            title="Replace file"
-                            onClick={() => {
-                              setReuploadTarget(req);
-                              setReuploadFile(null);
-                            }}
-                          >
-                            <UploadCloud className="h-3.5 w-3.5" />
-                          </Button>
+                          {req.request_type === "file" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              title="Replace file"
+                              onClick={() => {
+                                setReuploadTarget(req);
+                                setReuploadFile(null);
+                              }}
+                            >
+                              <UploadCloud className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="icon"
@@ -404,12 +528,26 @@ export default function QuestionPaperRequests() {
       </Card>
 
       {/* ── Create dialog ── */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={createOpen} onOpenChange={(o) => { if (!o) resetCreateForm(); setCreateOpen(o); }}>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>New Question Paper Request</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {/* Mode tabs */}
+            <Tabs value={createMode} onValueChange={(v) => setCreateMode(v as RequestType)}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="file">
+                  <UploadCloud className="mr-2 h-4 w-4" />
+                  Upload Paper
+                </TabsTrigger>
+                <TabsTrigger value="syllabus">
+                  <BookOpen className="mr-2 h-4 w-4" />
+                  Specify Details
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+
             <div className="space-y-1.5">
               <Label>Title *</Label>
               <Input
@@ -418,42 +556,112 @@ export default function QuestionPaperRequests() {
                 onChange={(e) => setCreateTitle(e.target.value)}
               />
             </div>
+
             <div className="space-y-1.5">
               <Label>Description</Label>
               <Textarea
                 placeholder="Any notes for admin (optional)"
-                rows={3}
+                rows={2}
                 value={createDesc}
                 onChange={(e) => setCreateDesc(e.target.value)}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label>Question Paper *</Label>
-              <input
-                ref={createFileRef}
-                type="file"
-                accept={ACCEPTED}
-                className="hidden"
-                onChange={(e) => setCreateFile(e.target.files?.[0] ?? null)}
-              />
-              <button
-                type="button"
-                onClick={() => createFileRef.current?.click()}
-                className="flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border py-6 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-              >
-                <UploadCloud className="h-6 w-6" />
-                {createFile ? (
-                  <span className="max-w-[240px] truncate font-medium text-foreground">
-                    {createFile.name}
-                  </span>
-                ) : (
-                  <span>Click to select PDF or image</span>
-                )}
-              </button>
-            </div>
+
+            {createMode === "file" ? (
+              <div className="space-y-1.5">
+                <Label>Question Paper *</Label>
+                <input
+                  ref={createFileRef}
+                  type="file"
+                  accept={ACCEPTED}
+                  className="hidden"
+                  onChange={(e) => setCreateFile(e.target.files?.[0] ?? null)}
+                />
+                <button
+                  type="button"
+                  onClick={() => createFileRef.current?.click()}
+                  className="flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border py-6 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                >
+                  <UploadCloud className="h-6 w-6" />
+                  {createFile ? (
+                    <span className="max-w-[280px] truncate font-medium text-foreground">
+                      {createFile.name}
+                    </span>
+                  ) : (
+                    <span>Click to select PDF or image</span>
+                  )}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label>Subject *</Label>
+                  {subjects.length > 0 ? (
+                    <Select value={createSubject} onValueChange={setCreateSubject}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select subject" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {subjects.map((s) => (
+                          <SelectItem key={s.id} value={s.name}>
+                            {s.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      placeholder="e.g. Physics"
+                      value={createSubject}
+                      onChange={(e) => setCreateSubject(e.target.value)}
+                    />
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Chapter</Label>
+                  <Input
+                    placeholder="e.g. Laws of Motion"
+                    value={createChapter}
+                    onChange={(e) => setCreateChapter(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Topics</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Add a topic and press Enter"
+                      value={topicInput}
+                      onChange={(e) => setTopicInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTopic(); } }}
+                    />
+                    <Button type="button" variant="outline" size="icon" onClick={addTopic}>
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {createTopics.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {createTopics.map((t) => (
+                        <Badge key={t} variant="secondary" className="gap-1 pr-1">
+                          {t}
+                          <button
+                            type="button"
+                            onClick={() => removeTopic(t)}
+                            className="ml-0.5 rounded hover:text-destructive"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+            <Button variant="outline" onClick={() => { resetCreateForm(); setCreateOpen(false); }}>
               Cancel
             </Button>
             <Button onClick={handleCreate} disabled={createBusy}>

@@ -28,7 +28,7 @@ const PRIMARY = "#6C47FF";
 const ACCENT = "#A78BFA";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const HERO_TAGS = ["CUET", "JEE", "NEET", "UPSC", "CAT", "CBSE", "State Boards", "Any Exam"];
+const HERO_TAGS = ["CUET", "JEE", "NEET", "UPSC", "CAT", "CBSE", "Abacus", "And many more..."];
 const HERO_STATS: [string, string][] = [
   ["500+", "Institutes"],
   ["2L+", "Students"],

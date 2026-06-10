@@ -25,7 +25,6 @@ import {
 import { Badge } from "@shared/ui/badge";
 import { Slider } from "@shared/ui/slider";
 import { MultiSelect } from "@shared/ui/MultiSelect";
-import { SearchableSingleSelect } from "@shared/ui/searchable-single-select";
 import { useQBOptions } from "@shared/hooks/useQBOptions";
 import {
   Plus,
@@ -177,7 +176,7 @@ const CreateCustomTest = ({
   const [newSectionQuestionsCount, setNewSectionQuestionsCount] = useState("");
   const [newSectionDifficulty, setNewSectionDifficulty] = useState(0.5);
   const [newSectionTopics, setNewSectionTopics] = useState<string[]>([]);
-  const [newSectionChapter, setNewSectionChapter] = useState("");
+  const [newSectionChapters, setNewSectionChapters] = useState<string[]>([]);
   const [newSectionSubject, setNewSectionSubject] = useState("");
   const [newSectionTags, setNewSectionTags] = useState<string[]>([]);
   const [newSectionAttemptLimit, setNewSectionAttemptLimit] = useState("");
@@ -190,7 +189,7 @@ const CreateCustomTest = ({
   const [useSections, setUseSections] = useState(false);
   const [formQuestionFormat, setFormQuestionFormat] = useState("MCQ_SINGLE");
   const [formQuestionsCount, setFormQuestionsCount] = useState("");
-  const [formGlobalChapter, setFormGlobalChapter] = useState("");
+  const [formGlobalChapters, setFormGlobalChapters] = useState<string[]>([]);
   const [formGlobalTopics, setFormGlobalTopics] = useState<string[]>([]);
   const [formGlobalTags, setFormGlobalTags] = useState<string[]>([]);
   const [globalAdvancedOpen, setGlobalAdvancedOpen] = useState(false);
@@ -215,7 +214,7 @@ const CreateCustomTest = ({
       setUseSections(false);
       setFormQuestionFormat("MCQ_SINGLE");
       setFormQuestionsCount("");
-      setFormGlobalChapter("");
+      setFormGlobalChapters([]);
       setFormGlobalTopics([]);
       setFormGlobalTags([]);
       setGlobalAdvancedOpen(false);
@@ -331,7 +330,7 @@ const CreateCustomTest = ({
         : {
             questionsCount: Number(formQuestionsCount) || 0,
             questionFormat: formQuestionFormat,
-            chapter: formGlobalChapter || null,
+            chapters: formGlobalChapters,
             topics: formGlobalTopics,
             tags: formGlobalTags,
           }),
@@ -393,7 +392,7 @@ const CreateCustomTest = ({
     setNewSectionAttemptLimit("");
     setNewSectionDifficulty(computedDifficultyLevel);
     setNewSectionTopics([]);
-    setNewSectionChapter("");
+    setNewSectionChapters([]);
     setNewSectionSubject("");
     setNewSectionTags([]);
     setNewSectionFormat("MCQ_SINGLE");
@@ -426,7 +425,7 @@ const CreateCustomTest = ({
         durationMinutes: null,
         difficultyLevel: clampDifficulty(newSectionDifficulty),
         topics: newSectionTopics,
-        chapter: newSectionChapter || "",
+        chapters: newSectionChapters,
         subject: newSectionSubject || "",
         tags: newSectionTags,
         format: newSectionFormat || "",
@@ -555,7 +554,7 @@ const CreateCustomTest = ({
                 </p>
               </div>
             </div>
-            {resolvedTemplate.syllabus && resolvedTemplate.syllabus.length > 0 && (
+            {Array.isArray(resolvedTemplate.syllabus) && resolvedTemplate.syllabus.length > 0 && (
               <div className="mt-2 space-y-1">
                 <p className="text-xs font-medium text-muted-foreground">
                   Syllabus ({resolvedTemplate.syllabus.length} topics):
@@ -811,24 +810,13 @@ const CreateCustomTest = ({
                       Used by auto-fill and AI fill to narrow the question pool.
                     </p>
                     <div className="space-y-2">
-                      <Label>Chapter (optional)</Label>
-                      {qbOptions.chapters.length > 0 ? (
-                        <SearchableSingleSelect
-                          options={qbOptions.chapters}
-                          value={formGlobalChapter}
-                          onChange={setFormGlobalChapter}
-                          placeholder="Any chapter"
-                          searchPlaceholder="Search chapters..."
-                          className="rounded-xl"
-                        />
-                      ) : (
-                        <Input
-                          value={formGlobalChapter}
-                          onChange={(e) => setFormGlobalChapter(e.target.value)}
-                          placeholder="e.g. Kinematics"
-                          className="rounded-xl"
-                        />
-                      )}
+                      <Label>Chapters (optional)</Label>
+                      <MultiSelect
+                        options={qbOptions.chapters}
+                        selected={formGlobalChapters}
+                        onChange={setFormGlobalChapters}
+                        placeholder="Any chapter..."
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label>Topics (optional)</Label>
@@ -866,7 +854,7 @@ const CreateCustomTest = ({
                 attemptLimit={sec.attemptlimit ?? undefined}
                 durationMinutes={sec.durationMinutes ?? undefined}
                 sectionDifficulty={sec.difficultyLevel}
-                sectionChapter={sec.chapter}
+                sectionChapter={Array.isArray(sec.chapters) ? sec.chapters : sec.chapter ? [sec.chapter] : []}
                 sectionTopics={sec.topics}
                 sectionSubject={sec.subject}
                 sectionTags={sec.tags}
@@ -889,7 +877,7 @@ const CreateCustomTest = ({
                     attemptlimit: payload.attemptLimit ?? null,
                     durationMinutes: payload.durationMinutes ?? null,
                     difficultyLevel: clampDifficulty(payload.difficultyLevel),
-                    chapter: payload.chapter || "",
+                    chapters: payload.chapters || [],
                     topics: payload.topics || [],
                     subject: payload.subject || "",
                     tags: payload.tags || [],
@@ -906,7 +894,7 @@ const CreateCustomTest = ({
 
         {/* Add Section Dialog */}
         <Dialog open={addSectionOpen} onOpenChange={setAddSectionOpen}>
-          <DialogContent className="max-w-md rounded-2xl" onClick={(e) => e.stopPropagation()}>
+          <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto rounded-2xl" onClick={(e) => e.stopPropagation()}>
             <DialogHeader>
               <DialogTitle>Add New Section</DialogTitle>
               <DialogDescription>
@@ -1082,24 +1070,13 @@ const CreateCustomTest = ({
                       Used by auto-fill and AI fill to narrow the question pool.
                     </p>
                     <div className="space-y-2">
-                      <Label>Chapter (optional)</Label>
-                      {qbOptions.chapters.length > 0 ? (
-                        <SearchableSingleSelect
-                          options={qbOptions.chapters}
-                          value={newSectionChapter}
-                          onChange={setNewSectionChapter}
-                          placeholder="Any chapter"
-                          searchPlaceholder="Search chapters..."
-                          className="rounded-xl"
-                        />
-                      ) : (
-                        <Input
-                          value={newSectionChapter}
-                          onChange={(e) => setNewSectionChapter(e.target.value)}
-                          placeholder="e.g. Kinematics"
-                          className="rounded-xl"
-                        />
-                      )}
+                      <Label>Chapters (optional)</Label>
+                      <MultiSelect
+                        options={qbOptions.chapters}
+                        selected={newSectionChapters}
+                        onChange={setNewSectionChapters}
+                        placeholder="Any chapter..."
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label>Topics (optional)</Label>

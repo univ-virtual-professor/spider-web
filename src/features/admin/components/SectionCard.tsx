@@ -224,8 +224,8 @@ const SectionCard = ({
                   Difficulty: {getDifficultyLabel(clampDifficulty(sectionDifficulty))}
                 </Badge>
               )}
-              {(sectionChapter?.length ?? 0) > 0 && (
-                <Badge variant="outline">Ch: {sectionChapter!.join(", ")}</Badge>
+              {Array.isArray(sectionChapter) && sectionChapter.length > 0 && (
+                <Badge variant="outline">Ch: {sectionChapter.join(", ")}</Badge>
               )}
               {sectionSubject && <Badge variant="secondary">{sectionSubject}</Badge>}
               {sectionFormat && (
