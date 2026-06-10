@@ -229,6 +229,7 @@ export default function BuilderThemeHome() {
         useGradient={useGradient}
         themeMode={themeMode}
         customColor={customColor}
+        tenantSlug={tenant.tenantSlug}
       />
     </div>
   );

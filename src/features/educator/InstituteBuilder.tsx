@@ -111,6 +111,7 @@ interface ComponentProps {
   mobile?: boolean;
   useGradient?: boolean;
   sections?: Section[];
+  tenantSlug?: string;
 }
 
 const ICON_MAP: Record<string, any> = {
@@ -512,6 +513,7 @@ const EDITOR_FIELDS: Record<string, EditorField[]> = {
   video: [
     { key: "eyebrow", label: "Eyebrow Text", type: "text" },
     { key: "title", label: "Section Title", type: "text" },
+    { key: "videoUrl", label: "Video URL", type: "text" },
   ],
   contact: [
     { key: "eyebrow", label: "Eyebrow Text", type: "text" },
@@ -2086,7 +2088,23 @@ function PricingComponent({
   );
 }
 
+function toEmbedUrl(url: string): string | null {
+  if (!url.trim()) return null;
+  const ytWatch = url.match(/youtube\.com\/watch\?(?:.*&)?v=([\w-]+)/);
+  if (ytWatch) return `https://www.youtube.com/embed/${ytWatch[1]}`;
+  const ytShort = url.match(/youtu\.be\/([\w-]+)/);
+  if (ytShort) return `https://www.youtube.com/embed/${ytShort[1]}`;
+  if (url.includes("youtube.com/embed/")) return url;
+  const vimeo = url.match(/vimeo\.com\/(\d+)/);
+  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`;
+  if (/\.(mp4|webm|ogg)(\?|$)/i.test(url)) return url;
+  return null;
+}
+
 function VideoComponent({ data, theme: t, selected, onClick }: ComponentProps) {
+  const embedUrl = toEmbedUrl(data.videoUrl || "");
+  const isDirect = embedUrl ? /\.(mp4|webm|ogg)/i.test(embedUrl) : false;
+
   return (
     <div
       onClick={onClick}
@@ -2117,9 +2135,10 @@ function VideoComponent({ data, theme: t, selected, onClick }: ComponentProps) {
         <div
           style={{
             borderRadius: 20,
-            background: `repeating-linear-gradient(45deg, ${t.primary}08, ${t.primary}08 10px, ${t.primary}04 10px, ${t.primary}04 20px)`,
-            border: `2px dashed ${t.primary}30`,
+            overflow: "hidden",
             aspectRatio: "16/9",
+            background: embedUrl ? "#000" : `repeating-linear-gradient(45deg, ${t.primary}08, ${t.primary}08 10px, ${t.primary}04 10px, ${t.primary}04 20px)`,
+            border: embedUrl ? "none" : `2px dashed ${t.primary}30`,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -2127,46 +2146,121 @@ function VideoComponent({ data, theme: t, selected, onClick }: ComponentProps) {
             gap: 16,
           }}
         >
-          <div
-            style={{
-              width: 72,
-              height: 72,
-              borderRadius: "50%",
-              background: t.primary,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: `0 8px 32px ${t.primary}60`,
-            }}
-          >
-            <div
-              style={{
-                width: 0,
-                height: 0,
-                borderTop: "14px solid transparent",
-                borderBottom: "14px solid transparent",
-                borderLeft: "24px solid #fff",
-                marginLeft: 6,
-              }}
-            ></div>
-          </div>
-          <div style={{ fontSize: 11, color: t.primary, opacity: 0.5 }}>
-            video embed / youtube url
-          </div>
+          {embedUrl ? (
+            isDirect ? (
+              <video
+                src={embedUrl}
+                controls
+                style={{ width: "100%", height: "100%", display: "block" }}
+              />
+            ) : (
+              <iframe
+                src={embedUrl}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+              />
+            )
+          ) : (
+            <>
+              <div
+                style={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: "50%",
+                  background: t.primary,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: `0 8px 32px ${t.primary}60`,
+                }}
+              >
+                <div
+                  style={{
+                    width: 0,
+                    height: 0,
+                    borderTop: "14px solid transparent",
+                    borderBottom: "14px solid transparent",
+                    borderLeft: "24px solid #fff",
+                    marginLeft: 6,
+                  }}
+                />
+              </div>
+              <div style={{ fontSize: 11, color: t.primary, opacity: 0.5 }}>
+                Paste a YouTube or Vimeo URL in the panel
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function ContactFormComponent({ data, theme: t, selected, onClick, previewMode }: ComponentProps) {
+function ContactFormComponent({ data, theme: t, selected, onClick, previewMode, tenantSlug }: ComponentProps) {
+  const [form, setForm] = useState({ name: "", phone: "", email: "", courseInterest: "" });
+  const [busy, setBusy] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState("");
+
+  const inputStyle = {
+    width: "100%",
+    height: 40,
+    borderRadius: 8,
+    border: `1.5px solid ${t.primary}40`,
+    background: t.bg,
+    padding: "0 12px",
+    fontSize: 14,
+    color: t.text,
+    outline: "none",
+    boxSizing: "border-box",
+  };
+
+  async function handleSubmit(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!form.name.trim() || !form.phone.trim()) {
+      setError("Name and phone are required");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const base = import.meta.env.VITE_MONKEY_KING_API_URL || "";
+      const res = await fetch(`${base}/api/contact/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantSlug, ...form }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setSubmitted(true);
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const contactItems = [
+    data.phone && { icon: "📞", label: data.phone },
+    data.email && { icon: "✉️", label: data.email },
+    data.address && { icon: "📍", label: data.address },
+  ].filter(Boolean) as { icon: string; label: string }[];
+
+  if (contactItems.length === 0) {
+    contactItems.push(
+      { icon: "📞", label: "+91 98765 43210" },
+      { icon: "✉️", label: "hello@institute.com" },
+      { icon: "📍", label: "123 Education Hub, Delhi" },
+    );
+  }
+
   return (
     <div
-      onClick={onClick}
+      onClick={previewMode ? undefined : onClick}
       style={{
         background: t.bg,
         padding: "60px 40px",
-        cursor: "pointer",
+        cursor: previewMode ? "default" : "pointer",
         outline: selected ? `3px solid ${t.accent}` : "none",
         outlineOffset: -3,
       }}
@@ -2197,11 +2291,7 @@ function ContactFormComponent({ data, theme: t, selected, onClick, previewMode }
           <div style={{ fontSize: 34, fontWeight: 800, color: t.text, marginBottom: 16 }}>
             {data.title || "Book a Free Counselling Session"}
           </div>
-          {[
-            { icon: "📞", label: data.phone || "+91 98765 43210" },
-            { icon: "✉️", label: data.email || "hello@institute.com" },
-            { icon: "📍", label: data.address || "123 Education Hub, Delhi" },
-          ].map((c, i) => (
+          {contactItems.map((c, i) => (
             <div
               key={i}
               style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}
@@ -2219,37 +2309,91 @@ function ContactFormComponent({ data, theme: t, selected, onClick, previewMode }
             boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
           }}
         >
-          {["Full Name", "Phone Number", "Email Address", "Course Interest"].map((label, i) => (
-            <div key={i} style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: t.text, marginBottom: 6 }}>
-                {label}
+          {previewMode && submitted ? (
+            <div style={{ textAlign: "center", padding: "24px 0" }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: t.text, marginBottom: 8 }}>
+                Enquiry Submitted!
               </div>
-              <div
-                style={{
-                  height: 40,
-                  borderRadius: 8,
-                  border: `1.5px solid ${t.primary}25`,
-                  background: t.bg,
-                }}
-              ></div>
+              <div style={{ fontSize: 14, color: t.text, opacity: 0.7 }}>
+                We'll get back to you soon.
+              </div>
             </div>
-          ))}
-          <button
-            style={{
-              width: "100%",
-              padding: 13,
-              background: t.primary,
-              color: "#fff",
-              border: "none",
-              borderRadius: 10,
-              fontSize: 15,
-              fontWeight: 700,
-              cursor: previewMode ? "pointer" : "default",
-            }}
-            onClick={previewMode ? (e) => handleCtaClick(e, data.ctaUrl) : undefined}
-          >
-            {data.cta || "Submit Enquiry"}
-          </button>
+          ) : previewMode ? (
+            <>
+              {[
+                { label: "Full Name *", key: "name", placeholder: "Your name" },
+                { label: "Phone Number *", key: "phone", placeholder: "+91 98765 43210" },
+                { label: "Email Address", key: "email", placeholder: "you@example.com" },
+                { label: "Course Interest", key: "courseInterest", placeholder: "e.g. JEE, NEET" },
+              ].map(({ label, key, placeholder }) => (
+                <div key={key} style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: t.text, marginBottom: 6 }}>
+                    {label}
+                  </div>
+                  <input
+                    style={inputStyle}
+                    placeholder={placeholder}
+                    value={form[key as keyof typeof form]}
+                    onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                  />
+                </div>
+              ))}
+              {error && (
+                <div style={{ fontSize: 12, color: "#ef4444", marginBottom: 12 }}>{error}</div>
+              )}
+              <button
+                disabled={busy}
+                style={{
+                  width: "100%",
+                  padding: 13,
+                  background: busy ? `${t.primary}80` : t.primary,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 10,
+                  fontSize: 15,
+                  fontWeight: 700,
+                  cursor: busy ? "not-allowed" : "pointer",
+                }}
+                onClick={handleSubmit}
+              >
+                {busy ? "Submitting…" : (data.cta || "Submit Enquiry")}
+              </button>
+            </>
+          ) : (
+            <>
+              {["Full Name", "Phone Number", "Email Address", "Course Interest"].map((label, i) => (
+                <div key={i} style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: t.text, marginBottom: 6 }}>
+                    {label}
+                  </div>
+                  <div
+                    style={{
+                      height: 40,
+                      borderRadius: 8,
+                      border: `1.5px solid ${t.primary}25`,
+                      background: t.bg,
+                    }}
+                  />
+                </div>
+              ))}
+              <button
+                style={{
+                  width: "100%",
+                  padding: 13,
+                  background: t.primary,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 10,
+                  fontSize: 15,
+                  fontWeight: 700,
+                  cursor: "default",
+                }}
+              >
+                {data.cta || "Submit Enquiry"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
