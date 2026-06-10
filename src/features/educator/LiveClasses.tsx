@@ -2,7 +2,6 @@ import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   collection,
-  deleteDoc,
   doc,
   onSnapshot,
   Timestamp,
@@ -535,18 +534,6 @@ export default function LiveClasses() {
     } catch (err) {
       console.error(err);
       toast.error("Failed to update class status");
-    }
-  };
-
-  const handleDeleteClass = async (classId: string, title: string) => {
-    if (!confirm(`Are you sure you want to cancel the Live Class "${title}"?`)) return;
-
-    try {
-      await deleteDoc(doc(db, "live_classes", classId));
-      toast.success("Live Class deleted");
-    } catch (err) {
-      console.error(err);
-      toast.error("Failed to delete live class");
     }
   };
 

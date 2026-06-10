@@ -275,10 +275,10 @@ export default function StudentLiveWatch() {
           {liveClass.embedUrl ? (
             <div className="relative aspect-video h-[85vh] w-full overflow-hidden rounded-2xl border bg-black shadow-md">
               <iframe
-                src={`${liveClass.embedUrl}?autoplay=1`}
+                src={`https://www.youtube.com/embed/${liveClass.youtubeVideoId}?autoplay=1&origin=${encodeURIComponent(window.location.origin)}`}
                 title={liveClass.title}
                 className="absolute inset-0 h-full w-full border-none"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowFullScreen
               />
               <div className="absolute inset-0 z-10" style={{ pointerEvents: "all" }} />

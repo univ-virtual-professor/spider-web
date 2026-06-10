@@ -1,6 +1,15 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { doc, onSnapshot, updateDoc } from "firebase/firestore";
+import {
+  doc,
+  onSnapshot,
+  updateDoc,
+  addDoc,
+  collection,
+  serverTimestamp,
+  query,
+  orderBy,
+} from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Button } from "@shared/ui/button";
@@ -8,6 +17,7 @@ import { Badge } from "@shared/ui/badge";
 import { Input } from "@shared/ui/input";
 import { ArrowLeft, Loader2, VideoOff, Send } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@app/providers/AuthProvider";
 
 type LiveClass = {
   id: string;
@@ -23,6 +33,7 @@ type LiveClass = {
   description?: string;
   watchUrl: string;
   embedUrl: string;
+  youtubeVideoId: string;
   status: "scheduled" | "live" | "completed";
   educatorId: string;
 };
@@ -30,7 +41,6 @@ type LiveClass = {
 type ChatMessage = {
   id: string;
   senderName: string;
-  senderRole: "STUDENT" | "EDUCATOR";
   text: string;
   timestamp: Date;
 };
@@ -57,32 +67,75 @@ export default function EducatorLiveWatch() {
 
   // Chat UI states
   const [messageText, setMessageText] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>();
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [senderId, setSenderId] = useState("");
+  const [senderName, setSenderName] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
 
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const { firebaseUser, profile } = useAuth();
+
+  useEffect(() => {
+    if (firebaseUser) {
+      setSenderId(firebaseUser.uid);
+      setSenderName(
+        profile?.displayName || firebaseUser.displayName || firebaseUser.email || "Student"
+      );
+    }
+  }, [firebaseUser, profile]);
 
   // Auto-scroll to bottom of chat
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!messageText.trim()) return;
 
-    const newMessage: ChatMessage = {
-      id: String(Date.now()),
-      senderName: "You",
-      senderRole: "EDUCATOR",
-      text: messageText,
-      timestamp: new Date(),
-    };
+    setSendingMessage(true);
+    try {
+      await addDoc(collection(db, "live_classes", classId, "messages"), {
+        text: messageText,
+        senderId: senderId,
+        senderName: senderName,
+        createdAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.error("Error sending message:", err);
+    } finally {
+      setSendingMessage(false);
+    }
 
-    setMessages((prev) => [...prev, newMessage]);
     setMessageText("");
   };
-
   // Fetch live class details
+  useEffect(() => {
+    if (!classId) return;
+
+    const q = query(
+      collection(db, "live_classes", classId, "messages"),
+      orderBy("createdAt", "asc")
+    );
+
+    const unsub = onSnapshot(q, (snapshot) => {
+      setMessages(
+        snapshot.docs.map((docDoc) => {
+          const data = docDoc.data();
+          return {
+            id: docDoc.id,
+            senderName: data.senderName || "Anonymous",
+            senderId: data.senderId || "",
+            text: data.text || "",
+            timestamp: data.createdAt ? (data.createdAt as any).toDate() : new Date(),
+          };
+        })
+      );
+    });
+
+    return () => unsub();
+  }, [classId]);
+
   useEffect(() => {
     if (!classId) return;
 
@@ -113,6 +166,7 @@ export default function EducatorLiveWatch() {
         status: newStatus,
       });
       toast.success(newStatus === "live" ? "Class is now LIVE!" : "Live Class ended.");
+      navigate("/educator/live-classes");
     } catch (err) {
       console.error(err);
       toast.error("Failed to update class status");
@@ -179,7 +233,7 @@ export default function EducatorLiveWatch() {
             variant="ghost"
             size="icon"
             onClick={() => navigate("/educator/live-classes")}
-            className="shrink-0 rounded-full hover:bg-muted"
+            className="shrink-0 rounded-full hover:bg-primary"
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
@@ -233,12 +287,12 @@ export default function EducatorLiveWatch() {
         {/* Stream player and info */}
         <div className="space-y-6 lg:col-span-2">
           {liveClass.embedUrl ? (
-            <div className="relative aspect-video w-full overflow-hidden rounded-2xl border bg-black shadow-md">
+            <div className="relative aspect-video h-[85vh] w-full overflow-hidden rounded-2xl border bg-black shadow-md">
               <iframe
-                src={`${liveClass.embedUrl}?autoplay=1`}
+                src={`https://www.youtube.com/embed/${liveClass.youtubeVideoId}?autoplay=1&origin=${encodeURIComponent(window.location.origin)}`}
                 title={liveClass.title}
                 className="absolute inset-0 h-full w-full border-none"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 allowFullScreen
               />
             </div>
@@ -295,23 +349,8 @@ export default function EducatorLiveWatch() {
                   messages.map((msg) => (
                     <div key={msg.id} className="flex flex-col text-xs">
                       <div className="mb-0.5 flex items-center gap-1.5 font-bold">
-                        <span
-                          className={
-                            msg.senderRole === "EDUCATOR"
-                              ? "font-semibold text-primary"
-                              : "text-foreground"
-                          }
-                        >
-                          {msg.senderName}
-                        </span>
-                        {msg.senderRole === "EDUCATOR" && (
-                          <Badge
-                            variant="secondary"
-                            className="border-none bg-primary/10 px-1 py-0 text-[8px] text-primary"
-                          >
-                            Educator
-                          </Badge>
-                        )}
+                        <span className={"text-foreground"}>{msg.senderName}</span>
+
                         <span className="ml-auto text-[9px] font-normal text-muted-foreground/60">
                           {msg.timestamp.toLocaleTimeString([], {
                             hour: "2-digit",
