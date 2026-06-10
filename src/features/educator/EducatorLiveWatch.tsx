@@ -289,7 +289,7 @@ export default function EducatorLiveWatch() {
           {liveClass.embedUrl ? (
             <div className="relative aspect-video h-[85vh] w-full overflow-hidden rounded-2xl border bg-black shadow-md">
               <iframe
-                src={`https://www.youtube.com/embed/${liveClass.youtubeVideoId}?autoplay=1&origin=${encodeURIComponent(window.location.origin)}`}
+                src={liveClass.embedUrl}
                 title={liveClass.title}
                 className="absolute inset-0 h-full w-full border-none"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
