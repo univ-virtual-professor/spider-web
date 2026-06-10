@@ -24,6 +24,7 @@ import {
   Palette,
   AlertTriangle,
   ClipboardCheck,
+  Video,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
@@ -177,6 +178,8 @@ function EducatorLayoutInner() {
       items.push({ icon: Users, label: "Batches", href: "/educator/batches" });
       items.push({ icon: UserCheck, label: "Students", href: "/educator/learners" });
     }
+
+    items.push({ icon: Video, label: "Live Classes", href: "/educator/live-classes" });
 
     if (!isEmployee || hasPermission(PERMISSIONS.ANALYTICS_VIEW)) {
       items.push({ icon: BarChart3, label: "Analytics", href: "/educator/analytics" });

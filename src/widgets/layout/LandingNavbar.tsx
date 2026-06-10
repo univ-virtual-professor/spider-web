@@ -54,7 +54,7 @@ export default function LandingNavbar() {
               key={l}
               href={`/#${l.toLowerCase().replace(/\s+/g, "-")}`}
               style={{
-                fontFamily: "'Inter', sans-serif",
+                fontFamily: "'Plus Jakarta Sans','Inter', sans-serif",
                 fontSize: 14,
                 fontWeight: 500,
                 color: "#3d3c47",
@@ -75,7 +75,7 @@ export default function LandingNavbar() {
               background: PRIMARY,
               color: "#fff",
               borderRadius: 100,
-              fontFamily: "'DM Sans',sans-serif",
+              fontFamily: "'Plus Jakarta Sans','DM Sans',sans-serif",
               fontWeight: 600,
               fontSize: 14,
               textDecoration: "none",

@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, Loader2, Home } from "lucide-react";
 import { toast } from "sonner";
 import { useTenant } from "@app/providers/TenantProvider";
+import { useAuth } from "@app/providers/AuthProvider";
 
 import {
   createUserWithEmailAndPassword,
@@ -36,6 +37,7 @@ export default function Signup() {
   const [searchParams] = useSearchParams();
   const nav = useNavigate();
   const { isTenantDomain, tenantSlug, tenant, loading: tenantLoading } = useTenant();
+  const { refreshProfile } = useAuth();
 
   const roleParam = (searchParams.get("role") || "").toLowerCase();
   const [role, setRole] = useState<RoleUI>(roleParam === "educator" ? "educator" : "student");
@@ -144,7 +146,8 @@ export default function Signup() {
           await syncSessionWithFirestore(cred.user.uid, sid);
 
           toast.success("Account created!");
-          nav("/student");
+          await refreshProfile();
+          nav("/student/dashboard");
           return;
         } catch (err: any) {
           if (err?.code === "auth/email-already-in-use") {
@@ -222,7 +225,8 @@ export default function Signup() {
       );
 
       toast.success("Educator account created!");
-      nav("/educator");
+      await refreshProfile();
+      nav("/educator/dashboard");
     } catch (error: any) {
       console.error(error);
       toast.error(error?.message || "Signup failed");
@@ -281,7 +285,8 @@ export default function Signup() {
       await syncSessionWithFirestore(cred2.user.uid, sid);
 
       toast.success("Signed in and enrolled!");
-      nav("/student");
+      await refreshProfile();
+      nav("/student/dashboard");
     } catch (err: any) {
       if (err?.code === "auth/invalid-credential") {
         toast.error("Wrong password. Please use the login page instead.");

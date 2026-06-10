@@ -73,6 +73,7 @@ type AttemptResponse = {
   markedForReview: boolean;
   visited: boolean;
   answered: boolean;
+  needsManualReview?: boolean;
   aiEvaluation?: {
     score: number;
     maxScore: number;

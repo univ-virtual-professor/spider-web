@@ -14,7 +14,7 @@ export default function ScheduledDpps() {
           <div>
             <Link
               to="/educator"
-              className="flex w-fit rounded-full p-1 text-black hover:bg-primary hover:text-white"
+              className="flex hidden w-fit rounded-full p-1 text-black hover:bg-primary hover:text-white md:flex"
             >
               <ArrowLeft className="h-6 w-6" />
             </Link>

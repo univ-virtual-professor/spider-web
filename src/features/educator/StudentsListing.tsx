@@ -198,7 +198,7 @@ export default function StudentsListing() {
         <div className="flex items-center gap-4">
           {!isApp && (
             <div
-              className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+              className="flex hidden cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white md:flex"
               onClick={() => navigate("/educator")}
             >
               <ArrowLeft className="h-4 w-4" />
@@ -206,7 +206,7 @@ export default function StudentsListing() {
           )}
           <div>
             <h1 className="text-2xl font-bold tracking-tight">All Students</h1>
-            <p className="mt-1 text-muted-foreground">
+            <p className="mt-1 hidden text-muted-foreground md:block">
               Manage and monitor all enrolled students across branches and programs.
             </p>
           </div>
@@ -355,9 +355,9 @@ export default function StudentsListing() {
 
                   return (
                     <tr key={student.id} className="group transition-colors hover:bg-muted/20">
-                      <td className="p-4">
+                      <td className="p-2 md:p-4">
                         <div className="flex items-center gap-3">
-                          <Avatar className="h-10 w-10 border border-border/50">
+                          <Avatar className="h-8 w-8 border border-border/50">
                             <AvatarImage src={student.avatarUrl} />
                             <AvatarFallback className="bg-primary/5 text-xs font-bold text-primary">
                               {(student.name || "S")
@@ -377,7 +377,7 @@ export default function StudentsListing() {
                           </div>
                         </div>
                       </td>
-                      <td className="hidden p-4 md:table-cell">
+                      <td className="hidden p-3 md:table-cell">
                         <div className="space-y-1">
                           <div className="flex items-center gap-1.5 text-xs text-foreground">
                             <GraduationCap className="h-3 w-3 text-muted-foreground" />
@@ -413,7 +413,7 @@ export default function StudentsListing() {
                             onClick={() => navigate(`/educator/students/${student.id}`)}
                           >
                             View Details
-                            <ChevronRight className="ml-1 h-3 w-3 transition-transform group-hover/btn:translate-x-0.5" />
+                            <ChevronRight className="ml-1 hidden h-3 w-3 transition-transform group-hover/btn:translate-x-0.5 md:flex" />
                           </Button>
                         </div>
                       </td>

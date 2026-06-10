@@ -84,7 +84,7 @@ export default function ReportedQuestionsDashboard({ isAdmin = false }: { isAdmi
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div
-            className="flex cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white"
+            className="flex hidden cursor-pointer items-center gap-2 rounded-full p-2 transition-colors hover:bg-primary hover:text-white md:block"
             onClick={() => navigate("/educator/test-series")}
           >
             <ArrowLeft className="h-4 w-4" />

@@ -1030,7 +1030,7 @@ export default function DppGenerator() {
                             {dpp.difficulty}
                           </Badge>
                           <SourceLabel mode={dpp.sourceMode} />
-                          <span>{new Date(dpp.generatedAt).toLocaleString()}</span>
+                          <span>{new Date(dpp.generatedAt).toLocaleString("en-GB")}</span>
                         </div>
                         {dpp.status === "failed" && dpp.errorMessage && (
                           <p className="text-[10px] text-destructive">{dpp.errorMessage}</p>

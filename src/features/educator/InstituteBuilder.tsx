@@ -144,7 +144,7 @@ const ICON_OPTIONS = [
 interface EditorField {
   key: string;
   label: string;
-  type: "text" | "textarea" | "select" | "image" | "cta-link" | "icon";
+  type: "text" | "textarea" | "select" | "image" | "video" | "cta-link" | "icon";
   options?: string[];
   arrayKey?: string;
   subKey?: string;
@@ -512,6 +512,7 @@ const EDITOR_FIELDS: Record<string, EditorField[]> = {
   video: [
     { key: "eyebrow", label: "Eyebrow Text", type: "text" },
     { key: "title", label: "Section Title", type: "text" },
+    { key: "videoUrl", label: "Select or Upload Video", type: "video" },
   ],
   contact: [
     { key: "eyebrow", label: "Eyebrow Text", type: "text" },
@@ -2087,6 +2088,22 @@ function PricingComponent({
 }
 
 function VideoComponent({ data, theme: t, selected, onClick }: ComponentProps) {
+  const getYouTubeEmbedUrl = (url?: string): string | null => {
+    if (!url) return null;
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|live\/)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    if (match && match[2].length === 11) {
+      return `https://www.youtube.com/embed/${match[2]}`;
+    }
+    const trimmed = url.trim();
+    if (trimmed.length === 11) {
+      return `https://www.youtube.com/embed/${trimmed}`;
+    }
+    return null;
+  };
+
+  const embedUrl = getYouTubeEmbedUrl(data.videoUrl);
+
   return (
     <div
       onClick={onClick}
@@ -2114,46 +2131,97 @@ function VideoComponent({ data, theme: t, selected, onClick }: ComponentProps) {
         <div style={{ fontSize: 34, fontWeight: 800, color: t.text, marginBottom: 32 }}>
           {data.title || "See How We Transform Students"}
         </div>
-        <div
-          style={{
-            borderRadius: 20,
-            background: `repeating-linear-gradient(45deg, ${t.primary}08, ${t.primary}08 10px, ${t.primary}04 10px, ${t.primary}04 20px)`,
-            border: `2px dashed ${t.primary}30`,
-            aspectRatio: "16/9",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexDirection: "column",
-            gap: 16,
-          }}
-        >
+
+        {embedUrl ? (
           <div
             style={{
-              width: 72,
-              height: 72,
-              borderRadius: "50%",
-              background: t.primary,
+              position: "relative",
+              borderRadius: 20,
+              overflow: "hidden",
+              aspectRatio: "16/9",
+              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.1)",
+              border: `1px solid ${t.primary}15`,
+            }}
+          >
+            <iframe
+              src={embedUrl}
+              title={data.title || "Video Section"}
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                height: "100%",
+              }}
+            ></iframe>
+          </div>
+        ) : data.videoUrl ? (
+          <div
+            style={{
+              position: "relative",
+              borderRadius: 20,
+              overflow: "hidden",
+              aspectRatio: "16/9",
+              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.1)",
+              border: `1px solid ${t.primary}15`,
+              background: "#000",
+            }}
+          >
+            <video
+              src={data.videoUrl}
+              controls
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+              }}
+            />
+          </div>
+        ) : (
+          <div
+            style={{
+              borderRadius: 20,
+              background: `repeating-linear-gradient(45deg, ${t.primary}08, ${t.primary}08 10px, ${t.primary}04 10px, ${t.primary}04 20px)`,
+              border: `2px dashed ${t.primary}30`,
+              aspectRatio: "16/9",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              boxShadow: `0 8px 32px ${t.primary}60`,
+              flexDirection: "column",
+              gap: 16,
             }}
           >
             <div
               style={{
-                width: 0,
-                height: 0,
-                borderTop: "14px solid transparent",
-                borderBottom: "14px solid transparent",
-                borderLeft: "24px solid #fff",
-                marginLeft: 6,
+                width: 72,
+                height: 72,
+                borderRadius: "50%",
+                background: t.primary,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: `0 8px 32px ${t.primary}60`,
               }}
-            ></div>
+            >
+              <div
+                style={{
+                  width: 0,
+                  height: 0,
+                  borderTop: "14px solid transparent",
+                  borderBottom: "14px solid transparent",
+                  borderLeft: "24px solid #fff",
+                  marginLeft: 6,
+                }}
+              ></div>
+            </div>
+            <div style={{ fontSize: 11, color: t.primary, opacity: 0.5 }}>
+              video embed / youtube url
+            </div>
           </div>
-          <div style={{ fontSize: 11, color: t.primary, opacity: 0.5 }}>
-            video embed / youtube url
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -5112,6 +5180,68 @@ function RightPanel({
                     );
                   })()
                 )
+              ) : field.type === "video" ? (
+                (() => {
+                  const isUploading = uploading[field.key] || false;
+                  const currentUrl: string = section.data[field.key] || "";
+                  const inputId = `video-upload-${section.id}-${field.key}`;
+                  return (
+                    <div>
+                      {currentUrl && (
+                        <div style={{ marginBottom: 8 }}>
+                          <video
+                            src={currentUrl}
+                            controls
+                            style={{
+                              width: "100%",
+                              maxHeight: 120,
+                              borderRadius: 8,
+                              background: "#000",
+                            }}
+                          />
+                        </div>
+                      )}
+                      <input
+                        id={inputId}
+                        type="file"
+                        accept="video/*"
+                        style={{ display: "none" }}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) await handleUpload(file, field.key);
+                          e.target.value = "";
+                        }}
+                      />
+                      <button
+                        disabled={isUploading}
+                        onClick={() => document.getElementById(inputId)?.click()}
+                        style={{
+                          width: "100%",
+                          padding: "8px 10px",
+                          borderRadius: 8,
+                          border: "1px solid rgba(0,0,0,0.15)",
+                          background: "#f9f9f9",
+                          fontSize: 13,
+                          fontWeight: 600,
+                          cursor: isUploading ? "not-allowed" : "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 6,
+                          opacity: isUploading ? 0.7 : 1,
+                        }}
+                      >
+                        {isUploading ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" /> Uploading…
+                          </>
+                        ) : (
+                          "Upload Video"
+                        )}
+                      </button>
+                    </div>
+                  );
+                })()
               ) : field.type === "cta-link" ? (
                 (() => {
                   const raw: string = section.data[field.key] || "";
