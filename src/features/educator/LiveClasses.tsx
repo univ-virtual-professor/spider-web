@@ -96,7 +96,7 @@ export default function LiveClasses() {
   const { profile, firebaseUser } = useAuth();
   const educatorId = profile?.uid || firebaseUser?.uid || "";
   const navigate = useNavigate();
-
+  const host = window.location.host;
   const [branches, setBranches] = useState<Branch[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
@@ -344,7 +344,7 @@ export default function LiveClasses() {
       }
 
       const response = await fetch(
-        `http://localhost:8000/youtube/auth-url?educatorId=${educatorId}&slug=${tenantSlug}`
+        `http://localhost:8000/youtube/auth-url?educatorId=${educatorId}&slug=${tenantSlug}&host=${host}`
       );
 
       const data = await response.json();
