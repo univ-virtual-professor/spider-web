@@ -32,6 +32,7 @@ type LiveClass = {
   startTime: string;
   description?: string;
   watchUrl: string;
+  embedUrl: string;
   youtubeVideoId: string;
   status: "scheduled" | "live" | "completed";
   educatorId: string;
@@ -243,7 +244,7 @@ export default function StudentLiveWatch() {
           variant="ghost"
           size="icon"
           onClick={() => navigate("/student/live-classes")}
-          className="rounded-full hover:bg-muted"
+          className="rounded-full hover:bg-primary"
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
@@ -271,14 +272,10 @@ export default function StudentLiveWatch() {
       <div className="space-y-6">
         {/* Main Stream Area */}
         <div className="w-full">
-          {liveClass.watchUrl ? (
+          {liveClass.embedUrl ? (
             <div className="relative aspect-video h-[85vh] w-full overflow-hidden rounded-2xl border bg-black shadow-md">
               <iframe
-                src={
-                  ytId
-                    ? `https://www.youtube.com/embed/${ytId}?autoplay=1`
-                    : `${liveClass.watchUrl}?autoplay=1`
-                }
+                src={`${liveClass.embedUrl}?autoplay=1`}
                 title={liveClass.title}
                 className="absolute inset-0 h-full w-full border-none"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"

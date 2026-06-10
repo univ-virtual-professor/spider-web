@@ -22,6 +22,7 @@ type LiveClass = {
   startTime: string;
   description?: string;
   watchUrl: string;
+  embedUrl: string;
   status: "scheduled" | "live" | "completed";
   educatorId: string;
 };
@@ -231,14 +232,10 @@ export default function EducatorLiveWatch() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Stream player and info */}
         <div className="space-y-6 lg:col-span-2">
-          {liveClass.watchUrl ? (
+          {liveClass.embedUrl ? (
             <div className="relative aspect-video w-full overflow-hidden rounded-2xl border bg-black shadow-md">
               <iframe
-                src={
-                  ytId
-                    ? `https://www.youtube.com/embed/${ytId}?autoplay=1`
-                    : `${liveClass.watchUrl}?autoplay=1`
-                }
+                src={`${liveClass.embedUrl}?autoplay=1`}
                 title={liveClass.title}
                 className="absolute inset-0 h-full w-full border-none"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
