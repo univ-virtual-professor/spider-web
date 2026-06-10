@@ -669,13 +669,14 @@ export default function TestSeries() {
           const qRef = doc(
             collection(db, "educators", currentUser.uid, "my_tests", test.id, "questions")
           );
-          const { id, _source, ...rest } = q as any;
+          const { id, _source, _sectionId, ...rest } = q as any;
           const qData: any = {
             ...rest,
             bankQuestionId: id,
             questionOrder: order++,
             addedAt: serverTimestamp(),
             questionType: normalizeQuestionType(rest.questionType || rest.format || "MCQ_SINGLE"),
+            ...((_sectionId) && { sectionId: _sectionId }),
           };
           batch.set(qRef, qData);
           usedIds.add(id);
