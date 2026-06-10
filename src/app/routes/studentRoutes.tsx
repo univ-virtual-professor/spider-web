@@ -15,6 +15,8 @@ import StudentResults from "@features/student/StudentResults";
 import StudentSettings from "@features/student/StudentSettings";
 import StudentTestDetails from "@features/student/StudentTestDetails";
 import StudentTests from "@features/student/StudentTests";
+import StudentLiveClasses from "@features/student/StudentLiveClasses";
+import StudentLiveWatch from "@features/student/StudentLiveWatch";
 
 export function getStudentRoutes() {
   return (
@@ -22,7 +24,10 @@ export function getStudentRoutes() {
       <Route element={<StudentLayout />}>
         <Route index element={<StudentDashboard />} />
         <Route path="dashboard" element={<StudentDashboard />} />
+        <Route path="live-classes" element={<StudentLiveClasses />} />
+        <Route path="live-classes/:classId" element={<StudentLiveWatch />} />
         <Route path="tests" element={<StudentTests />} />
+
         <Route path="tests/:testId" element={<StudentTestDetails />} />
         <Route path="tests/:testId/attempt" element={<StudentCBTAttempt />} />
         <Route path="attempts" element={<StudentAttempts />} />

@@ -2865,20 +2865,24 @@ const QuestionsManager = ({
             : "relative flex h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-background shadow-2xl"
         }
       >
-        <div className="flex items-center justify-between border-b p-4">
+        <div className="flex flex-col items-start justify-between border-b p-4 md:flex-row md:items-center">
           <div className="min-w-0">
-            <h2 className="text-sm font-bold md:text-lg">
+            <h2 className="text-xl font-bold md:text-2xl">
               {readOnly ? "View Questions" : "Manage Questions"}
             </h2>
-            <p className="text-[10px] text-muted-foreground md:text-xs">
+            <p className="hidden text-[10px] text-muted-foreground md:block md:text-xs">
               {readOnly
                 ? "Read-only mode for admin-imported test."
                 : "Add questions manually or import them from a PDF with AI. Saved questions stay in the same Firestore path."}
             </p>
           </div>
-          <div className="flex flex-wrap justify-end gap-2 lg:justify-start">
+          <div className="mt-2 flex flex-wrap justify-start gap-2 md:mt-0">
             {(!isPageMode || !isApp) && (
-              <Button variant="outline" onClick={requestCloseManager} className="rounded-xl">
+              <Button
+                variant="outline"
+                onClick={requestCloseManager}
+                className="hidden rounded-xl md:flex"
+              >
                 <ArrowLeft className="mr-2 h-4 w-4" /> Back
               </Button>
             )}

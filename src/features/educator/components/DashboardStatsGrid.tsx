@@ -36,6 +36,9 @@ interface DashboardStatsGridProps {
   attempts: AttemptDoc[];
   activeBatchesCount: number;
   isLoading: boolean;
+  selectedBranch?: string;
+  selectedCourse?: string;
+  selectedBatch?: string;
 }
 
 export default function DashboardStatsGrid({
@@ -43,6 +46,9 @@ export default function DashboardStatsGrid({
   attempts,
   activeBatchesCount,
   isLoading,
+  selectedBranch = "All",
+  selectedCourse = "All",
+  selectedBatch = "All",
 }: DashboardStatsGridProps) {
   const navigate = useNavigate();
 
@@ -58,14 +64,16 @@ export default function DashboardStatsGrid({
   // Derived Metrics
   const totalStudents = students.length;
 
-  const { weakStudentsCount } = useMemo(() => {
-    if (!attempts.length) return { weakStudentsCount: 0 };
+  const { weakStudentsCount, weakStudents } = useMemo(() => {
+    if (!attempts.length) return { weakStudentsCount: 0, weakStudents: [] };
 
     interface StudentScore {
       id: string;
       totalScore: number;
       maxScore: number;
       name: string;
+      email?: string;
+      attemptsCount: number;
     }
 
     const studentScores: Record<string, StudentScore> = {};
@@ -85,27 +93,36 @@ export default function DashboardStatsGrid({
             student?.fullName ||
             a.studentName ||
             "Unknown Student",
+          email: student?.email,
+          attemptsCount: 0,
         };
       }
       studentScores[stId].totalScore += Number(a.score || 0);
       studentScores[stId].maxScore += Number(a.maxScore || 0);
+      studentScores[stId].attemptsCount += 1;
     });
 
-    let weakCount = 0;
+    const weakList: Array<StudentScore & { percentage: number }> = [];
 
     Object.values(studentScores).forEach((st) => {
       if (st.maxScore > 0) {
         const pct = (st.totalScore / st.maxScore) * 100;
         if (pct < 40) {
-          weakCount++;
+          weakList.push({
+            ...st,
+            percentage: Math.round(pct),
+          });
         }
       }
     });
 
+    weakList.sort((a, b) => a.percentage - b.percentage);
+
     return {
-      weakStudentsCount: weakCount,
+      weakStudentsCount: weakList.length,
+      weakStudents: weakList,
     };
-  }, [attempts]);
+  }, [attempts, students]);
 
   const getAttemptsForDate = (date: Date | undefined, type: "dpp" | "test") => {
     if (!date) return 0;
@@ -178,7 +195,18 @@ export default function DashboardStatsGrid({
         {isLoading ? (
           <Skeleton className="h-[120px] w-full rounded-xl" />
         ) : (
-          <div className="h-full cursor-pointer transition-transform hover:scale-[1.02]">
+          <div
+            onClick={() =>
+              navigate("/educator/needs-attention", {
+                state: {
+                  initialBranch: selectedBranch,
+                  initialCourse: selectedCourse,
+                  initialBatch: selectedBatch,
+                },
+              })
+            }
+            className="h-full cursor-pointer transition-transform hover:scale-[1.02]"
+          >
             <MetricCard title="Needs Attention (< 40%)" value={weakStudentsCount} delay={0.4} />
           </div>
         )}

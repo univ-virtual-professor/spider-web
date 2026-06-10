@@ -1048,7 +1048,7 @@ export default function Analytics() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="hidden rounded-full md:block"
+                className="hidden rounded-full md:flex"
                 onClick={() => navigate("/educator")}
               >
                 <ArrowLeft className="h-5 w-5" />
@@ -1125,6 +1125,9 @@ export default function Analytics() {
             attempts={attemptsForDashboard}
             activeBatchesCount={activeBatchesCount}
             isLoading={isDataFiltering || loading}
+            selectedBranch={selectedBranchName}
+            selectedCourse={selectedCourseName}
+            selectedBatch={selectedBatchName}
           />
 
           <TopPerformersLeaderboard

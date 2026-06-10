@@ -24,7 +24,7 @@ export default {
         xs: "424px",
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
+        sans: ["Plus Jakarta Sans", "Inter", "system-ui", "sans-serif"],
         display: ["Nunito", "Inter", "system-ui", "sans-serif"],
       },
       colors: {
