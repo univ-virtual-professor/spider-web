@@ -187,15 +187,42 @@ const buildInitResponses = (qs: AttemptQuestion[]) => {
   return init;
 };
 
-const mapQuestion = (id: string, data: any): AttemptQuestion => {
+function buildMarkingSchemeResolver(testDoc: any): (sectionId?: string) => { correct: number; incorrect: number } {
+  const sectionMap = new Map<string, { correct: number; incorrect: number }>();
+  if (Array.isArray(testDoc?.sections)) {
+    for (const sec of testDoc.sections) {
+      if (sec?.id && sec?.markingScheme?.correct != null) {
+        sectionMap.set(String(sec.id), {
+          correct: Number(sec.markingScheme.correct),
+          incorrect: Number(sec.markingScheme.incorrect ?? 0),
+        });
+      }
+    }
+  }
+  const global = testDoc?.markingScheme?.correct != null
+    ? { correct: Number(testDoc.markingScheme.correct), incorrect: Number(testDoc.markingScheme.incorrect ?? 0) }
+    : { correct: 1, incorrect: 0 };
+  return (sectionId?: string) => (sectionId ? sectionMap.get(sectionId) : undefined) ?? global;
+}
+
+const mapQuestion = (
+  id: string,
+  data: any,
+  fallbackScheme?: { correct: number; incorrect: number } | null
+): AttemptQuestion => {
   const opts: string[] = Array.isArray(data.options) ? data.options : [];
   const parsedCorrectIndex = parseMcqCorrectIndex(
     data.correctOption ?? data.correctOptionIndex ?? data.correctAnswer,
     opts.length || 4
   );
   const correctIndex = parsedCorrectIndex ?? 0;
-  const positive = safeNumber((data as any).marks ?? data.positiveMarks, 5);
-  const negative = Math.abs(safeNumber(data.negativeMarks, 1));
+  const hasExplicitMarks = data.marks != null || data.positiveMarks != null;
+  const positive = hasExplicitMarks
+    ? safeNumber(data.marks ?? data.positiveMarks, fallbackScheme?.correct ?? 1)
+    : (fallbackScheme?.correct ?? 1);
+  const negative = data.negativeMarks != null
+    ? Math.abs(safeNumber(data.negativeMarks, 0))
+    : Math.abs(fallbackScheme?.incorrect ?? 0);
 
   // Determine question type using canonical normalizer; field may be "questionType" or "format"
   const rawType = normalizeQuestionType(data.questionType ?? data.format);
@@ -547,10 +574,14 @@ export default function StudentCBTAttempt() {
           };
           (meta as any).price = safeNumber(resolvedTest?.price || localTest?.price, 0);
 
+          const resolveScheme = buildMarkingSchemeResolver(resolvedTest);
           const qSnap = await getDocs(questionSource);
           qs = qSnap.docs
             .filter((q) => q.data()?.isActive !== false)
-            .map((q) => mapQuestion(q.id, q.data()))
+            .map((q) => {
+              const d = q.data() as any;
+              return mapQuestion(q.id, d, resolveScheme(d.sectionId));
+            })
             .sort((a, b) => a.sortOrder - b.sortOrder);
           qs = await enrichQuestionsWithPassages(qs);
         }
@@ -574,10 +605,14 @@ export default function StudentCBTAttempt() {
             };
             (meta as any).price = safeNumber(globalTest?.price, 0);
 
+            const resolveScheme2 = buildMarkingSchemeResolver(globalTest);
             const qSnap = await getDocs(collection(db, "test_series", testId, "questions"));
             qs = qSnap.docs
               .filter((q) => q.data()?.isActive !== false)
-              .map((q) => mapQuestion(q.id, q.data()))
+              .map((q) => {
+                const d = q.data() as any;
+                return mapQuestion(q.id, d, resolveScheme2(d.sectionId));
+              })
               .sort((a, b) => a.sortOrder - b.sortOrder);
             qs = await enrichQuestionsWithPassages(qs);
           }

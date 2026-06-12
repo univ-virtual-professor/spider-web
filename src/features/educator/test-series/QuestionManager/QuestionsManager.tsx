@@ -1139,6 +1139,9 @@ const QuestionsManager = ({
       managedSections
     );
     resetEditor(resolvedSectionId);
+    const sectionScheme = managedSections.find((s) => s.id === resolvedSectionId)?.markingScheme;
+    if (sectionScheme?.correct != null) setFormMarks(String(sectionScheme.correct));
+    if (sectionScheme?.incorrect != null) setFormNegMarks(String(sectionScheme.incorrect));
     setInsertAfterQuestionId(nextInsertAfterQuestionId || null);
     setEditorSnapshot(buildSnapshotFromQuestion());
     setEditorOpen(true);

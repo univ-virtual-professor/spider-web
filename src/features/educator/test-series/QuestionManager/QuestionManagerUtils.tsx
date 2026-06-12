@@ -160,6 +160,7 @@ export function normalizeSections(rawSections: any, subjectFallback?: string): T
           topics: Array.isArray(section?.topics) ? section.topics.map(String).filter(Boolean) : [],
           tags: Array.isArray(section?.tags) ? section.tags.map(String).filter(Boolean) : [],
           chapters: Array.isArray(section?.chapters) ? section.chapters.map(String).filter(Boolean) : [],
+          subject: section?.subject ? String(section.subject) : undefined,
           format: section?.format ? String(section.format) : undefined,
           markingScheme: section?.markingScheme ?? undefined,
           difficultyLevel: clampDifficulty(section?.difficultyLevel),
