@@ -165,6 +165,9 @@ export default function StudentTests() {
             isScheduleActive: assignment.isScheduleActive,
           };
         }
+        if (assignment.accessType === "open") {
+          return { ...assignmentBase, isPublic: true, startTime: null, endTime: null, isScheduleActive: false };
+        }
         // access_code: no time-based schedule; test is visible but locked until code entered
         return { ...assignmentBase, startTime: null, endTime: null, isScheduleActive: false };
       });

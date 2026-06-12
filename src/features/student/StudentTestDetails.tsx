@@ -65,6 +65,7 @@ type Test = {
   startTime?: number | null;
   endTime?: number | null;
   examMode?: "web" | "desktop" | "both";
+  isOpenAccess?: boolean;
 };
 
 type AttemptRow = {
@@ -266,6 +267,7 @@ export default function StudentTestDetails() {
         // Schedule: prefer per-batch assignment, fall back to test doc (legacy)
         let startTime = localTestData?.startTime ? toMillis(localTestData.startTime) : null;
         let endTime = localTestData?.endTime ? toMillis(localTestData.endTime) : null;
+        let isOpenAccess = false;
 
         const studentBatchId = profile?.batchId;
         if (studentBatchId) {
@@ -295,9 +297,12 @@ export default function StudentTestDetails() {
               if (assignment.accessType === "scheduled") {
                 startTime = assignment.startTime ? toMillis(assignment.startTime) : null;
                 endTime = assignment.endTime ? toMillis(assignment.endTime) : null;
-              } else if (assignment.accessType === "access_code") {
+              } else if (assignment.accessType === "access_code" || assignment.accessType === "open") {
                 startTime = null;
                 endTime = null;
+              }
+              if (assignment.accessType === "open") {
+                isOpenAccess = true;
               }
               // examMode and proctoringConfig live on the batchAssignment
               if (assignment.examMode) {
@@ -333,6 +338,7 @@ export default function StudentTestDetails() {
           markingScheme,
           startTime,
           endTime,
+          isOpenAccess,
           // examMode is resolved from batchAssignment below; default to "web" until then
           examMode: "web",
         });
@@ -455,7 +461,8 @@ export default function StudentTestDetails() {
 
   const isLocked = useMemo(() => {
     if (!test) return true;
-    if (isLive) return false; // Scheduled live tests are always unlocked for enrolled students
+    if (isLive) return false;
+    if (test.isOpenAccess) return false;
     if (test.price <= 0) return false;
     if (!unlocked) return true;
     if (unlockWindowExpiresAt !== null && currentTime > unlockWindowExpiresAt) return true;
