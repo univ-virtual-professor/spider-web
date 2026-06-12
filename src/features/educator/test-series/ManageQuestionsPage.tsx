@@ -18,7 +18,7 @@ type TestMeta = {
   questionsCount?: number | null;
   useSections?: boolean;
   questionFormat?: string;
-  chapter?: string;
+  chapters?: string[];
   topics?: string[];
   tags?: string[];
   markingScheme?: { correct?: number; incorrect?: number; unanswered?: number };
@@ -74,7 +74,7 @@ export default function ManageQuestionsPage() {
           name: testMeta.subject || "General",
           questionsCount: testMeta.questionsTarget ?? null,
           format: testMeta.questionFormat || "",
-          chapter: testMeta.chapter || "",
+          chapters: testMeta.chapters || [],
           topics: testMeta.topics || [],
           tags: testMeta.tags || [],
           markingScheme: testMeta.markingScheme || null,
@@ -123,6 +123,7 @@ export default function ManageQuestionsPage() {
                     chapters: Array.isArray(section?.chapters)
                       ? section.chapters.map(String).filter(Boolean)
                       : [],
+                    subject: section?.subject ? String(section.subject) : "",
                     format: section?.format ? String(section.format) : undefined,
                     difficultyLevel: Number.isFinite(Number(section?.difficultyLevel))
                       ? Number(section.difficultyLevel)
@@ -149,7 +150,7 @@ export default function ManageQuestionsPage() {
               : null,
             useSections: data?.useSections !== false,
             questionFormat: String(data?.questionFormat || ""),
-            chapter: String(data?.chapter || ""),
+            chapters: Array.isArray(data?.chapters) ? data.chapters.map(String) : (data?.chapter ? [String(data.chapter)] : []),
             topics: Array.isArray(data?.topics) ? data.topics.map(String) : [],
             tags: Array.isArray(data?.tags) ? data.tags.map(String) : [],
             markingScheme: data?.markingScheme

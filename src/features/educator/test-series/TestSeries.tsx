@@ -1183,6 +1183,7 @@ export default function TestSeries() {
       courseId: values.courseId || "",
       courseName: values.courseName || "",
       subject: String(values.subject || ""),
+      subjectMode: values.subjectMode || "single",
       level: String(values.level || "General"),
       difficultyLevel: values.difficultyLevel ?? 0.5,
       durationMinutes: Number(values.durationMinutes || 0),
@@ -1210,7 +1211,7 @@ export default function TestSeries() {
       payload.questionsCount = Number(values.questionsCount) || 0;
       payload.questionsTarget = payload.questionsCount;
       if (values.questionFormat) payload.questionFormat = values.questionFormat;
-      if (values.chapter) payload.chapter = values.chapter;
+      if (Array.isArray(values.chapters) && values.chapters.length) payload.chapters = values.chapters;
       if (Array.isArray(values.topics) && values.topics.length) payload.topics = values.topics;
       if (Array.isArray(values.tags) && values.tags.length) payload.tags = values.tags;
     }

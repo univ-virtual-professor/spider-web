@@ -1400,7 +1400,7 @@ const QuestionsManager = ({
         id: section.id,
         name: section.name,
         topics: Array.isArray(section.topics) ? section.topics : [],
-        subjects: [],
+        subjects: section.subject ? [section.subject] : (testSubject ? [testSubject] : []),
         chapters: Array.isArray(section.chapters) ? section.chapters : [],
         tags: Array.isArray(section.tags) ? section.tags : [],
         questionCount: remaining !== null ? remaining : 20,

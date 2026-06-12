@@ -7,6 +7,7 @@ export type TestSection = {
   questionsLimit?: number | null;
   attemptsLimit?: number | null;
   timeLimit?: number | null;
+  subject?: string;
   topics?: string[];
   tags?: string[];
   chapters?: string[];
