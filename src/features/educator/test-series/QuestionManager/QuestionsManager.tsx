@@ -766,6 +766,9 @@ const QuestionsManager = ({
       subject: data?.subject ? String(data.subject) : "",
       chapter: data?.chapter ? String(data.chapter) : "",
       topic: data?.topic ? String(data.topic) : "",
+      tags: Array.isArray(data?.tags) ? data.tags.map(String).filter(Boolean) : [],
+      // preserve topics array for multi-topic matching in filters
+      ...(Array.isArray(data?.topics) ? { topics: data.topics.map(String).filter(Boolean) } : {}),
       marks: data?.marks != null ? Number(data.marks) : undefined,
       negativeMarks: data?.negativeMarks != null ? Number(data.negativeMarks) : undefined,
       questionType: data?.format
@@ -1398,8 +1401,8 @@ const QuestionsManager = ({
         name: section.name,
         topics: Array.isArray(section.topics) ? section.topics : [],
         subjects: [],
-        chapters: [],
-        tags: [],
+        chapters: Array.isArray(section.chapters) ? section.chapters : [],
+        tags: Array.isArray(section.tags) ? section.tags : [],
         questionCount: remaining !== null ? remaining : 20,
         difficulty: clampDifficulty(section.difficultyLevel ?? 0.5),
         format: section.format ?? undefined,
@@ -1554,6 +1557,13 @@ const QuestionsManager = ({
         name: targetSection?.name || "Section",
         questionsCount: totalQuestions,
         ...(targetSection?.format ? { format: targetSection.format } : {}),
+        ...(targetSection?.subject ? { subject: targetSection.subject } : {}),
+        ...(targetSection?.chapters?.length ? { chapters: targetSection.chapters } : {}),
+        ...(targetSection?.topics?.length ? { topics: targetSection.topics } : {}),
+        ...(targetSection?.tags?.length ? { tags: targetSection.tags } : {}),
+        ...(targetSection?.difficultyLevel != null
+          ? { difficultyLevel: targetSection.difficultyLevel }
+          : {}),
       };
 
       const { chosen, coverage } = buildAutoFillSelection(
@@ -1738,6 +1748,22 @@ const QuestionsManager = ({
         ? [...adminQuestionBankRows]
         : [];
 
+      console.log(
+        "[AutoImport] Starting. managedSections:",
+        managedSections.map((s) => ({ id: s.id, name: s.name, questionsCount: s.questionsCount }))
+      );
+      console.log(
+        "[AutoImport] autoImportSections:",
+        sections.map((s) => ({
+          id: s.id,
+          name: s.name,
+          questionCount: s.questionCount,
+          topics: s.topics,
+          tags: s.tags,
+        }))
+      );
+      console.log("[AutoImport] QB pool size:", educatorPool.length);
+
       // Track globally used IDs to prevent cross-section repetition
       const globalUsedIds = new Set<string>(Array.from(existingBankQuestionIds));
 
@@ -1759,7 +1785,15 @@ const QuestionsManager = ({
         const tagSet = new Set(sectionTags);
 
         const matchesFilters = (q: QuestionBankQuestion): boolean => {
-          if (topicSet.size > 0 && !topicSet.has(normalizeTopicValue(q.topic))) return false;
+          if (topicSet.size > 0) {
+            // Check both singular topic string and topics array
+            const singularMatch = topicSet.has(normalizeTopicValue(q.topic));
+            const qTopicsArr: string[] = Array.isArray((q as any).topics)
+              ? (q as any).topics.map(normalizeTopicValue).filter(Boolean)
+              : [];
+            const arrayMatch = qTopicsArr.some((t) => topicSet.has(t));
+            if (!singularMatch && !arrayMatch) return false;
+          }
           if (subjectSet.size > 0) {
             const qs = ((q as any).subjectName || q.subject || "").trim().toLowerCase();
             if (!subjectSet.has(qs)) return false;
@@ -1769,8 +1803,8 @@ const QuestionsManager = ({
             if (!chapterSet.has(qc)) return false;
           }
           if (tagSet.size > 0) {
-            const qTags: string[] = Array.isArray((q as any).tags)
-              ? (q as any).tags.map((t: string) => t.trim().toLowerCase())
+            const qTags: string[] = Array.isArray(q.tags)
+              ? q.tags.map((t) => t.trim().toLowerCase())
               : [];
             if (!qTags.some((t) => tagSet.has(t))) return false;
           }
@@ -1792,6 +1826,9 @@ const QuestionsManager = ({
             ? Math.max(0, sectionMeta.questionsCount - currentInSection)
             : section.questionCount;
         const needed = Math.max(0, Math.min(section.questionCount, cap));
+        console.log(
+          `[AutoImport] Section "${section.name}" (id=${section.id}): questionCount=${section.questionCount}, sectionMeta.questionsCount=${sectionMeta?.questionsCount}, currentInSection=${currentInSection}, cap=${cap}, needed=${needed}`
+        );
         if (needed === 0) {
           skippedFullCount += 1;
           continue;
@@ -1800,6 +1837,9 @@ const QuestionsManager = ({
         // Filter by all active filters and question format
         const educatorMatches = educatorPool.filter(
           (q) => !globalUsedIds.has(q.id) && matchesFormat(q) && matchesFilters(q)
+        );
+        console.log(
+          `[AutoImport] Section "${section.name}": educatorMatches=${educatorMatches.length} (after filters: topics=${JSON.stringify(sectionTopics)}, tags=${JSON.stringify(section.tags)})`
         );
         const adminMatches = adminPool.filter(
           (q) => !globalUsedIds.has(q.id) && matchesFormat(q) && matchesFilters(q)
@@ -1855,6 +1895,9 @@ const QuestionsManager = ({
 
         // Shuffle the final selection
         const shuffled = shuffleList(picked);
+        console.log(
+          `[AutoImport] Section "${section.name}": picked ${shuffled.length} questions → writing with sectionId="${section.id}"`
+        );
 
         // Mark as globally used
         shuffled.forEach((q) => globalUsedIds.add(q.id));

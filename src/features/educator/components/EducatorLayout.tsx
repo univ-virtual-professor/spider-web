@@ -50,7 +50,7 @@ import { EmployeeProvider, useEmployee } from "@shared/contexts/EmployeeContext"
 import { PERMISSIONS } from "@shared/lib/rolesConfig";
 import { useAppTokenBootstrap } from "@shared/hooks/useAppTokenBootstrap";
 
-type SubItem = { icon: any; label: string; href: string };
+type SubItem = { icon: any; label: string; href: string; badge?: number };
 type SidebarItem = { icon: any; label: string; href: string; badge?: number; children?: SubItem[] };
 
 function initials(name: string) {
@@ -214,6 +214,7 @@ function EducatorLayoutInner() {
         icon: ClipboardCheck,
         label: "Review Answers",
         href: "/educator/review-submissions",
+        badge: pendingReviewCount || undefined,
       });
     }
 
@@ -228,7 +229,6 @@ function EducatorLayoutInner() {
         icon: FileText,
         label: "Test Series",
         href: "/educator/test-series",
-        badge: pendingReviewCount || undefined,
         children: testChildren.length > 0 ? testChildren : undefined,
       });
     }
@@ -385,6 +385,8 @@ function EducatorLayoutInner() {
                 const hasChildren = !!item.children?.length;
                 const expanded = expandedItems.has(item.href);
                 const parentHighlighted = active || (sidebarCollapsed && childActive);
+                const childBadgeTotal =
+                  item.children?.reduce((sum, c) => sum + (c.badge ?? 0), 0) ?? 0;
 
                 return (
                   <div key={item.href}>
@@ -414,9 +416,12 @@ function EducatorLayoutInner() {
                         )}
                         title={sidebarCollapsed ? item.label : undefined}
                       >
-                        <item.icon
-                          className={cn("h-5 w-5 flex-shrink-0", parentHighlighted && "text-white")}
-                        />
+                        <span className="relative flex-shrink-0">
+                          <item.icon className={cn("h-5 w-5", parentHighlighted && "text-white")} />
+                          {sidebarCollapsed && childBadgeTotal > 0 && (
+                            <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500" />
+                          )}
+                        </span>
                         {!sidebarCollapsed && (
                           <span className={cn(parentHighlighted && "text-white")}>
                             {item.label}
@@ -503,6 +508,17 @@ function EducatorLayoutInner() {
                                       >
                                         {child.label}
                                       </span>
+                                      {child.badge && (
+                                        <Badge
+                                          variant="secondary"
+                                          className={cn(
+                                            "relative z-10 ml-auto text-xs",
+                                            cActive && "bg-white/20 text-white"
+                                          )}
+                                        >
+                                          {child.badge}
+                                        </Badge>
+                                      )}
                                     </Link>
                                   </div>
                                 );

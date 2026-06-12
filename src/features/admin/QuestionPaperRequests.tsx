@@ -21,8 +21,12 @@ type QPRequest = {
   educator_id: string;
   title: string;
   description: string;
-  file_url: string;
-  file_name: string;
+  request_type: "file" | "syllabus";
+  file_url: string | null;
+  file_name: string | null;
+  subject: string | null;
+  chapter: string | null;
+  topics: string[] | null;
   status: RequestStatus;
   admin_note: string | null;
   created_at: string;
@@ -202,7 +206,7 @@ export default function AdminQuestionPaperRequests() {
                 <TableRow>
                   <TableHead>Title</TableHead>
                   <TableHead>Educator ID</TableHead>
-                  <TableHead>File</TableHead>
+                  <TableHead>File / Details</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Admin Note</TableHead>
                   <TableHead>Submitted</TableHead>
@@ -226,15 +230,30 @@ export default function AdminQuestionPaperRequests() {
                         {req.educator_id}
                       </TableCell>
                       <TableCell>
-                        <a
-                          href={req.file_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex max-w-[130px] items-center gap-1 truncate text-xs text-primary hover:underline"
-                        >
-                          {req.file_name}
-                          <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                        </a>
+                        {req.request_type === "syllabus" ? (
+                          <div className="space-y-0.5 text-xs text-muted-foreground">
+                            <div className="font-medium text-foreground">{req.subject}</div>
+                            {req.chapter && <div>Ch: {req.chapter}</div>}
+                            {Array.isArray(req.topics) && req.topics.length > 0 && (
+                              <div>
+                                {req.topics.slice(0, 3).join(", ")}
+                                {req.topics.length > 3 ? ` +${req.topics.length - 3}` : ""}
+                              </div>
+                            )}
+                          </div>
+                        ) : req.file_url ? (
+                          <a
+                            href={req.file_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex max-w-[130px] items-center gap-1 truncate text-xs text-primary hover:underline"
+                          >
+                            {req.file_name}
+                            <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                          </a>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <span

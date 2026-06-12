@@ -25,7 +25,12 @@ const PRIMARY = "#6C47FF";
 const ACCENT = "#A78BFA";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const HERO_TAGS = ["CUET", "CBSE", "State Boards", "Any Exam"];
+const HERO_TAGS = ["CUET", "JEE", "NEET", "UPSC", "CAT", "CBSE", "Abacus", "And many more..."];
+const HERO_STATS: [string, string][] = [
+  ["500+", "Institutes"],
+  ["2L+", "Students"],
+  ["10+", "Exams Supported"],
+];
 const DEMO_PERKS = [
   "Personalised walkthrough of all features",
   "Platform configured for your exam type",

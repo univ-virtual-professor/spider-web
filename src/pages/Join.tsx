@@ -41,7 +41,8 @@ async function finalizeEnrollment(
   uid: string,
   result: AcceptResult,
   displayName: string,
-  email: string
+  email: string,
+  schoolName?: string
 ) {
   if (result.tenant_slug) {
     await setDoc(
@@ -58,6 +59,14 @@ async function finalizeEnrollment(
       },
       { merge: true }
     );
+
+    if (schoolName?.trim()) {
+      await setDoc(
+        doc(db, "educators", result.educator_id, "students", uid),
+        { schoolName: schoolName.trim() },
+        { merge: true }
+      );
+    }
   }
 
   const sid = generateSessionId();
@@ -133,6 +142,7 @@ export default function Join() {
 
   const [mode, setMode] = useState<"signup" | "signin">("signup");
   const [name, setName] = useState("");
+  const [schoolName, setSchoolName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -242,7 +252,13 @@ export default function Join() {
       const effectiveSlug =
         result.tenant_slug || info?.tenant_slug || getTenantSlugFromHostname() || "";
 
-      await finalizeEnrollment(uid, { ...result, tenant_slug: effectiveSlug }, name, email);
+      await finalizeEnrollment(
+        uid,
+        { ...result, tenant_slug: effectiveSlug },
+        name,
+        email,
+        schoolName
+      );
 
       toast.success("Welcome! You've been enrolled successfully.");
       window.location.href = buildTenantUrl(effectiveSlug, "/student/dashboard");
@@ -287,15 +303,28 @@ export default function Join() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === "signup" && (
-              <div className="space-y-1">
-                <Label>Full Name</Label>
-                <Input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Your name"
-                  required
-                />
-              </div>
+              <>
+                <div className="space-y-1">
+                  <Label>Full Name</Label>
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Your name"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>
+                    School / College{" "}
+                    <span className="text-xs text-muted-foreground">(optional)</span>
+                  </Label>
+                  <Input
+                    value={schoolName}
+                    onChange={(e) => setSchoolName(e.target.value)}
+                    placeholder="e.g. Delhi Public School"
+                  />
+                </div>
+              </>
             )}
             <div className="space-y-1">
               <Label>Email</Label>

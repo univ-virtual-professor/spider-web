@@ -159,9 +159,10 @@ function normalizeSections(rawSections: any, subjectFallback?: string): TestSect
         .map((section: any, index: number) => ({
           id: String(section?.id || `sec_${index + 1}`).trim(),
           name: String(section?.name || `Section ${index + 1}`).trim(),
-          questionsCount: Number.isFinite(Number(section?.questionsCount))
-            ? Number(section.questionsCount)
-            : null,
+          questionsCount:
+            section?.questionsCount != null && Number.isFinite(Number(section.questionsCount))
+              ? Number(section.questionsCount)
+              : null,
         }))
         .filter((section) => section.id)
     : [];

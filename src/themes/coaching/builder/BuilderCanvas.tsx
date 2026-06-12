@@ -14,6 +14,7 @@ type BuilderCanvasProps = {
   themeMode?: "preset" | "custom";
   customColor?: string;
   useGradient?: boolean;
+  tenantSlug?: string;
 };
 
 export default function BuilderCanvas({
@@ -22,6 +23,7 @@ export default function BuilderCanvas({
   themeMode = "preset",
   customColor = "",
   useGradient = false,
+  tenantSlug,
 }: BuilderCanvasProps) {
   const [isMobile, setIsMobile] = React.useState(false);
 
@@ -67,6 +69,7 @@ export default function BuilderCanvas({
               previewMode
               mobile={isMobile}
               sections={sections}
+              tenantSlug={tenantSlug}
             />
           </div>
         );

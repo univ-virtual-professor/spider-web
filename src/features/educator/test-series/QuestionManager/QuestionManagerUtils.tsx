@@ -153,10 +153,15 @@ export function normalizeSections(rawSections: any, subjectFallback?: string): T
         .map((section: any, index: number) => ({
           id: String(section?.id || `sec_${index + 1}`).trim(),
           name: String(section?.name || `Section ${index + 1}`).trim(),
-          questionsCount: Number.isFinite(Number(section?.questionsCount))
-            ? Number(section.questionsCount)
-            : null,
+          questionsCount:
+            section?.questionsCount != null && Number.isFinite(Number(section.questionsCount))
+              ? Number(section.questionsCount)
+              : null,
           topics: Array.isArray(section?.topics) ? section.topics.map(String).filter(Boolean) : [],
+          tags: Array.isArray(section?.tags) ? section.tags.map(String).filter(Boolean) : [],
+          chapters: Array.isArray(section?.chapters)
+            ? section.chapters.map(String).filter(Boolean)
+            : [],
           format: section?.format ? String(section.format) : undefined,
           markingScheme: section?.markingScheme ?? undefined,
           difficultyLevel: clampDifficulty(section?.difficultyLevel),

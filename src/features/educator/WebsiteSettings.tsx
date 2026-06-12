@@ -26,6 +26,7 @@ import {
   Mail,
   Phone,
   Wand2,
+  RotateCcw,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Input } from "@shared/ui/input";
@@ -123,6 +124,7 @@ export default function WebsiteSettings() {
 
   const [showAIDialog, setShowAIDialog] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showResetThemeModal, setShowResetThemeModal] = useState(false);
 
   // AI Input Form
   const [aiEducatorName, setAiEducatorName] = useState("");
@@ -396,6 +398,21 @@ export default function WebsiteSettings() {
       toast.error("Failed to save changes.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // --- Reset theme to default (theme2) ---
+  const handleResetThemeToDefault = async () => {
+    if (!firebaseUser) return;
+    try {
+      const educatorRef = doc(db, "educators", firebaseUser.uid);
+      await updateDoc(educatorRef, { "websiteConfig.themeId": DEFAULT_EDUCATOR_THEME });
+      setThemeId(DEFAULT_EDUCATOR_THEME);
+      setShowResetThemeModal(false);
+      toast.success("Theme reset to default (Theme 2).");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to reset theme.");
     }
   };
 
@@ -675,14 +692,28 @@ export default function WebsiteSettings() {
           {/* Theme selection */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Palette className="h-4 w-4" />
-                Website Theme
-              </CardTitle>
-              <CardDescription>
-                Choose how your public landing page looks on your subdomain. (Student dashboard
-                stays the same.)
-              </CardDescription>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Palette className="h-4 w-4" />
+                    Website Theme
+                  </CardTitle>
+                  <CardDescription className="mt-1">
+                    Choose how your public landing page looks on your subdomain. (Student dashboard
+                    stays the same.)
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => setShowResetThemeModal(true)}
+                >
+                  <RotateCcw className="mr-2 h-3.5 w-3.5" />
+                  Reset to Default
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -1424,6 +1455,27 @@ export default function WebsiteSettings() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* --- Reset Theme Confirmation Modal --- */}
+      <AlertDialog open={showResetThemeModal} onOpenChange={setShowResetThemeModal}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset to Default Theme?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will switch your website back to <strong>Theme 2</strong> — the default shown
+              when a new educator account is created. Your current theme selection will be replaced
+              and saved immediately.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex justify-end gap-2">
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleResetThemeToDefault}>
+              <RotateCcw className="mr-2 h-4 w-4" />
+              Reset to Theme 2
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* --- AI Content Confirmation Modal --- */}
       <AlertDialog open={showConfirmModal} onOpenChange={setShowConfirmModal}>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, CSSProperties } from "react";
 import { uploadToImageKit } from "@shared/lib/imagekitUpload";
 import {
   DndContext,
@@ -111,6 +111,7 @@ interface ComponentProps {
   mobile?: boolean;
   useGradient?: boolean;
   sections?: Section[];
+  tenantSlug?: string;
 }
 
 const ICON_MAP: Record<string, any> = {
@@ -512,7 +513,7 @@ const EDITOR_FIELDS: Record<string, EditorField[]> = {
   video: [
     { key: "eyebrow", label: "Eyebrow Text", type: "text" },
     { key: "title", label: "Section Title", type: "text" },
-    { key: "videoUrl", label: "Select or Upload Video", type: "video" },
+    { key: "videoUrl", label: "Video URL", type: "text" },
   ],
   contact: [
     { key: "eyebrow", label: "Eyebrow Text", type: "text" },
@@ -2087,22 +2088,22 @@ function PricingComponent({
   );
 }
 
-function VideoComponent({ data, theme: t, selected, onClick }: ComponentProps) {
-  const getYouTubeEmbedUrl = (url?: string): string | null => {
-    if (!url) return null;
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|live\/)([^#\&\?]*).*/;
-    const match = url.match(regExp);
-    if (match && match[2].length === 11) {
-      return `https://www.youtube.com/embed/${match[2]}`;
-    }
-    const trimmed = url.trim();
-    if (trimmed.length === 11) {
-      return `https://www.youtube.com/embed/${trimmed}`;
-    }
-    return null;
-  };
+function toEmbedUrl(url: string): string | null {
+  if (!url.trim()) return null;
+  const ytWatch = url.match(/youtube\.com\/watch\?(?:.*&)?v=([\w-]+)/);
+  if (ytWatch) return `https://www.youtube.com/embed/${ytWatch[1]}`;
+  const ytShort = url.match(/youtu\.be\/([\w-]+)/);
+  if (ytShort) return `https://www.youtube.com/embed/${ytShort[1]}`;
+  if (url.includes("youtube.com/embed/")) return url;
+  const vimeo = url.match(/vimeo\.com\/(\d+)/);
+  if (vimeo) return `https://player.vimeo.com/video/${vimeo[1]}`;
+  if (/\.(mp4|webm|ogg)(\?|$)/i.test(url)) return url;
+  return null;
+}
 
-  const embedUrl = getYouTubeEmbedUrl(data.videoUrl);
+function VideoComponent({ data, theme: t, selected, onClick }: ComponentProps) {
+  const embedUrl = toEmbedUrl(data.videoUrl || "");
+  const isDirect = embedUrl ? /\.(mp4|webm|ogg)/i.test(embedUrl) : false;
 
   return (
     <div
@@ -2131,110 +2132,152 @@ function VideoComponent({ data, theme: t, selected, onClick }: ComponentProps) {
         <div style={{ fontSize: 34, fontWeight: 800, color: t.text, marginBottom: 32 }}>
           {data.title || "See How We Transform Students"}
         </div>
-
-        {embedUrl ? (
-          <div
-            style={{
-              position: "relative",
-              borderRadius: 20,
-              overflow: "hidden",
-              aspectRatio: "16/9",
-              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.1)",
-              border: `1px solid ${t.primary}15`,
-            }}
-          >
-            <iframe
-              src={embedUrl}
-              title={data.title || "Video Section"}
-              frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                height: "100%",
-              }}
-            ></iframe>
-          </div>
-        ) : data.videoUrl ? (
-          <div
-            style={{
-              position: "relative",
-              borderRadius: 20,
-              overflow: "hidden",
-              aspectRatio: "16/9",
-              boxShadow: "0 10px 30px rgba(0, 0, 0, 0.1)",
-              border: `1px solid ${t.primary}15`,
-              background: "#000",
-            }}
-          >
-            <video
-              src={data.videoUrl}
-              controls
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "contain",
-              }}
-            />
-          </div>
-        ) : (
-          <div
-            style={{
-              borderRadius: 20,
-              background: `repeating-linear-gradient(45deg, ${t.primary}08, ${t.primary}08 10px, ${t.primary}04 10px, ${t.primary}04 20px)`,
-              border: `2px dashed ${t.primary}30`,
-              aspectRatio: "16/9",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexDirection: "column",
-              gap: 16,
-            }}
-          >
-            <div
-              style={{
-                width: 72,
-                height: 72,
-                borderRadius: "50%",
-                background: t.primary,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                boxShadow: `0 8px 32px ${t.primary}60`,
-              }}
-            >
+        <div
+          style={{
+            borderRadius: 20,
+            overflow: "hidden",
+            aspectRatio: "16/9",
+            background: embedUrl
+              ? "#000"
+              : `repeating-linear-gradient(45deg, ${t.primary}08, ${t.primary}08 10px, ${t.primary}04 10px, ${t.primary}04 20px)`,
+            border: embedUrl ? "none" : `2px dashed ${t.primary}30`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexDirection: "column",
+            gap: 16,
+          }}
+        >
+          {embedUrl ? (
+            isDirect ? (
+              <video
+                src={embedUrl}
+                controls
+                style={{ width: "100%", height: "100%", display: "block" }}
+              />
+            ) : (
+              <iframe
+                src={embedUrl}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+              />
+            )
+          ) : (
+            <>
               <div
                 style={{
-                  width: 0,
-                  height: 0,
-                  borderTop: "14px solid transparent",
-                  borderBottom: "14px solid transparent",
-                  borderLeft: "24px solid #fff",
-                  marginLeft: 6,
+                  width: 72,
+                  height: 72,
+                  borderRadius: "50%",
+                  background: t.primary,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: `0 8px 32px ${t.primary}60`,
                 }}
-              ></div>
-            </div>
-            <div style={{ fontSize: 11, color: t.primary, opacity: 0.5 }}>
-              video embed / youtube url
-            </div>
-          </div>
-        )}
+              >
+                <div
+                  style={{
+                    width: 0,
+                    height: 0,
+                    borderTop: "14px solid transparent",
+                    borderBottom: "14px solid transparent",
+                    borderLeft: "24px solid #fff",
+                    marginLeft: 6,
+                  }}
+                />
+              </div>
+              <div style={{ fontSize: 11, color: t.primary, opacity: 0.5 }}>
+                Paste a YouTube or Vimeo URL in the panel
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function ContactFormComponent({ data, theme: t, selected, onClick, previewMode }: ComponentProps) {
+function ContactFormComponent({
+  data,
+  theme: t,
+  selected,
+  onClick,
+  previewMode,
+  tenantSlug,
+}: ComponentProps) {
+  const [form, setForm] = useState({ name: "", phone: "", email: "", courseInterest: "" });
+  const [busy, setBusy] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState("");
+
+  const inputStyle: CSSProperties = {
+    width: "100%",
+    height: 40,
+    borderRadius: 8,
+    border: `1.5px solid ${t.primary}40`,
+    background: t.bg,
+    padding: "0 12px",
+    fontSize: 14,
+    color: t.text,
+    outline: "none",
+    boxSizing: "border-box",
+  };
+
+  async function handleSubmit(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!form.name.trim() || !form.phone.trim()) {
+      setError("Name and phone are required");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+      const base = import.meta.env.VITE_MONKEY_KING_API_URL || "";
+      const res = await fetch(`${base}/api/contact/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantSlug, ...form }),
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error("Failed");
+      setSubmitted(true);
+    } catch (err: any) {
+      setError(
+        err?.name === "AbortError"
+          ? "Request timed out. Please try again."
+          : "Something went wrong. Please try again."
+      );
+    } finally {
+      clearTimeout(timeout);
+      setBusy(false);
+    }
+  }
+
+  const contactItems = [
+    data.phone && { icon: "📞", label: data.phone },
+    data.email && { icon: "✉️", label: data.email },
+    data.address && { icon: "📍", label: data.address },
+  ].filter(Boolean) as { icon: string; label: string }[];
+
+  if (contactItems.length === 0) {
+    contactItems.push(
+      { icon: "📞", label: "+91 98765 43210" },
+      { icon: "✉️", label: "hello@institute.com" },
+      { icon: "📍", label: "123 Education Hub, Delhi" }
+    );
+  }
+
   return (
     <div
-      onClick={onClick}
+      onClick={previewMode ? undefined : onClick}
       style={{
         background: t.bg,
         padding: "60px 40px",
-        cursor: "pointer",
+        cursor: previewMode ? "default" : "pointer",
         outline: selected ? `3px solid ${t.accent}` : "none",
         outlineOffset: -3,
       }}
@@ -2265,11 +2308,7 @@ function ContactFormComponent({ data, theme: t, selected, onClick, previewMode }
           <div style={{ fontSize: 34, fontWeight: 800, color: t.text, marginBottom: 16 }}>
             {data.title || "Book a Free Counselling Session"}
           </div>
-          {[
-            { icon: "📞", label: data.phone || "+91 98765 43210" },
-            { icon: "✉️", label: data.email || "hello@institute.com" },
-            { icon: "📍", label: data.address || "123 Education Hub, Delhi" },
-          ].map((c, i) => (
+          {contactItems.map((c, i) => (
             <div
               key={i}
               style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}
@@ -2287,37 +2326,91 @@ function ContactFormComponent({ data, theme: t, selected, onClick, previewMode }
             boxShadow: "0 4px 24px rgba(0,0,0,0.08)",
           }}
         >
-          {["Full Name", "Phone Number", "Email Address", "Course Interest"].map((label, i) => (
-            <div key={i} style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: t.text, marginBottom: 6 }}>
-                {label}
+          {previewMode && submitted ? (
+            <div style={{ textAlign: "center", padding: "24px 0" }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: t.text, marginBottom: 8 }}>
+                Enquiry Submitted!
               </div>
-              <div
-                style={{
-                  height: 40,
-                  borderRadius: 8,
-                  border: `1.5px solid ${t.primary}25`,
-                  background: t.bg,
-                }}
-              ></div>
+              <div style={{ fontSize: 14, color: t.text, opacity: 0.7 }}>
+                We'll get back to you soon.
+              </div>
             </div>
-          ))}
-          <button
-            style={{
-              width: "100%",
-              padding: 13,
-              background: t.primary,
-              color: "#fff",
-              border: "none",
-              borderRadius: 10,
-              fontSize: 15,
-              fontWeight: 700,
-              cursor: previewMode ? "pointer" : "default",
-            }}
-            onClick={previewMode ? (e) => handleCtaClick(e, data.ctaUrl) : undefined}
-          >
-            {data.cta || "Submit Enquiry"}
-          </button>
+          ) : previewMode ? (
+            <>
+              {[
+                { label: "Full Name *", key: "name", placeholder: "Your name" },
+                { label: "Phone Number *", key: "phone", placeholder: "+91 98765 43210" },
+                { label: "Email Address", key: "email", placeholder: "you@example.com" },
+                { label: "Course Interest", key: "courseInterest", placeholder: "e.g. JEE, NEET" },
+              ].map(({ label, key, placeholder }) => (
+                <div key={key} style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: t.text, marginBottom: 6 }}>
+                    {label}
+                  </div>
+                  <input
+                    style={inputStyle}
+                    placeholder={placeholder}
+                    value={form[key as keyof typeof form]}
+                    onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+                  />
+                </div>
+              ))}
+              {error && (
+                <div style={{ fontSize: 12, color: "#ef4444", marginBottom: 12 }}>{error}</div>
+              )}
+              <button
+                disabled={busy}
+                style={{
+                  width: "100%",
+                  padding: 13,
+                  background: busy ? `${t.primary}80` : t.primary,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 10,
+                  fontSize: 15,
+                  fontWeight: 700,
+                  cursor: busy ? "not-allowed" : "pointer",
+                }}
+                onClick={handleSubmit}
+              >
+                {busy ? "Submitting…" : data.cta || "Submit Enquiry"}
+              </button>
+            </>
+          ) : (
+            <>
+              {["Full Name", "Phone Number", "Email Address", "Course Interest"].map((label, i) => (
+                <div key={i} style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: t.text, marginBottom: 6 }}>
+                    {label}
+                  </div>
+                  <div
+                    style={{
+                      height: 40,
+                      borderRadius: 8,
+                      border: `1.5px solid ${t.primary}25`,
+                      background: t.bg,
+                    }}
+                  />
+                </div>
+              ))}
+              <button
+                style={{
+                  width: "100%",
+                  padding: 13,
+                  background: t.primary,
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 10,
+                  fontSize: 15,
+                  fontWeight: 700,
+                  cursor: "default",
+                }}
+              >
+                {data.cta || "Submit Enquiry"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -5788,6 +5881,7 @@ export default function InstituteBuilder() {
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
+  const [showResetDefaultModal, setShowResetDefaultModal] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"canvas" | "sections" | "editor">("canvas");
   const [useGradient, setUseGradient] = useState(false);
@@ -6009,6 +6103,13 @@ export default function InstituteBuilder() {
     setSelectedId(null);
     setShowResetModal(false);
     toast.success("Canvas reset successfully.");
+  }
+
+  function handleResetToDefault() {
+    setSections(DEFAULT_SECTIONS.map((s) => ({ ...s, id: newId() })));
+    setSelectedId(null);
+    setShowResetDefaultModal(false);
+    toast.success("Reset to default layout.");
   }
 
   const selectedSection = sections.find((s) => s.id === selectedId) || null;
@@ -6287,6 +6388,21 @@ export default function InstituteBuilder() {
             </>
           )}
           <button
+            onClick={() => setShowResetDefaultModal(true)}
+            style={{
+              background: "#fff",
+              color: "#6366f1",
+              border: "1px solid rgba(99,102,241,0.3)",
+              borderRadius: 8,
+              padding: isMobileViewport ? "5px 6px" : "7px 12px",
+              fontSize: isMobileViewport ? 10 : 12,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Reset to Default
+          </button>
+          <button
             onClick={() => setShowResetModal(true)}
             disabled={sections.length === 0}
             style={{
@@ -6483,6 +6599,73 @@ export default function InstituteBuilder() {
             ) : null;
           })()}
       </DragOverlay>
+      {showResetDefaultModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: 16,
+          }}
+          onClick={() => setShowResetDefaultModal(false)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              background: "#fff",
+              borderRadius: 14,
+              boxShadow: "0 24px 60px rgba(0,0,0,0.25)",
+              padding: 20,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 16, fontWeight: 800, color: "#111827", marginBottom: 8 }}>
+              Reset to default layout?
+            </div>
+            <div style={{ fontSize: 13, color: "#4b5563", lineHeight: 1.6, marginBottom: 18 }}>
+              This will replace your current canvas with the default sections shown to new
+              educators. Your current layout will be lost.
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button
+                onClick={() => setShowResetDefaultModal(false)}
+                style={{
+                  border: "1px solid rgba(0,0,0,0.12)",
+                  background: "#fff",
+                  color: "#111827",
+                  borderRadius: 8,
+                  padding: "8px 12px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleResetToDefault}
+                style={{
+                  border: "none",
+                  background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                  color: "#fff",
+                  borderRadius: 8,
+                  padding: "8px 12px",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Yes, Reset to Default
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {showResetModal && (
         <div
           style={{

@@ -275,13 +275,34 @@ export default function StudentLiveWatch() {
           {liveClass.embedUrl ? (
             <div className="relative aspect-video h-[85vh] w-full overflow-hidden rounded-2xl border bg-black shadow-md">
               <iframe
-                src={`https://www.youtube.com/embed/${liveClass.youtubeVideoId}?autoplay=1&origin=${encodeURIComponent(window.location.origin)}`}
+                src={`https://www.youtube.com/embed/${liveClass.youtubeVideoId}`}
                 title={liveClass.title}
                 className="absolute inset-0 h-full w-full border-none"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
               />
-              <div className="absolute inset-0 z-10" style={{ pointerEvents: "all" }} />
+              {/* <div className="absolute inset-0 z-10" style={{ pointerEvents: "all" }} /> */}
+              <div
+                className="absolute bottom-2 right-10 z-20 h-[50px] w-[300px]"
+                style={{ pointerEvents: "all" }}
+              />
+
+              {/* Block bottom-left: YouTube logo */}
+              <div
+                className="absolute bottom-2 left-0 z-20 h-[50px] w-[150px]"
+                style={{ pointerEvents: "all" }}
+              />
+
+              {/* Block share button (appears on hover near top-right of video) */}
+              <div
+                className="absolute right-0 top-0 z-20 h-[60px] w-[180px]"
+                style={{ pointerEvents: "all" }}
+              />
+
+              {/* Block the YouTube logo watermark (top-left corner) */}
+              <div
+                className="absolute left-0 top-0 z-20 h-[60px] w-[150px]"
+                style={{ pointerEvents: "all" }}
+              />
             </div>
           ) : (
             <div className="flex aspect-video w-full flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/30 p-6 text-center">

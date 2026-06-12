@@ -440,17 +440,42 @@ export default function TemplateModal({
       : allSubjects
     : accessibleSubjects;
 
+  const globalFilteredChapters = useMemo(() => {
+    if (!qbOptions.rawQuestions.length || (!globalTopics.length && !globalTags.length))
+      return qbOptions.chapters;
+    const topicSet = new Set(globalTopics);
+    const tagSet = new Set(globalTags);
+    return [
+      ...new Set(
+        qbOptions.rawQuestions
+          .filter((q) => {
+            const tm = !topicSet.size || q.topics.some((t) => topicSet.has(t));
+            const gm = !tagSet.size || q.tags.some((t) => tagSet.has(t));
+            return tm && gm;
+          })
+          .map((q) => q.chapter)
+          .filter(Boolean)
+      ),
+    ].sort();
+  }, [qbOptions.rawQuestions, globalTopics, globalTags, qbOptions.chapters]);
+
   const globalFilteredTopics = useMemo(() => {
-    if (!qbOptions.rawQuestions.length || !globalChapters.length) return qbOptions.topics;
+    if (!qbOptions.rawQuestions.length || (!globalChapters.length && !globalTags.length))
+      return qbOptions.topics;
     const chapterSet = new Set(globalChapters.map((c) => c.toLowerCase()));
-    const topicSet = new Set<string>();
-    qbOptions.rawQuestions.forEach((q) => {
-      if (q.chapter && chapterSet.has(q.chapter.toLowerCase())) {
-        q.topics.forEach((t) => topicSet.add(t));
-      }
-    });
-    return Array.from(topicSet).sort();
-  }, [qbOptions.rawQuestions, globalChapters, qbOptions.topics]);
+    const tagSet = new Set(globalTags);
+    return [
+      ...new Set(
+        qbOptions.rawQuestions
+          .filter((q) => {
+            const cm = !chapterSet.size || (q.chapter && chapterSet.has(q.chapter.toLowerCase()));
+            const gm = !tagSet.size || q.tags.some((t) => tagSet.has(t));
+            return cm && gm;
+          })
+          .flatMap((q) => q.topics)
+      ),
+    ].sort();
+  }, [qbOptions.rawQuestions, globalChapters, globalTags, qbOptions.topics]);
 
   const globalFilteredTags = useMemo(() => {
     if (!qbOptions.rawQuestions.length || (!globalChapters.length && !globalTopics.length))
@@ -703,7 +728,7 @@ export default function TemplateModal({
                       <div className="space-y-2">
                         <Label>Chapters (optional)</Label>
                         <MultiSelect
-                          options={qbOptions.chapters}
+                          options={globalFilteredChapters}
                           selected={globalChapters}
                           onChange={setGlobalChapters}
                           placeholder="Any chapter"

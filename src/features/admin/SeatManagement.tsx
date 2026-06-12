@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
+  addDoc,
   collection,
   doc,
   getDocs,
@@ -37,14 +38,13 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@shared/ui/tabs";
 import {
   AlertTriangle,
+  Bell,
   BookOpen,
   Bot,
   Check,
   ChevronDown,
   ChevronRight,
   ChevronsUpDown,
-  Copy,
-  ExternalLink,
   Loader2,
   ShieldCheck,
   UserCheck,
@@ -73,6 +73,8 @@ type EducatorDoc = {
   displayName?: string;
   email?: string;
   phone?: string;
+  accessExpiresAt?: Ts;
+  lastReminderSentAt?: Ts;
 };
 
 type TxRow = {
@@ -124,6 +126,17 @@ type CourseNode = {
 };
 type BranchNode = { id: string; name: string; courses: CourseNode[] };
 
+type PaymentRecord = {
+  id: string;
+  amount: number;
+  date: Ts;
+  seatsGranted: number | null;
+  accessExpiresAt: Ts | null;
+  note: string | null;
+  recordedBy: string;
+  recordedAt: Ts;
+};
+
 // ---------- helpers ----------
 
 function fmtTs(ts: Ts) {
@@ -145,6 +158,11 @@ function fmtDate(ts: Ts | string) {
   }
 }
 
+function fmtAmount(amount: number | null | undefined) {
+  if (amount == null) return "—";
+  return `₹${amount.toLocaleString("en-IN")}`;
+}
+
 async function postWithToken(firebaseUser: any, path: string, body: Record<string, unknown>) {
   const token = await firebaseUser.getIdToken();
   const base = import.meta.env.VITE_MONKEY_KING_API_URL || "";
@@ -156,6 +174,30 @@ async function postWithToken(firebaseUser: any, path: string, body: Record<strin
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data?.detail || data?.error || "Request failed");
   return data;
+}
+
+function expiryBadge(ts: Ts) {
+  if (!ts) return null;
+  const expiry = new Date((ts as Timestamp).seconds * 1000);
+  const now = new Date();
+  const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  if (daysLeft <= 0)
+    return (
+      <Badge variant="destructive" className="text-xs">
+        Expired
+      </Badge>
+    );
+  if (daysLeft <= 30)
+    return (
+      <Badge className="bg-amber-100 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+        Expires in {daysLeft}d
+      </Badge>
+    );
+  return (
+    <Badge variant="outline" className="text-xs">
+      Until {fmtDate(ts)}
+    </Badge>
+  );
 }
 
 // ---------- component ----------
@@ -200,20 +242,7 @@ export default function SeatManagement() {
     { planId: string; availableSeats: number; allocatedSeats: number; totalSeats: number }[]
   >([]);
 
-  // Payment link dialog
-  const [payLinkOpen, setPayLinkOpen] = useState(false);
-  const [plBranches, setPlBranches] = useState<{ id: string; name: string }[]>([]);
-  const [plCourses, setPlCourses] = useState<{ id: string; name: string }[]>([]);
-  const [plBranchId, setPlBranchId] = useState("");
-  const [plCourseId, setPlCourseId] = useState("");
-  const [plPlanId, setPlPlanId] = useState("");
-  const [plSeats, setPlSeats] = useState(10);
-  const [plAmount, setPlAmount] = useState(0);
-  const [plAmountManual, setPlAmountManual] = useState(false);
-  const [plPhone, setPlPhone] = useState("");
-  const [plBusy, setPlBusy] = useState(false);
-  const [plResult, setPlResult] = useState<{ url: string; id: string } | null>(null);
-  const [plCopied, setPlCopied] = useState(false);
+  // Plans (for trial / add-to-pool selectors)
   const [allPlans, setAllPlans] = useState<
     { id: string; name: string; pricePerSeat: number; featureDefaults?: any }[]
   >([]);
@@ -235,12 +264,26 @@ export default function SeatManagement() {
     []
   );
 
-  // AI config
-  const [aiCreditLimit, setAiCreditLimit] = useState(500);
-  const [aiCommissionMultiplier, setAiCommissionMultiplier] = useState<number | "">(1.5);
-  const [maxQpRequests, setMaxQpRequests] = useState(5);
-  const [savingAiConfig, setSavingAiConfig] = useState(false);
-  const [aiUsage, setAiUsage] = useState<{ percentUsed: number; creditsUsed: number; breakdown: Record<string, number>; month: string } | null>(null);
+  // Record Payment dialog
+  const [recordPayOpen, setRecordPayOpen] = useState(false);
+  const [rpAmount, setRpAmount] = useState("");
+  const [rpDate, setRpDate] = useState(new Date().toISOString().split("T")[0]);
+  const [rpSeats, setRpSeats] = useState("");
+  const [rpPlanId, setRpPlanId] = useState("");
+  const [rpExpiry, setRpExpiry] = useState("");
+  const [rpNote, setRpNote] = useState("");
+  const [rpBusy, setRpBusy] = useState(false);
+
+  // Payment records
+  const [paymentRecords, setPaymentRecords] = useState<PaymentRecord[]>([]);
+  const [loadingPayRecords, setLoadingPayRecords] = useState(false);
+
+  // Send reminder
+  const [reminderBusy, setReminderBusy] = useState(false);
+
+  // Access expiry inline edit
+  const [expiryInput, setExpiryInput] = useState("");
+  const [savingExpiry, setSavingExpiry] = useState(false);
 
   const seatLimit = pools.reduce((sum, p) => sum + p.totalSeats, 0);
   const available = Math.max(0, seatLimit - usedSeats);
@@ -285,17 +328,15 @@ export default function SeatManagement() {
   useEffect(() => {
     getDocs(collection(db, "plans")).then((snap) => {
       setAllPlans(
-        snap.docs
-          .map((d) => {
-            const data = d.data() as any;
-            return {
-              id: d.id,
-              name: data.name || d.id,
-              pricePerSeat: data.pricePerSeat || 0,
-              featureDefaults: data.featureDefaults,
-            };
-          })
-          .filter((p) => p.pricePerSeat > 0)
+        snap.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            name: data.name || d.id,
+            pricePerSeat: data.pricePerSeat || 0,
+            featureDefaults: data.featureDefaults,
+          };
+        })
       );
     });
   }, []);
@@ -320,39 +361,15 @@ export default function SeatManagement() {
     );
   }, []);
 
-  // Sync division + AI config from educator doc
+  // Sync division controls from educator doc
   useEffect(() => {
     if (!educator) return;
     setMaxBranchesInput(educator.maxBranches ?? 5);
     setAllowedCourseIds((educator as any).allowedCourseIds ?? []);
     setAllowedSubjectIds((educator as any).allowedSubjectIds ?? []);
-    setAiCreditLimit((educator as any).aiCreditLimit ?? 500);
-    setAiCommissionMultiplier((educator as any).aiCommissionMultiplier ?? 1.5);
-    setMaxQpRequests((educator as any).maxQuestionPaperRequests ?? 5);
   }, [educator]);
 
-  // Load AI usage for selected educator
-  useEffect(() => {
-    if (!targetId) { setAiUsage(null); return; }
-    const month = new Date().toISOString().slice(0, 7);
-    const unsub = onSnapshot(doc(db, "educators", targetId, "aiUsage", month), (snap) => {
-      if (snap.exists()) {
-        const data = snap.data() as any;
-        const limit = (educator as any)?.aiCreditLimit ?? 500;
-        setAiUsage({
-          percentUsed: limit > 0 ? Math.min(100, (data.creditsUsed / limit) * 100) : 0,
-          creditsUsed: data.creditsUsed ?? 0,
-          breakdown: data.breakdown ?? {},
-          month,
-        });
-      } else {
-        setAiUsage(null);
-      }
-    });
-    return () => unsub();
-  }, [targetId, educator]);
-
-  // Subscribe educator + billingSeats + transactions
+  // Subscribe educator + billingSeats + transactions + pools
   useEffect(() => {
     if (!targetId) return;
 
@@ -418,12 +435,52 @@ export default function SeatManagement() {
     };
   }, [targetId]);
 
-  // Pre-fill payment link phone from educator doc
+  // Load payment records for selected educator
   useEffect(() => {
-    if (educator?.phone) setPlPhone(educator.phone);
+    if (!targetId) {
+      setPaymentRecords([]);
+      return;
+    }
+    setLoadingPayRecords(true);
+    const unsub = onSnapshot(
+      query(collection(db, "educators", targetId, "paymentRecords"), orderBy("date", "desc")),
+      (snap) => {
+        setPaymentRecords(
+          snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<PaymentRecord, "id">) }))
+        );
+        setLoadingPayRecords(false);
+      }
+    );
+    return () => unsub();
+  }, [targetId]);
+
+  // Sync expiry input from educator doc
+  useEffect(() => {
+    if (!educator?.accessExpiresAt) {
+      setExpiryInput("");
+      return;
+    }
+    try {
+      const d = new Date((educator.accessExpiresAt as Timestamp).seconds * 1000);
+      setExpiryInput(d.toISOString().split("T")[0]);
+    } catch {
+      setExpiryInput("");
+    }
   }, [educator]);
 
-  // Load hierarchy when tab becomes active or targetId changes
+  // Load shared branches (used by trial dialog)
+  const [sharedBranches, setSharedBranches] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    if (!targetId) {
+      setSharedBranches([]);
+      return;
+    }
+    getDocs(collection(db, "educators", targetId, "branches")).then((snap) => {
+      setSharedBranches(snap.docs.map((d) => ({ id: d.id, name: (d.data() as any).name || d.id })));
+    });
+  }, [targetId]);
+
+  // Load hierarchy when tab becomes active
   const loadHierarchy = async () => {
     if (!targetId) return;
     setLoadingHierarchy(true);
@@ -479,47 +536,6 @@ export default function SeatManagement() {
     }
   };
 
-  // Load branches shared by both trial and payment-link dialogs
-  const [sharedBranches, setSharedBranches] = useState<{ id: string; name: string }[]>([]);
-  useEffect(() => {
-    if (!targetId) {
-      setSharedBranches([]);
-      return;
-    }
-    getDocs(collection(db, "educators", targetId, "branches")).then((snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, name: (d.data() as any).name || d.id }));
-      setSharedBranches(list);
-      setPlBranches(list);
-    });
-  }, [targetId]);
-
-  // Load payment link branches/courses
-  useEffect(() => {
-    if (!payLinkOpen || !targetId) return;
-    setPlBranches(sharedBranches);
-  }, [payLinkOpen, targetId]);
-
-  useEffect(() => {
-    if (!plBranchId || !targetId) {
-      setPlCourses([]);
-      setPlCourseId("");
-      return;
-    }
-    getDocs(collection(db, "educators", targetId, "branches", plBranchId, "courses")).then(
-      (snap) => {
-        setPlCourses(snap.docs.map((d) => ({ id: d.id, name: (d.data() as any).name || d.id })));
-      }
-    );
-    setPlCourseId("");
-  }, [plBranchId, targetId]);
-
-  // Auto-calc payment link amount
-  useEffect(() => {
-    if (plAmountManual) return;
-    const plan = allPlans.find((p) => p.id === plPlanId);
-    if (plan) setPlAmount(plan.pricePerSeat * plSeats);
-  }, [plPlanId, plSeats, plAmountManual, allPlans]);
-
   // ---------- actions ----------
 
   const submitTrial = async () => {
@@ -547,29 +563,6 @@ export default function SeatManagement() {
     }
   };
 
-  const submitPaymentLink = async () => {
-    if (!targetId || !plPlanId || !plSeats || !plAmount || !firebaseUser) return;
-    setPlBusy(true);
-    try {
-      const institute = allInstitutes.find((i) => i.uid === targetId);
-      const result = await postWithToken(firebaseUser, "/api/payment/admin/create-payment-link", {
-        educator_id: targetId,
-        plan_id: plPlanId,
-        seats: plSeats,
-        amount: plAmount,
-        educator_phone: plPhone,
-        educator_name: institute?.displayName || "",
-        educator_email: institute?.email || "",
-        note: addPoolNote,
-      });
-      setPlResult({ url: result.cf_link_url, id: result.cf_link_id });
-    } catch (e: any) {
-      toast.error(e.message || "Failed to create payment link");
-    } finally {
-      setPlBusy(false);
-    }
-  };
-
   const submitAddPool = async () => {
     if (!targetId || !addPoolPlanId || addPoolSeats < 1 || !firebaseUser) return;
     setAddPoolBusy(true);
@@ -589,6 +582,122 @@ export default function SeatManagement() {
       toast.error(e.message || "Failed to add seats to pool");
     } finally {
       setAddPoolBusy(false);
+    }
+  };
+
+  const submitRecordPayment = async () => {
+    if (!targetId || !rpAmount || !rpDate || !firebaseUser) return;
+    setRpBusy(true);
+    try {
+      const amount = parseFloat(rpAmount);
+      const seatsGranted = rpSeats ? parseInt(rpSeats) : null;
+      const accessExpiresAt = rpExpiry ? Timestamp.fromDate(new Date(rpExpiry)) : null;
+
+      // Write payment record to Firestore
+      await addDoc(collection(db, "educators", targetId, "paymentRecords"), {
+        amount,
+        date: Timestamp.fromDate(new Date(rpDate)),
+        seatsGranted: seatsGranted ?? null,
+        accessExpiresAt,
+        note: rpNote.trim() || null,
+        recordedBy: firebaseUser.uid,
+        recordedAt: serverTimestamp(),
+      });
+
+      // Update access expiry on educator doc if provided
+      if (accessExpiresAt) {
+        await updateDoc(doc(db, "educators", targetId), {
+          accessExpiresAt,
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      // Add seats to pool if provided and plan selected
+      if (seatsGranted && seatsGranted > 0 && rpPlanId) {
+        await postWithToken(firebaseUser, "/api/payment/admin/add-to-pool", {
+          educator_id: targetId,
+          plan_id: rpPlanId,
+          seats: seatsGranted,
+          note: `Manual payment: ₹${amount}${rpNote ? ` — ${rpNote}` : ""}`,
+        });
+      }
+
+      // Notify Discord via monkey-king (non-blocking — endpoint added separately in backend)
+      const mk = import.meta.env.VITE_MONKEY_KING_API_URL || "";
+      const mkKey = import.meta.env.VITE_MONKEY_KING_ADMIN_KEY || "";
+      fetch(`${mk}/api/admin/billing/record-payment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": mkKey },
+        body: JSON.stringify({
+          educator_id: targetId,
+          educator_name: selectedInstitute?.displayName || "",
+          educator_email: selectedInstitute?.email || "",
+          amount,
+          date: rpDate,
+          seats_granted: seatsGranted,
+          access_expires_at: rpExpiry || null,
+          note: rpNote.trim() || null,
+        }),
+      }).catch(() => {});
+
+      toast.success("Payment recorded");
+      setRecordPayOpen(false);
+      setRpAmount("");
+      setRpDate(new Date().toISOString().split("T")[0]);
+      setRpSeats("");
+      setRpPlanId("");
+      setRpExpiry("");
+      setRpNote("");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to record payment");
+    } finally {
+      setRpBusy(false);
+    }
+  };
+
+  const submitSendReminder = async () => {
+    if (!targetId || !firebaseUser) return;
+    setReminderBusy(true);
+    try {
+      await updateDoc(doc(db, "educators", targetId), {
+        lastReminderSentAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      const mk = import.meta.env.VITE_MONKEY_KING_API_URL || "";
+      const mkKey = import.meta.env.VITE_MONKEY_KING_ADMIN_KEY || "";
+      fetch(`${mk}/api/admin/billing/send-reminder`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Key": mkKey },
+        body: JSON.stringify({
+          educator_id: targetId,
+          educator_name: selectedInstitute?.displayName || "",
+          educator_email: selectedInstitute?.email || "",
+        }),
+      }).catch(() => {});
+
+      toast.success("Reminder sent");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to send reminder");
+    } finally {
+      setReminderBusy(false);
+    }
+  };
+
+  const saveExpiry = async () => {
+    if (!targetId) return;
+    setSavingExpiry(true);
+    try {
+      const val = expiryInput ? Timestamp.fromDate(new Date(expiryInput)) : null;
+      await updateDoc(doc(db, "educators", targetId), {
+        accessExpiresAt: val,
+        updatedAt: serverTimestamp(),
+      });
+      toast.success("Access expiry updated");
+    } catch {
+      toast.error("Failed to update expiry");
+    } finally {
+      setSavingExpiry(false);
     }
   };
 
@@ -642,34 +751,6 @@ export default function SeatManagement() {
     } finally {
       setSavingDivision(false);
     }
-  };
-
-  const saveAiConfig = async () => {
-    if (!targetId) return;
-    setSavingAiConfig(true);
-    try {
-      const update: Record<string, unknown> = {
-        aiCreditLimit: Math.max(0, aiCreditLimit),
-        maxQuestionPaperRequests: Math.max(0, Math.floor(maxQpRequests)),
-        updatedAt: serverTimestamp(),
-      };
-      if (aiCommissionMultiplier !== "") {
-        update.aiCommissionMultiplier = Math.max(1, Number(aiCommissionMultiplier));
-      }
-      await updateDoc(doc(db, "educators", targetId), update);
-      toast.success("AI config saved");
-    } catch {
-      toast.error("Failed to save AI config");
-    } finally {
-      setSavingAiConfig(false);
-    }
-  };
-
-  const copyPayLink = () => {
-    if (!plResult) return;
-    navigator.clipboard.writeText(plResult.url);
-    setPlCopied(true);
-    setTimeout(() => setPlCopied(false), 2000);
   };
 
   // ---------- render ----------
@@ -756,7 +837,6 @@ export default function SeatManagement() {
                           setHierarchy([]);
                           setActiveSeats([]);
                           setTx([]);
-                          setPlResult(null);
                         }}
                       >
                         <Check
@@ -801,7 +881,7 @@ export default function SeatManagement() {
             {/* Seat stats */}
             <Card className="lg:col-span-1">
               <CardHeader>
-                <CardTitle>Seats</CardTitle>
+                <CardTitle>Seats & Billing</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -833,16 +913,34 @@ export default function SeatManagement() {
                   </div>
                 ) : null}
 
-                <div className="space-y-1 pt-2 text-xs text-muted-foreground">
-                  <div>
-                    Last Tx:{" "}
-                    <span className="font-mono text-foreground">
-                      {educator?.lastSeatTransactionId || "-"}
-                    </span>
+                {/* Access expiry */}
+                <div className="space-y-2 border-t pt-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Access Expiry</span>
+                    {expiryBadge(educator?.accessExpiresAt)}
                   </div>
-                  <div>
-                    Updated: {fmtTs(educator?.seatUpdatedAt || educator?.lastSeatTransactionAt)}
+                  <div className="flex gap-2">
+                    <Input
+                      type="date"
+                      value={expiryInput}
+                      onChange={(e) => setExpiryInput(e.target.value)}
+                      className="h-8 text-xs"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={saveExpiry}
+                      disabled={savingExpiry}
+                      className="shrink-0"
+                    >
+                      {savingExpiry ? <Loader2 className="h-3 w-3 animate-spin" /> : "Set"}
+                    </Button>
                   </div>
+                  {educator?.lastReminderSentAt && (
+                    <p className="text-xs text-muted-foreground">
+                      Last reminder: {fmtTs(educator.lastReminderSentAt)}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2 pt-1">
@@ -864,17 +962,33 @@ export default function SeatManagement() {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      setPlResult(null);
-                      setPlPlanId("");
-                      setPlSeats(10);
-                      setPlAmountManual(false);
-                      setPayLinkOpen(true);
+                      setRpAmount("");
+                      setRpDate(new Date().toISOString().split("T")[0]);
+                      setRpSeats("");
+                      setRpPlanId("");
+                      setRpExpiry("");
+                      setRpNote("");
+                      setRecordPayOpen(true);
                     }}
                     className="w-full"
                   >
-                    Send Payment Link
+                    Record Payment
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={submitSendReminder}
+                    disabled={reminderBusy}
+                    className="w-full"
+                  >
+                    {reminderBusy ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Bell className="mr-2 h-4 w-4" />
+                    )}
+                    Send Reminder
                   </Button>
                 </div>
+
                 {pools.length > 0 && (
                   <div className="border-t pt-3">
                     <p className="mb-1.5 text-xs font-medium text-muted-foreground">Seat Pools</p>
@@ -898,21 +1012,33 @@ export default function SeatManagement() {
                     </div>
                   </div>
                 )}
+
+                <div className="space-y-1 pt-2 text-xs text-muted-foreground">
+                  <div>
+                    Last Tx:{" "}
+                    <span className="font-mono text-foreground">
+                      {educator?.lastSeatTransactionId || "-"}
+                    </span>
+                  </div>
+                  <div>
+                    Updated: {fmtTs(educator?.seatUpdatedAt || educator?.lastSeatTransactionAt)}
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
-            {/* Tabs: history / active / hierarchy / payment links */}
+            {/* Tabs: history / payments / active / hierarchy */}
             <Card className="lg:col-span-2">
               <CardContent className="p-0">
                 <Tabs defaultValue="history">
                   <div className="px-6 pt-4">
                     <TabsList className="h-auto flex-wrap gap-1">
                       <TabsTrigger value="history">Transactions</TabsTrigger>
+                      <TabsTrigger value="payments">Payments</TabsTrigger>
                       <TabsTrigger value="active">Students ({usedSeats})</TabsTrigger>
                       <TabsTrigger value="hierarchy" onClick={loadHierarchy}>
                         Hierarchy
                       </TabsTrigger>
-                      <TabsTrigger value="paylinks">Payment Links</TabsTrigger>
                     </TabsList>
                   </div>
 
@@ -970,6 +1096,69 @@ export default function SeatManagement() {
                         </TableBody>
                       </Table>
                     </div>
+                  </TabsContent>
+
+                  {/* Payment records */}
+                  <TabsContent value="payments" className="mt-0 p-6">
+                    {loadingPayRecords ? (
+                      <div className="flex justify-center py-10">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : (
+                      <>
+                        {paymentRecords.length > 0 && (
+                          <p className="mb-3 text-sm font-medium">
+                            Total paid:{" "}
+                            <span className="text-primary">
+                              {fmtAmount(paymentRecords.reduce((s, r) => s + (r.amount || 0), 0))}
+                            </span>
+                          </p>
+                        )}
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Date</TableHead>
+                                <TableHead className="text-right">Amount</TableHead>
+                                <TableHead className="text-right">Seats</TableHead>
+                                <TableHead>Access Until</TableHead>
+                                <TableHead>Note</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {paymentRecords.length === 0 ? (
+                                <TableRow>
+                                  <TableCell
+                                    colSpan={5}
+                                    className="py-10 text-center text-muted-foreground"
+                                  >
+                                    No payments recorded yet.
+                                  </TableCell>
+                                </TableRow>
+                              ) : (
+                                paymentRecords.map((r) => (
+                                  <TableRow key={r.id}>
+                                    <TableCell className="text-sm">{fmtDate(r.date)}</TableCell>
+                                    <TableCell className="text-right font-semibold">
+                                      {fmtAmount(r.amount)}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      {r.seatsGranted ?? "—"}
+                                    </TableCell>
+                                    <TableCell className="text-sm">
+                                      {fmtDate(r.accessExpiresAt)}
+                                    </TableCell>
+                                    <TableCell className="text-sm text-muted-foreground">
+                                      {r.note || "—"}
+                                    </TableCell>
+                                  </TableRow>
+                                ))
+                              )}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </>
+                    )}
                   </TabsContent>
 
                   {/* Active students */}
@@ -1046,7 +1235,10 @@ export default function SeatManagement() {
                             <button
                               className="flex w-full items-center gap-2 bg-muted/40 px-4 py-3 text-sm font-semibold transition-colors hover:bg-muted/70"
                               onClick={() =>
-                                setExpandedBranches((p) => ({ ...p, [branch.id]: !p[branch.id] }))
+                                setExpandedBranches((p) => ({
+                                  ...p,
+                                  [branch.id]: !p[branch.id],
+                                }))
                               }
                             >
                               {expandedBranches[branch.id] ? (
@@ -1115,9 +1307,6 @@ export default function SeatManagement() {
                       </div>
                     )}
                   </TabsContent>
-
-                  {/* Payment links */}
-                  <PaymentLinksTab targetId={targetId} />
                 </Tabs>
               </CardContent>
             </Card>
@@ -1240,8 +1429,7 @@ export default function SeatManagement() {
             <CardHeader>
               <CardTitle>Features</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Toggle access to premium features for this educator. Applied automatically when
-                seats are assigned with a plan.
+                Toggle access to premium features for this educator.
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1286,89 +1474,6 @@ export default function SeatManagement() {
               />
             </CardContent>
           </Card>
-
-          {/* AI Credits Config */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Zap className="h-4 w-4" /> AI Credits</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Monthly AI credit quota for this educator (covers DPP, chatbot, subjective eval, gap-fill, import)
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Usage bar */}
-              {aiUsage && (
-                <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium">Usage this month ({aiUsage.month})</span>
-                    <span className={aiUsage.percentUsed >= 80 ? "text-amber-600 font-semibold" : "text-muted-foreground"}>
-                      {aiUsage.percentUsed.toFixed(1)}% used
-                    </span>
-                  </div>
-                  <div className="h-2 w-full rounded-full bg-muted">
-                    <div
-                      className={`h-2 rounded-full transition-all ${aiUsage.percentUsed >= 100 ? "bg-red-500" : aiUsage.percentUsed >= 80 ? "bg-amber-500" : "bg-primary"}`}
-                      style={{ width: `${Math.min(100, aiUsage.percentUsed)}%` }}
-                    />
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground pt-1">
-                    {Object.entries(aiUsage.breakdown).filter(([, v]) => (v as number) > 0).map(([key, val]) => (
-                      <span key={key} className="capitalize">{key}: {(val as number).toFixed(2)}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <Label className="text-sm text-muted-foreground">Monthly Credit Limit</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={aiCreditLimit}
-                    onChange={(e) => setAiCreditLimit(Number(e.target.value))}
-                    className="mt-1 max-w-xs"
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Total AI credits per month (default 500). Resets on the 1st.
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">Commission Multiplier (optional override)</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    step={0.1}
-                    placeholder="Use global default"
-                    value={aiCommissionMultiplier}
-                    onChange={(e) => setAiCommissionMultiplier(e.target.value === "" ? "" : Number(e.target.value))}
-                    className="mt-1 max-w-xs"
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Markup on top of token cost (e.g. 1.5 = 50%). Leave blank to use global.
-                  </p>
-                </div>
-                <div>
-                  <Label className="text-sm text-muted-foreground">
-                    Question Paper Requests / Month
-                  </Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={maxQpRequests}
-                    onChange={(e) => setMaxQpRequests(Number(e.target.value))}
-                    className="mt-1 max-w-xs"
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Max question paper upload requests per month (default 5)
-                  </p>
-                </div>
-              </div>
-              <Button onClick={saveAiConfig} disabled={savingAiConfig}>
-                {savingAiConfig && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save AI Config
-              </Button>
-            </CardContent>
-          </Card>
         </>
       )}
 
@@ -1380,8 +1485,7 @@ export default function SeatManagement() {
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Grants seats into the educator's plan pool without requiring payment. Educator can
-              then allocate these to any batch.
+              Grants seats into the educator's plan pool without requiring payment.
             </p>
             <div>
               <Label>Plan</Label>
@@ -1443,8 +1547,8 @@ export default function SeatManagement() {
             <DialogTitle>Allot Trial Seats</DialogTitle>
           </DialogHeader>
           <p className="-mt-1 text-sm text-muted-foreground">
-            Seats go into the educator's pool. They can allocate to any batch. Seats are
-            automatically removed when the expiry date passes.
+            Seats go into the educator's pool. Seats are automatically removed when the expiry date
+            passes.
           </p>
           <div className="space-y-3">
             <div>
@@ -1507,133 +1611,102 @@ export default function SeatManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Payment link dialog */}
-      <Dialog
-        open={payLinkOpen}
-        onOpenChange={(v) => {
-          setPayLinkOpen(v);
-          if (!v) {
-            setPlResult(null);
-            setPlBusy(false);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-lg">
+      {/* Record Payment dialog */}
+      <Dialog open={recordPayOpen} onOpenChange={setRecordPayOpen}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Create Cashfree Payment Link</DialogTitle>
+            <DialogTitle>Record Payment</DialogTitle>
           </DialogHeader>
-          {plResult ? (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Payment link created. Share with the institute to collect payment. Seats will
-                auto-provision on payment.
-              </p>
-              <div className="flex gap-2">
-                <Input value={plResult.url} readOnly className="font-mono text-xs" />
-                <Button size="icon" variant="outline" onClick={copyPayLink}>
-                  {plCopied ? (
-                    <Check className="h-4 w-4 text-green-500" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </Button>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => window.open(plResult.url, "_blank")}
-                >
-                  <ExternalLink className="h-4 w-4" />
-                </Button>
-              </div>
-              <p className="font-mono text-xs text-muted-foreground">Link ID: {plResult.id}</p>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setPlResult(null);
-                  setPayLinkOpen(false);
-                }}
-                className="w-full"
-              >
-                Done
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Payment will provision into the educator's seat pool for the selected plan.
-              </p>
+          <p className="-mt-1 text-sm text-muted-foreground">
+            Log an offline/bank transfer payment from this educator. Discord notification will be
+            sent automatically.
+          </p>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Plan</Label>
-                <Select
-                  value={plPlanId}
-                  onValueChange={(v) => {
-                    setPlPlanId(v);
-                    setPlAmountManual(false);
-                  }}
-                >
+                <Label>
+                  Amount (₹) <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={rpAmount}
+                  onChange={(e) => setRpAmount(e.target.value)}
+                  placeholder="5000"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>
+                  Date <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  type="date"
+                  value={rpDate}
+                  onChange={(e) => setRpDate(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Seats Granted (optional)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={rpSeats}
+                  onChange={(e) => setRpSeats(e.target.value)}
+                  placeholder="50"
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Access Expires (optional)</Label>
+                <Input
+                  type="date"
+                  value={rpExpiry}
+                  onChange={(e) => setRpExpiry(e.target.value)}
+                  className="mt-1"
+                  min={new Date().toISOString().split("T")[0]}
+                />
+              </div>
+            </div>
+            {rpSeats && parseInt(rpSeats) > 0 && (
+              <div>
+                <Label>Plan (required to add seats to pool)</Label>
+                <Select value={rpPlanId} onValueChange={setRpPlanId}>
                   <SelectTrigger className="mt-1">
                     <SelectValue placeholder="Select plan" />
                   </SelectTrigger>
                   <SelectContent>
                     {allPlans.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
-                        {p.name} — ₹{p.pricePerSeat}/seat
+                        {p.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Seats</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={plSeats}
-                    onChange={(e) => setPlSeats(Math.max(1, Number(e.target.value)))}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label>Amount (₹)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={plAmount}
-                    onChange={(e) => {
-                      setPlAmount(Number(e.target.value));
-                      setPlAmountManual(true);
-                    }}
-                    className="mt-1"
-                    placeholder="Auto-calculated"
-                  />
-                  {plAmount > 0 && !plAmountManual && (
-                    <p className="mt-1 text-xs text-muted-foreground">Auto-calculated</p>
-                  )}
-                </div>
-              </div>
-              <div>
-                <Label>Educator Phone</Label>
-                <Input
-                  value={plPhone}
-                  onChange={(e) => setPlPhone(e.target.value)}
-                  placeholder="10-digit mobile"
-                  className="mt-1"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => setPayLinkOpen(false)} disabled={plBusy}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={submitPaymentLink}
-                  disabled={plBusy || !plPlanId || !plSeats || !plAmount}
-                >
-                  {plBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Create Link
-                </Button>
-              </div>
+            )}
+            <div>
+              <Label>Note (optional)</Label>
+              <Input
+                value={rpNote}
+                onChange={(e) => setRpNote(e.target.value)}
+                placeholder="e.g. Bank transfer, UPI ref #12345"
+                className="mt-1"
+              />
             </div>
-          )}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setRecordPayOpen(false)} disabled={rpBusy}>
+                Cancel
+              </Button>
+              <Button onClick={submitRecordPayment} disabled={rpBusy || !rpAmount || !rpDate}>
+                {rpBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Record Payment
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
@@ -1665,118 +1738,5 @@ function FeatureToggleRow({
       </div>
       <Switch checked={checked} onCheckedChange={onChange} />
     </div>
-  );
-}
-
-// ---- Plan feature chip ----
-function PlanFeatureChip({ label, enabled }: { label: string; enabled: boolean }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${enabled ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-muted text-muted-foreground line-through"}`}
-    >
-      {label}
-    </span>
-  );
-}
-
-// ---- Payment Links sub-tab ----
-function PaymentLinksTab({ targetId }: { targetId: string }) {
-  const [links, setLinks] = useState<any[]>([]);
-  const [copied, setCopied] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!targetId) return;
-    const unsub = onSnapshot(
-      query(collection(db, "educators", targetId, "paymentLinks"), orderBy("createdAt", "desc")),
-      (snap) => setLinks(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-    );
-    return () => unsub();
-  }, [targetId]);
-
-  const copy = (url: string, id: string) => {
-    navigator.clipboard.writeText(url);
-    setCopied(id);
-    setTimeout(() => setCopied(null), 2000);
-  };
-
-  return (
-    <TabsContent value="paylinks" className="mt-0 p-6">
-      {links.length === 0 ? (
-        <p className="py-10 text-center text-sm text-muted-foreground">No payment links yet.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Course</TableHead>
-                <TableHead className="text-right">Seats</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Link</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {links.map((l) => (
-                <TableRow key={l.id}>
-                  <TableCell className="text-sm">
-                    {l.createdAt ? new Date(l.createdAt.seconds * 1000).toLocaleDateString() : "-"}
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    {l.planName || l.planId || l.courseName || "-"}
-                  </TableCell>
-                  <TableCell className="text-right">{l.seats}</TableCell>
-                  <TableCell className="text-right">
-                    ₹{((l.amount || 0) / 100).toFixed(0)}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        l.status === "PAID"
-                          ? "default"
-                          : l.status === "EXPIRED"
-                            ? "destructive"
-                            : "secondary"
-                      }
-                      className="text-xs"
-                    >
-                      {l.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {l.cfLinkUrl ? (
-                      <div className="flex items-center gap-1">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7"
-                          onClick={() => copy(l.cfLinkUrl, l.id)}
-                        >
-                          {copied === l.id ? (
-                            <Check className="h-3.5 w-3.5 text-green-500" />
-                          ) : (
-                            <Copy className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7"
-                          onClick={() => window.open(l.cfLinkUrl, "_blank")}
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    ) : (
-                      "-"
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-    </TabsContent>
   );
 }

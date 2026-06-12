@@ -10,11 +10,20 @@ import {
   signInWithEmailAndPassword,
   updateProfile,
 } from "firebase/auth";
-import { arrayUnion, doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import {
+  arrayUnion,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore";
 import { auth, db } from "@shared/lib/firebase";
 import { Button } from "@shared/ui/button";
 import { Input } from "@shared/ui/input";
 import { Label } from "@shared/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { registerStudentForTenant } from "@shared/lib/studentRegistration";
 import {
   generateSessionId,
@@ -62,11 +71,66 @@ export default function Signup() {
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const [schoolName, setSchoolName] = useState("");
+  const [selectedBranchId, setSelectedBranchId] = useState("");
+  const [selectedBatchId, setSelectedBatchId] = useState("");
+  const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [branches, setBranches] = useState<Array<{ id: string; name: string }>>([]);
+  const [batchOptions, setBatchOptions] = useState<
+    Array<{ id: string; name: string; courseId: string }>
+  >([]);
+
   // Holds captured credentials when "email already in use" is detected so the
   // user can explicitly confirm they want to sign in and enroll.
   const [pendingEnroll, setPendingEnroll] = useState<{ email: string; password: string } | null>(
     null
   );
+
+  useEffect(() => {
+    if (!isTenantDomain || !tenant?.educatorId) return;
+    getDocs(collection(db, "educators", tenant.educatorId, "branches")).then((snap) =>
+      setBranches(snap.docs.map((d) => ({ id: d.id, name: d.data().name || d.id })))
+    );
+  }, [isTenantDomain, tenant?.educatorId]);
+
+  useEffect(() => {
+    if (!selectedBranchId || !tenant?.educatorId) {
+      setBatchOptions([]);
+      setSelectedBatchId("");
+      setSelectedCourseId("");
+      return;
+    }
+    (async () => {
+      const courseSnap = await getDocs(
+        collection(db, "educators", tenant.educatorId!, "branches", selectedBranchId, "courses")
+      );
+      const allBatches: Array<{ id: string; name: string; courseId: string }> = [];
+      for (const courseDoc of courseSnap.docs) {
+        const batchSnap = await getDocs(
+          collection(
+            db,
+            "educators",
+            tenant.educatorId!,
+            "branches",
+            selectedBranchId,
+            "courses",
+            courseDoc.id,
+            "batches"
+          )
+        );
+        for (const batchDoc of batchSnap.docs) {
+          allBatches.push({
+            id: batchDoc.id,
+            name: batchDoc.data().name || batchDoc.id,
+            courseId: courseDoc.id,
+          });
+        }
+      }
+      setBatchOptions(allBatches);
+      setSelectedBatchId("");
+      setSelectedCourseId("");
+    })();
+  }, [selectedBranchId, tenant?.educatorId]);
 
   const title = useMemo(() => {
     if (tenantLoading) return "Loading…";
@@ -116,6 +180,8 @@ export default function Signup() {
               enrolledTenants: arrayUnion(tenantSlug),
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp(),
+              ...(selectedBranchId && { branchId: selectedBranchId }),
+              ...(selectedBatchId && { batchId: selectedBatchId, courseId: selectedCourseId }),
             },
             { merge: true }
           );
@@ -130,6 +196,9 @@ export default function Signup() {
               status: "ACTIVE",
               tenantSlug,
               joinedAt: serverTimestamp(),
+              ...(schoolName.trim() && { schoolName: schoolName.trim() }),
+              ...(selectedBranchId && { branchId: selectedBranchId }),
+              ...(selectedBatchId && { batchId: selectedBatchId, courseId: selectedCourseId }),
             },
             { merge: true }
           );
@@ -269,6 +338,9 @@ export default function Signup() {
           status: "ACTIVE",
           tenantSlug,
           joinedAt: serverTimestamp(),
+          ...(schoolName.trim() && { schoolName: schoolName.trim() }),
+          ...(selectedBranchId && { branchId: selectedBranchId }),
+          ...(selectedBatchId && { batchId: selectedBatchId, courseId: selectedCourseId }),
         },
         { merge: true }
       );
@@ -432,6 +504,70 @@ export default function Signup() {
                       required
                     />
                   </div>
+
+                  {isTenantDomain && effectiveRole === "student" && (
+                    <>
+                      <div className="space-y-2">
+                        <Label>
+                          School / College{" "}
+                          <span className="text-xs text-muted-foreground">(optional)</span>
+                        </Label>
+                        <Input
+                          className="h-11"
+                          value={schoolName}
+                          onChange={(e) => setSchoolName(e.target.value)}
+                          placeholder="e.g. Delhi Public School"
+                        />
+                      </div>
+
+                      {branches.length > 0 && (
+                        <div className="space-y-2">
+                          <Label>
+                            Branch <span className="text-xs text-muted-foreground">(optional)</span>
+                          </Label>
+                          <Select value={selectedBranchId} onValueChange={setSelectedBranchId}>
+                            <SelectTrigger className="h-11">
+                              <SelectValue placeholder="Select branch" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {branches.map((b) => (
+                                <SelectItem key={b.id} value={b.id}>
+                                  {b.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+
+                      {selectedBranchId && batchOptions.length > 0 && (
+                        <div className="space-y-2">
+                          <Label>
+                            Batch <span className="text-xs text-muted-foreground">(optional)</span>
+                          </Label>
+                          <Select
+                            value={selectedBatchId}
+                            onValueChange={(val) => {
+                              setSelectedBatchId(val);
+                              const b = batchOptions.find((b) => b.id === val);
+                              setSelectedCourseId(b?.courseId || "");
+                            }}
+                          >
+                            <SelectTrigger className="h-11">
+                              <SelectValue placeholder="Select batch" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {batchOptions.map((b) => (
+                                <SelectItem key={b.id} value={b.id}>
+                                  {b.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </>
+                  )}
 
                   {effectiveRole === "educator" && (
                     <>

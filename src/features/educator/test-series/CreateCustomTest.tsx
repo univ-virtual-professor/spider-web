@@ -25,7 +25,6 @@ import {
 import { Badge } from "@shared/ui/badge";
 import { Slider } from "@shared/ui/slider";
 import { MultiSelect } from "@shared/ui/MultiSelect";
-import { SearchableSingleSelect } from "@shared/ui/searchable-single-select";
 import { useQBOptions } from "@shared/hooks/useQBOptions";
 import {
   Plus,
@@ -137,6 +136,8 @@ type CreateCustomTestProps = {
   accessibleCourses?: { id: string; name: string }[];
   accessibleSubjects?: { id: string; name: string; courseId: string }[];
   onCreateTemplate?: () => void;
+  initialValues?: Record<string, any>;
+  isEditing?: boolean;
 };
 
 function safeNum(v: any, fallback: number) {
@@ -156,6 +157,8 @@ const CreateCustomTest = ({
   accessibleCourses = [],
   accessibleSubjects = [],
   onCreateTemplate,
+  initialValues,
+  isEditing = false,
 }: CreateCustomTestProps) => {
   const [formTitle, setFormTitle] = useState("");
   const [formDescription, setFormDescription] = useState("");
@@ -177,7 +180,7 @@ const CreateCustomTest = ({
   const [newSectionQuestionsCount, setNewSectionQuestionsCount] = useState("");
   const [newSectionDifficulty, setNewSectionDifficulty] = useState(0.5);
   const [newSectionTopics, setNewSectionTopics] = useState<string[]>([]);
-  const [newSectionChapter, setNewSectionChapter] = useState("");
+  const [newSectionChapters, setNewSectionChapters] = useState<string[]>([]);
   const [newSectionSubject, setNewSectionSubject] = useState("");
   const [newSectionTags, setNewSectionTags] = useState<string[]>([]);
   const [newSectionAttemptLimit, setNewSectionAttemptLimit] = useState("");
@@ -190,7 +193,7 @@ const CreateCustomTest = ({
   const [useSections, setUseSections] = useState(false);
   const [formQuestionFormat, setFormQuestionFormat] = useState("MCQ_SINGLE");
   const [formQuestionsCount, setFormQuestionsCount] = useState("");
-  const [formGlobalChapter, setFormGlobalChapter] = useState("");
+  const [formGlobalChapters, setFormGlobalChapters] = useState<string[]>([]);
   const [formGlobalTopics, setFormGlobalTopics] = useState<string[]>([]);
   const [formGlobalTags, setFormGlobalTags] = useState<string[]>([]);
   const [globalAdvancedOpen, setGlobalAdvancedOpen] = useState(false);
@@ -199,25 +202,138 @@ const CreateCustomTest = ({
   const allowedSubjectIds = accessibleSubjects.map((s) => s.id);
   const qbOptions = useQBOptions(allowedSubjectIds);
 
+  // Cascading filter options: each filter narrows based on the other two selections
+  const filteredChapterOptions = useMemo(() => {
+    if (!formGlobalTopics.length && !formGlobalTags.length) return qbOptions.chapters;
+    const topicSet = new Set(formGlobalTopics);
+    const tagSet = new Set(formGlobalTags);
+    return [
+      ...new Set(
+        qbOptions.rawQuestions
+          .filter((q) => {
+            const tm = !topicSet.size || q.topics.some((t) => topicSet.has(t));
+            const gm = !tagSet.size || q.tags.some((t) => tagSet.has(t));
+            return tm && gm;
+          })
+          .map((q) => q.chapter)
+          .filter(Boolean)
+      ),
+    ].sort();
+  }, [formGlobalTopics, formGlobalTags, qbOptions.rawQuestions, qbOptions.chapters]);
+
+  const filteredTopicOptions = useMemo(() => {
+    if (!formGlobalChapters.length && !formGlobalTags.length) return qbOptions.topics;
+    const chapSet = new Set(formGlobalChapters);
+    const tagSet = new Set(formGlobalTags);
+    return [
+      ...new Set(
+        qbOptions.rawQuestions
+          .filter((q) => {
+            const cm = !chapSet.size || chapSet.has(q.chapter);
+            const gm = !tagSet.size || q.tags.some((t) => tagSet.has(t));
+            return cm && gm;
+          })
+          .flatMap((q) => q.topics)
+      ),
+    ].sort();
+  }, [formGlobalChapters, formGlobalTags, qbOptions.rawQuestions, qbOptions.topics]);
+
+  const filteredTagOptions = useMemo(() => {
+    const chapSet = new Set(formGlobalChapters);
+    const topicSet = new Set(formGlobalTopics);
+    if (chapSet.size === 0 && topicSet.size === 0) return qbOptions.tags;
+    return [
+      ...new Set(
+        qbOptions.rawQuestions
+          .filter((q) => {
+            if (chapSet.size > 0 && !chapSet.has(q.chapter)) return false;
+            if (topicSet.size > 0 && !q.topics.some((t) => topicSet.has(t))) return false;
+            return true;
+          })
+          .flatMap((q) => q.tags)
+      ),
+    ].sort();
+  }, [formGlobalChapters, formGlobalTopics, qbOptions.rawQuestions, qbOptions.tags]);
+
+  // Cascading filter options for the "Add Section" dialog
+  const newSectionFilteredChapters = useMemo(() => {
+    if (!newSectionTopics.length && !newSectionTags.length) return qbOptions.chapters;
+    const topicSet = new Set(newSectionTopics);
+    const tagSet = new Set(newSectionTags);
+    return [
+      ...new Set(
+        qbOptions.rawQuestions
+          .filter((q) => {
+            const tm = !topicSet.size || q.topics.some((t) => topicSet.has(t));
+            const gm = !tagSet.size || q.tags.some((t) => tagSet.has(t));
+            return tm && gm;
+          })
+          .map((q) => q.chapter)
+          .filter(Boolean)
+      ),
+    ].sort();
+  }, [newSectionTopics, newSectionTags, qbOptions.rawQuestions, qbOptions.chapters]);
+
+  const newSectionFilteredTopics = useMemo(() => {
+    if (!newSectionChapters.length && !newSectionTags.length) return qbOptions.topics;
+    const chapSet = new Set(newSectionChapters);
+    const tagSet = new Set(newSectionTags);
+    return [
+      ...new Set(
+        qbOptions.rawQuestions
+          .filter((q) => {
+            const cm = !chapSet.size || chapSet.has(q.chapter);
+            const gm = !tagSet.size || q.tags.some((t) => tagSet.has(t));
+            return cm && gm;
+          })
+          .flatMap((q) => q.topics)
+      ),
+    ].sort();
+  }, [newSectionChapters, newSectionTags, qbOptions.rawQuestions, qbOptions.topics]);
+
+  const newSectionFilteredTags = useMemo(() => {
+    if (!newSectionChapters.length && !newSectionTopics.length) return qbOptions.tags;
+    const chapSet = new Set(newSectionChapters);
+    const topicSet = new Set(newSectionTopics);
+    return [
+      ...new Set(
+        qbOptions.rawQuestions
+          .filter((q) => {
+            const cm = !chapSet.size || chapSet.has(q.chapter);
+            const tm = !topicSet.size || q.topics.some((t) => topicSet.has(t));
+            return cm && tm;
+          })
+          .flatMap((q) => q.tags)
+      ),
+    ].sort();
+  }, [newSectionChapters, newSectionTopics, qbOptions.rawQuestions, qbOptions.tags]);
+
   // Reset form & template selection when dialog opens
   useEffect(() => {
     if (createOpen) {
-      setFormTitle("");
-      setFormDescription("");
-      setFormCourseId("");
-      setFormCourseName("");
-      setFormSubject("");
-      setSubjectMode("single");
-      setFormDuration("60");
-      setFormSections([]);
-      setFormMarkingScheme({ correct: 1, incorrect: 0, unanswered: 0 });
+      const iv = initialValues;
+      setFormTitle(iv?.title ?? "");
+      setFormDescription(iv?.description ?? "");
+      setFormCourseId(iv?.courseId ?? "");
+      setFormCourseName(iv?.courseName ?? "");
+      setFormSubject(iv?.subject ?? "");
+      setSubjectMode(iv?.subjectMode ?? "single");
+      setFormDuration(String(iv?.durationMinutes ?? 60));
+      setFormSections(Array.isArray(iv?.sections) ? iv.sections : []);
+      setFormMarkingScheme(iv?.markingScheme ?? { correct: 1, incorrect: 0, unanswered: 0 });
       setSelectedTemplateId("none");
-      setUseSections(false);
-      setFormQuestionFormat("MCQ_SINGLE");
-      setFormQuestionsCount("");
-      setFormGlobalChapter("");
-      setFormGlobalTopics([]);
-      setFormGlobalTags([]);
+      setUseSections(iv?.useSections ?? false);
+      setFormQuestionFormat(iv?.questionFormat ?? "MCQ_SINGLE");
+      setFormQuestionsCount(
+        iv?.questionsTarget != null
+          ? String(iv.questionsTarget)
+          : iv?.questionsCount != null
+            ? String(iv.questionsCount)
+            : ""
+      );
+      setFormGlobalChapters(Array.isArray(iv?.chapters) ? iv.chapters : []);
+      setFormGlobalTopics(Array.isArray(iv?.topics) ? iv.topics : []);
+      setFormGlobalTags(Array.isArray(iv?.tags) ? iv.tags : []);
       setGlobalAdvancedOpen(false);
       setNewSectionUseMarkingScheme(false);
       setNewSectionMarkingCorrect("1");
@@ -331,7 +447,7 @@ const CreateCustomTest = ({
         : {
             questionsCount: Number(formQuestionsCount) || 0,
             questionFormat: formQuestionFormat,
-            chapter: formGlobalChapter || null,
+            chapters: formGlobalChapters,
             topics: formGlobalTopics,
             tags: formGlobalTags,
           }),
@@ -348,7 +464,7 @@ const CreateCustomTest = ({
           attemptlimit: attemptLimit,
           durationMinutes: s.durationMinutes ? Number(s.durationMinutes) : null,
           difficultyLevel: clampDifficulty(s.difficultyLevel),
-          chapter: s.chapter || "",
+          chapters: Array.isArray(s.chapters) ? s.chapters : [],
           topics: Array.isArray(s.topics) ? s.topics : [],
           subject: s.subject || "",
           tags: Array.isArray(s.tags) ? s.tags : [],
@@ -393,7 +509,7 @@ const CreateCustomTest = ({
     setNewSectionAttemptLimit("");
     setNewSectionDifficulty(computedDifficultyLevel);
     setNewSectionTopics([]);
-    setNewSectionChapter("");
+    setNewSectionChapters([]);
     setNewSectionSubject("");
     setNewSectionTags([]);
     setNewSectionFormat("MCQ_SINGLE");
@@ -426,7 +542,7 @@ const CreateCustomTest = ({
         durationMinutes: null,
         difficultyLevel: clampDifficulty(newSectionDifficulty),
         topics: newSectionTopics,
-        chapter: newSectionChapter || "",
+        chapters: newSectionChapters,
         subject: newSectionSubject || "",
         tags: newSectionTags,
         format: newSectionFormat || "",
@@ -464,114 +580,126 @@ const CreateCustomTest = ({
   return (
     <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto rounded-2xl">
       <DialogHeader>
-        <DialogTitle>Create New Test</DialogTitle>
+        <DialogTitle>{isEditing ? "Edit Test Settings" : "Create New Test"}</DialogTitle>
         <DialogDescription>
-          Start from an admin template or one of your saved templates, then create a new test with
-          the same settings.
+          {isEditing
+            ? "Update the test title, sections, question counts, filters, and marking scheme."
+            : "Start from an admin template or one of your saved templates, then create a new test with the same settings."}
         </DialogDescription>
       </DialogHeader>
 
       <form onSubmit={handleSubmit} className="mt-2 space-y-4">
-        <div className="space-y-2">
-          <Label>Template</Label>
-          <Select value={selectedTemplateId} onValueChange={handleTemplateChange}>
-            <SelectTrigger className="rounded-xl">
-              <SelectValue placeholder="Select a template" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">Blank test</SelectItem>
+        {!isEditing && (
+          <>
+            <div className="space-y-2">
+              <Label>Template</Label>
+              <Select value={selectedTemplateId} onValueChange={handleTemplateChange}>
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Select a template" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Blank test</SelectItem>
 
-              {/* Admin templates first */}
-              {adminTemplates.length > 0 && (
-                <SelectGroup>
-                  <SelectLabel>Admin Templates</SelectLabel>
-                  {adminTemplates.map((template) => (
-                    <SelectItem
-                      key={template.id}
-                      value={`admin:${template.id.replace("admin:", "")}`}
-                    >
-                      {template.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              )}
+                  {/* Admin templates first */}
+                  {adminTemplates.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>Admin Templates</SelectLabel>
+                      {adminTemplates.map((template) => (
+                        <SelectItem
+                          key={template.id}
+                          value={`admin:${template.id.replace("admin:", "")}`}
+                        >
+                          {template.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
 
-              {/* Educator custom templates */}
-              {educatorTpls.length > 0 && (
-                <>
+                  {/* Educator custom templates */}
+                  {educatorTpls.length > 0 && (
+                    <>
+                      <SelectSeparator />
+                      <SelectGroup>
+                        <SelectLabel>Your Templates</SelectLabel>
+                        {educatorTpls.map((template) => (
+                          <SelectItem
+                            key={template.id}
+                            value={`edu:${template.id.replace("edu:", "")}`}
+                          >
+                            {template.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </>
+                  )}
+
+                  {/* Create Custom Template option at the end */}
                   <SelectSeparator />
-                  <SelectGroup>
-                    <SelectLabel>Your Templates</SelectLabel>
-                    {educatorTpls.map((template) => (
-                      <SelectItem
-                        key={template.id}
-                        value={`edu:${template.id.replace("edu:", "")}`}
-                      >
-                        {template.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </>
-              )}
-
-              {/* Create Custom Template option at the end */}
-              <SelectSeparator />
-              <SelectItem value="__create_template__" className="font-medium text-primary">
-                + Create Custom Template
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {resolvedTemplate && (
-          <div className="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-4">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <span className="text-sm font-semibold text-primary">Template Preview</span>
-              <Badge variant="secondary" className="ml-auto rounded-full text-xs">
-                Pre-filled
-              </Badge>
+                  <SelectItem value="__create_template__" className="font-medium text-primary">
+                    + Create Custom Template
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div className="rounded-xl bg-background/80 p-2.5 text-center">
-                <p className="text-[10px] font-medium uppercase text-muted-foreground">Duration</p>
-                <p className="flex items-center justify-center gap-1 text-sm font-bold">
-                  <Clock className="h-3 w-3" />
-                  {safeNum(resolvedTemplate.durationMinutes ?? resolvedTemplate.duration, 60)}m
-                </p>
-              </div>
-              <div className="rounded-xl bg-background/80 p-2.5 text-center">
-                <p className="text-[10px] font-medium uppercase text-muted-foreground">Questions</p>
-                <p className="flex items-center justify-center gap-1 text-sm font-bold">
-                  <BookOpen className="h-3 w-3" />
-                  {totalQuestions}
-                </p>
-              </div>
-              <div className="rounded-xl bg-background/80 p-2.5 text-center">
-                <p className="text-[10px] font-medium uppercase text-muted-foreground">Sections</p>
-                <p className="flex items-center justify-center gap-1 text-sm font-bold">
-                  <ListChecks className="h-3 w-3" />
-                  {(resolvedTemplate.sections || []).length}
-                </p>
-              </div>
-            </div>
-            {resolvedTemplate.syllabus && resolvedTemplate.syllabus.length > 0 && (
-              <div className="mt-2 space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">
-                  Syllabus ({resolvedTemplate.syllabus.length} topics):
-                </p>
-                <p className="line-clamp-2 text-xs text-muted-foreground">
-                  {resolvedTemplate.syllabus.slice(0, 5).join(", ")}
-                  {resolvedTemplate.syllabus.length > 5
-                    ? ` +${resolvedTemplate.syllabus.length - 5} more`
-                    : ""}
+
+            {resolvedTemplate && (
+              <div className="space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-semibold text-primary">Template Preview</span>
+                  <Badge variant="secondary" className="ml-auto rounded-full text-xs">
+                    Pre-filled
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-xl bg-background/80 p-2.5 text-center">
+                    <p className="text-[10px] font-medium uppercase text-muted-foreground">
+                      Duration
+                    </p>
+                    <p className="flex items-center justify-center gap-1 text-sm font-bold">
+                      <Clock className="h-3 w-3" />
+                      {safeNum(resolvedTemplate.durationMinutes ?? resolvedTemplate.duration, 60)}m
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-background/80 p-2.5 text-center">
+                    <p className="text-[10px] font-medium uppercase text-muted-foreground">
+                      Questions
+                    </p>
+                    <p className="flex items-center justify-center gap-1 text-sm font-bold">
+                      <BookOpen className="h-3 w-3" />
+                      {totalQuestions}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-background/80 p-2.5 text-center">
+                    <p className="text-[10px] font-medium uppercase text-muted-foreground">
+                      Sections
+                    </p>
+                    <p className="flex items-center justify-center gap-1 text-sm font-bold">
+                      <ListChecks className="h-3 w-3" />
+                      {(resolvedTemplate.sections || []).length}
+                    </p>
+                  </div>
+                </div>
+                {Array.isArray(resolvedTemplate.syllabus) &&
+                  resolvedTemplate.syllabus.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Syllabus ({resolvedTemplate.syllabus.length} topics):
+                      </p>
+                      <p className="line-clamp-2 text-xs text-muted-foreground">
+                        {resolvedTemplate.syllabus.slice(0, 5).join(", ")}
+                        {resolvedTemplate.syllabus.length > 5
+                          ? ` +${resolvedTemplate.syllabus.length - 5} more`
+                          : ""}
+                      </p>
+                    </div>
+                  )}
+                <p className="mt-2 text-[11px] italic text-muted-foreground">
+                  Template loaded! You can modify its settings below.
                 </p>
               </div>
             )}
-            <p className="mt-2 text-[11px] italic text-muted-foreground">
-              Template loaded! You can modify its settings below.
-            </p>
-          </div>
+          </>
         )}
 
         <div className="space-y-2">
@@ -811,29 +939,18 @@ const CreateCustomTest = ({
                       Used by auto-fill and AI fill to narrow the question pool.
                     </p>
                     <div className="space-y-2">
-                      <Label>Chapter (optional)</Label>
-                      {qbOptions.chapters.length > 0 ? (
-                        <SearchableSingleSelect
-                          options={qbOptions.chapters}
-                          value={formGlobalChapter}
-                          onChange={setFormGlobalChapter}
-                          placeholder="Any chapter"
-                          searchPlaceholder="Search chapters..."
-                          className="rounded-xl"
-                        />
-                      ) : (
-                        <Input
-                          value={formGlobalChapter}
-                          onChange={(e) => setFormGlobalChapter(e.target.value)}
-                          placeholder="e.g. Kinematics"
-                          className="rounded-xl"
-                        />
-                      )}
+                      <Label>Chapters (optional)</Label>
+                      <MultiSelect
+                        options={filteredChapterOptions}
+                        selected={formGlobalChapters}
+                        onChange={setFormGlobalChapters}
+                        placeholder="Any chapter..."
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label>Topics (optional)</Label>
                       <MultiSelect
-                        options={qbOptions.topics}
+                        options={filteredTopicOptions}
                         selected={formGlobalTopics}
                         onChange={setFormGlobalTopics}
                         placeholder="Select topics..."
@@ -842,7 +959,7 @@ const CreateCustomTest = ({
                     <div className="space-y-2">
                       <Label>Tags (optional)</Label>
                       <MultiSelect
-                        options={qbOptions.tags}
+                        options={filteredTagOptions}
                         selected={formGlobalTags}
                         onChange={setFormGlobalTags}
                         placeholder="Select tags..."
@@ -866,13 +983,16 @@ const CreateCustomTest = ({
                 attemptLimit={sec.attemptlimit ?? undefined}
                 durationMinutes={sec.durationMinutes ?? undefined}
                 sectionDifficulty={sec.difficultyLevel}
-                sectionChapter={sec.chapter}
+                sectionChapter={
+                  Array.isArray(sec.chapters) ? sec.chapters : sec.chapter ? [sec.chapter] : []
+                }
                 sectionTopics={sec.topics}
                 sectionSubject={sec.subject}
                 sectionTags={sec.tags}
                 availableChapters={qbOptions.chapters}
                 availableTopics={qbOptions.topics}
                 availableTagOptions={qbOptions.tags}
+                rawQuestions={qbOptions.rawQuestions}
                 sectionFormat={sec.format}
                 markingScheme={sec.markingScheme}
                 defaultMarkingScheme={formMarkingScheme}
@@ -889,7 +1009,7 @@ const CreateCustomTest = ({
                     attemptlimit: payload.attemptLimit ?? null,
                     durationMinutes: payload.durationMinutes ?? null,
                     difficultyLevel: clampDifficulty(payload.difficultyLevel),
-                    chapter: payload.chapter || "",
+                    chapters: payload.chapters || [],
                     topics: payload.topics || [],
                     subject: payload.subject || "",
                     tags: payload.tags || [],
@@ -906,7 +1026,10 @@ const CreateCustomTest = ({
 
         {/* Add Section Dialog */}
         <Dialog open={addSectionOpen} onOpenChange={setAddSectionOpen}>
-          <DialogContent className="max-w-md rounded-2xl" onClick={(e) => e.stopPropagation()}>
+          <DialogContent
+            className="max-h-[90vh] max-w-md overflow-y-auto rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <DialogHeader>
               <DialogTitle>Add New Section</DialogTitle>
               <DialogDescription>
@@ -1082,29 +1205,18 @@ const CreateCustomTest = ({
                       Used by auto-fill and AI fill to narrow the question pool.
                     </p>
                     <div className="space-y-2">
-                      <Label>Chapter (optional)</Label>
-                      {qbOptions.chapters.length > 0 ? (
-                        <SearchableSingleSelect
-                          options={qbOptions.chapters}
-                          value={newSectionChapter}
-                          onChange={setNewSectionChapter}
-                          placeholder="Any chapter"
-                          searchPlaceholder="Search chapters..."
-                          className="rounded-xl"
-                        />
-                      ) : (
-                        <Input
-                          value={newSectionChapter}
-                          onChange={(e) => setNewSectionChapter(e.target.value)}
-                          placeholder="e.g. Kinematics"
-                          className="rounded-xl"
-                        />
-                      )}
+                      <Label>Chapters (optional)</Label>
+                      <MultiSelect
+                        options={newSectionFilteredChapters}
+                        selected={newSectionChapters}
+                        onChange={setNewSectionChapters}
+                        placeholder="Any chapter..."
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label>Topics (optional)</Label>
                       <MultiSelect
-                        options={qbOptions.topics}
+                        options={newSectionFilteredTopics}
                         selected={newSectionTopics}
                         onChange={setNewSectionTopics}
                         placeholder="Select topics..."
@@ -1113,7 +1225,7 @@ const CreateCustomTest = ({
                     <div className="space-y-2">
                       <Label>Tags (optional)</Label>
                       <MultiSelect
-                        options={qbOptions.tags}
+                        options={newSectionFilteredTags}
                         selected={newSectionTags}
                         onChange={setNewSectionTags}
                         placeholder="Select tags..."
@@ -1142,7 +1254,13 @@ const CreateCustomTest = ({
         </Dialog>
 
         <Button type="submit" className="mt-6 w-full rounded-xl" disabled={creating}>
-          {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Create Test"}
+          {creating ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : isEditing ? (
+            "Save Changes"
+          ) : (
+            "Create Test"
+          )}
         </Button>
 
         <p className="text-xs text-muted-foreground">

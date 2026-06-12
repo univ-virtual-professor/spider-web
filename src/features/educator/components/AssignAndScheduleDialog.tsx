@@ -78,7 +78,7 @@ function toEndOfDay(s: string): Timestamp | null {
   return Timestamp.fromDate(new Date(y, m - 1, d, 23, 59, 59, 999));
 }
 
-function defaultConfig(attemptsAllowed = "3", isDpp = false): BatchConfig {
+function defaultConfig(attemptsAllowed = "2", isDpp = false): BatchConfig {
   return {
     accessType: isDpp ? "open" : "scheduled",
     startDate: "",
@@ -116,9 +116,11 @@ export default function AssignAndScheduleDialog({
   allTests = [],
 }: Props) {
   const needsTestPick = !initialTest && !!preselectedBatchId;
-  const [selectedTest, setSelectedTest] = useState<{ id: string; title?: string; type?: string } | null>(
-    initialTest
-  );
+  const [selectedTest, setSelectedTest] = useState<{
+    id: string;
+    title?: string;
+    type?: string;
+  } | null>(initialTest);
   const test = initialTest ?? selectedTest;
   const isDpp = test?.type === "from_dpp";
 
@@ -130,7 +132,10 @@ export default function AssignAndScheduleDialog({
   );
   const [perBatch, setPerBatch] = useState(false);
   const [globalConfig, setGlobalConfig] = useState<BatchConfig>(() =>
-    defaultConfig(String(initialTest?.attemptsAllowed ?? 3), initialTest?.type === "from_dpp")
+    defaultConfig(
+      String(Math.min(2, initialTest?.attemptsAllowed ?? 2)),
+      initialTest?.type === "from_dpp"
+    )
   );
   const [perBatchConfigs, setPerBatchConfigs] = useState<Record<string, BatchConfig>>({});
   const [saving, setSaving] = useState(false);
@@ -141,7 +146,12 @@ export default function AssignAndScheduleDialog({
     setSelectedTest(initialTest);
     setSelectedIds(preselectedBatchId ? [preselectedBatchId] : []);
     setPerBatch(false);
-    setGlobalConfig(defaultConfig(String(initialTest?.attemptsAllowed ?? 3), initialTest?.type === "from_dpp"));
+    setGlobalConfig(
+      defaultConfig(
+        String(Math.min(2, initialTest?.attemptsAllowed ?? 2)),
+        initialTest?.type === "from_dpp"
+      )
+    );
     setPerBatchConfigs({});
     setSaving(false);
     setCopied(null);
@@ -184,53 +194,44 @@ export default function AssignAndScheduleDialog({
             type="button"
             onClick={() => update("accessType", "scheduled")}
             className={cn(
-              "flex flex-1 items-center gap-2 rounded-xl border-2 p-3 text-left transition-all",
+              "flex flex-1 flex-col items-start gap-1 rounded-xl border-2 p-3 text-left transition-all",
               cfg.accessType === "scheduled"
                 ? "border-primary bg-primary/5"
                 : "border-border hover:border-muted"
             )}
           >
             <Clock className="h-4 w-4 shrink-0 text-primary" />
-            <div>
-              <p className="text-sm font-semibold">Schedule</p>
-              <p className="text-xs text-muted-foreground">Set start/end time</p>
-            </div>
+            <p className="text-sm font-semibold">Schedule</p>
+            <p className="text-xs text-muted-foreground">Set start/end time</p>
           </button>
-          {formIsDpp ? (
-            <button
-              type="button"
-              onClick={() => update("accessType", "open")}
-              className={cn(
-                "flex flex-1 items-center gap-2 rounded-xl border-2 p-3 text-left transition-all",
-                cfg.accessType === "open"
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-muted"
-              )}
-            >
-              <Unlock className="h-4 w-4 shrink-0 text-primary" />
-              <div>
-                <p className="text-sm font-semibold">Open Access</p>
-                <p className="text-xs text-muted-foreground">Always accessible</p>
-              </div>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => update("accessType", "access_code")}
-              className={cn(
-                "flex flex-1 items-center gap-2 rounded-xl border-2 p-3 text-left transition-all",
-                cfg.accessType === "access_code"
-                  ? "border-primary bg-primary/5"
-                  : "border-border hover:border-muted"
-              )}
-            >
-              <Key className="h-4 w-4 shrink-0 text-primary" />
-              <div>
-                <p className="text-sm font-semibold">Access Code</p>
-                <p className="text-xs text-muted-foreground">Student enters code</p>
-              </div>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => update("accessType", "access_code")}
+            className={cn(
+              "flex flex-1 flex-col items-start gap-1 rounded-xl border-2 p-3 text-left transition-all",
+              cfg.accessType === "access_code"
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-muted"
+            )}
+          >
+            <Key className="h-4 w-4 shrink-0 text-primary" />
+            <p className="text-sm font-semibold">Access Code</p>
+            <p className="text-xs text-muted-foreground">Student enters code</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => update("accessType", "open")}
+            className={cn(
+              "flex flex-1 flex-col items-start gap-1 rounded-xl border-2 p-3 text-left transition-all",
+              cfg.accessType === "open"
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-muted"
+            )}
+          >
+            <Unlock className="h-4 w-4 shrink-0 text-primary" />
+            <p className="text-sm font-semibold">Open Access</p>
+            <p className="text-xs text-muted-foreground">No restrictions</p>
+          </button>
         </div>
 
         {cfg.accessType === "scheduled" && (
@@ -276,6 +277,15 @@ export default function AssignAndScheduleDialog({
               </div>
             </div>
           </>
+        )}
+
+        {cfg.accessType === "open" && (
+          <div className="space-y-1 rounded-xl border border-primary/20 bg-primary/5 p-3">
+            <p className="text-xs font-medium text-primary">Open to all students</p>
+            <p className="text-xs text-muted-foreground">
+              1 attempt · Auto-expires in 1 week · No code required
+            </p>
+          </div>
         )}
 
         {cfg.accessType === "access_code" && (
@@ -347,15 +357,20 @@ export default function AssignAndScheduleDialog({
           </>
         )}
 
-        <div className="space-y-1">
-          <Label className="text-xs">Attempts Allowed</Label>
-          <Input
-            type="number"
-            min="1"
-            value={cfg.attemptsAllowed}
-            onChange={(e) => update("attemptsAllowed", e.target.value)}
-          />
-        </div>
+        {cfg.accessType !== "open" && (
+          <div className="space-y-1">
+            <Label className="text-xs">Attempts Allowed</Label>
+            <Input
+              type="number"
+              min="1"
+              max="2"
+              value={cfg.attemptsAllowed}
+              onChange={(e) =>
+                update("attemptsAllowed", String(Math.min(2, Math.max(1, Number(e.target.value)))))
+              }
+            />
+          </div>
+        )}
 
         {/* Exam delivery mode */}
         <div className="space-y-1.5">
@@ -494,15 +509,19 @@ export default function AssignAndScheduleDialog({
           )
         );
         // Sort by createdAt desc — update the newest, delete any stale duplicates
-        const sortedExisting = existingAssignSnap.docs.slice().sort(
-          (a, b) => (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0)
-        );
+        const sortedExisting = existingAssignSnap.docs
+          .slice()
+          .sort(
+            (a, b) =>
+              (b.data().createdAt?.toMillis?.() ?? 0) - (a.data().createdAt?.toMillis?.() ?? 0)
+          );
         const existingAssignDoc = sortedExisting[0] ?? null;
         for (const stale of sortedExisting.slice(1)) {
           await deleteDoc(stale.ref);
         }
 
         if (cfg.accessType === "open") {
+          const oneWeekFromNow = Timestamp.fromDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
           const openData = {
             testId: test.id,
             testTitle: test.title || "",
@@ -510,13 +529,13 @@ export default function AssignAndScheduleDialog({
             batchName: batch.name,
             accessType: "open",
             startTime: null,
-            endTime: null,
+            endTime: oneWeekFromNow,
             isScheduleActive: false,
             accessCode: null,
             maxUses: null,
-            expiresAt: null,
+            expiresAt: oneWeekFromNow,
             windowMinutes: null,
-            attemptsAllowed: Number(cfg.attemptsAllowed) || 3,
+            attemptsAllowed: 1,
             examMode: cfg.examMode,
             proctoringConfig: cfg.examMode !== "web" ? cfg.proctoringConfig : null,
             updatedAt: ts,
@@ -548,7 +567,7 @@ export default function AssignAndScheduleDialog({
             maxUses: null,
             expiresAt: null,
             windowMinutes: null,
-            attemptsAllowed: Number(cfg.attemptsAllowed) || 3,
+            attemptsAllowed: Math.min(2, Number(cfg.attemptsAllowed) || 2),
             examMode: cfg.examMode,
             proctoringConfig: cfg.examMode !== "web" ? cfg.proctoringConfig : null,
             updatedAt: ts,
@@ -624,7 +643,7 @@ export default function AssignAndScheduleDialog({
             maxUses: max,
             expiresAt,
             windowMinutes,
-            attemptsAllowed: Number(cfg.attemptsAllowed) || 3,
+            attemptsAllowed: Math.min(2, Number(cfg.attemptsAllowed) || 2),
             examMode: cfg.examMode,
             proctoringConfig: cfg.examMode !== "web" ? cfg.proctoringConfig : null,
             updatedAt: ts,
@@ -683,7 +702,12 @@ export default function AssignAndScheduleDialog({
                     type="button"
                     onClick={() => {
                       setSelectedTest(t);
-                      setGlobalConfig(defaultConfig(String(t.attemptsAllowed ?? 3), t.type === "from_dpp"));
+                      setGlobalConfig(
+                        defaultConfig(
+                          String(Math.min(2, t.attemptsAllowed ?? 2)),
+                          t.type === "from_dpp"
+                        )
+                      );
                     }}
                     className={`w-full rounded px-2 py-2 text-left text-sm transition-colors hover:bg-muted ${
                       selectedTest?.id === t.id ? "bg-primary/10 font-medium text-primary" : ""

@@ -27,6 +27,9 @@ type TestMeta = {
     name: string;
     questionsCount?: number | null;
     topics?: string[];
+    tags?: string[];
+    chapters?: string[];
+    format?: string;
     difficultyLevel?: number;
     questionsLimit?: number;
     attemptsLimit?: number;
@@ -114,6 +117,13 @@ export default function ManageQuestionsPage() {
                     topics: Array.isArray(section?.topics)
                       ? section.topics.map(String).filter(Boolean)
                       : [],
+                    tags: Array.isArray(section?.tags)
+                      ? section.tags.map(String).filter(Boolean)
+                      : [],
+                    chapters: Array.isArray(section?.chapters)
+                      ? section.chapters.map(String).filter(Boolean)
+                      : [],
+                    format: section?.format ? String(section.format) : undefined,
                     difficultyLevel: Number.isFinite(Number(section?.difficultyLevel))
                       ? Number(section.difficultyLevel)
                       : undefined,

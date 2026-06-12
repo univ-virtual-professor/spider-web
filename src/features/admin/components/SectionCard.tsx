@@ -130,17 +130,42 @@ const SectionCard = ({
   const [draftSubject, setDraftSubject] = useState(sectionSubject || "");
   const [draftTags, setDraftTags] = useState<string[]>(sectionTags || []);
 
+  const filteredChapters = useMemo(() => {
+    if (!rawQuestions?.length || (!draftTopics.length && !draftTags.length))
+      return availableChapters || [];
+    const topicSet = new Set(draftTopics);
+    const tagSet = new Set(draftTags);
+    return [
+      ...new Set(
+        rawQuestions
+          .filter((q) => {
+            const tm = !topicSet.size || q.topics.some((t) => topicSet.has(t));
+            const gm = !tagSet.size || q.tags.some((t) => tagSet.has(t));
+            return tm && gm;
+          })
+          .map((q) => q.chapter)
+          .filter(Boolean)
+      ),
+    ].sort();
+  }, [rawQuestions, draftTopics, draftTags, availableChapters]);
+
   const filteredTopics = useMemo(() => {
-    if (!rawQuestions?.length || !draftChapters.length) return availableTopics || [];
+    if (!rawQuestions?.length || (!draftChapters.length && !draftTags.length))
+      return availableTopics || [];
     const chapterSet = new Set(draftChapters.map((c) => c.toLowerCase()));
-    const topicSet = new Set<string>();
-    rawQuestions.forEach((q) => {
-      if (q.chapter && chapterSet.has(q.chapter.toLowerCase())) {
-        q.topics.forEach((t) => topicSet.add(t));
-      }
-    });
-    return Array.from(topicSet).sort();
-  }, [rawQuestions, draftChapters, availableTopics]);
+    const tagSet = new Set(draftTags);
+    return [
+      ...new Set(
+        rawQuestions
+          .filter((q) => {
+            const cm = !chapterSet.size || (q.chapter && chapterSet.has(q.chapter.toLowerCase()));
+            const gm = !tagSet.size || q.tags.some((t) => tagSet.has(t));
+            return cm && gm;
+          })
+          .flatMap((q) => q.topics)
+      ),
+    ].sort();
+  }, [rawQuestions, draftChapters, draftTags, availableTopics]);
 
   const filteredTags = useMemo(() => {
     if (!rawQuestions?.length || (!draftChapters.length && !draftTopics.length))
@@ -224,8 +249,8 @@ const SectionCard = ({
                   Difficulty: {getDifficultyLabel(clampDifficulty(sectionDifficulty))}
                 </Badge>
               )}
-              {(sectionChapter?.length ?? 0) > 0 && (
-                <Badge variant="outline">Ch: {sectionChapter!.join(", ")}</Badge>
+              {Array.isArray(sectionChapter) && sectionChapter.length > 0 && (
+                <Badge variant="outline">Ch: {sectionChapter.join(", ")}</Badge>
               )}
               {sectionSubject && <Badge variant="secondary">{sectionSubject}</Badge>}
               {sectionFormat && (
@@ -237,6 +262,7 @@ const SectionCard = ({
           </div>
           <div className="flex gap-2">
             <Button
+              type="button"
               variant="ghost"
               size="icon"
               onClick={openEdit}
@@ -245,6 +271,7 @@ const SectionCard = ({
               <Edit className="h-4 w-4" />
             </Button>
             <Button
+              type="button"
               variant="ghost"
               size="icon"
               className="mb-0.5 shrink-0 rounded-xl text-destructive"
@@ -411,7 +438,7 @@ const SectionCard = ({
                   <div className="space-y-2">
                     <Label>Chapters</Label>
                     <MultiSelect
-                      options={availableChapters || []}
+                      options={filteredChapters}
                       selected={draftChapters}
                       onChange={setDraftChapters}
                       placeholder="Any chapter"

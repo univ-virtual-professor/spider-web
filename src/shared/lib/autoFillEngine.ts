@@ -403,7 +403,8 @@ export function buildAutoFillSelection(
       shortfall,
     });
 
-    chosen.push(...sectionChosen);
+    // Tag each chosen question with its section so callers can assign sectionId
+    chosen.push(...sectionChosen.map((q) => ({ ...q, _sectionId: section.id })));
   }
 
   return { chosen, coverage };

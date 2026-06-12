@@ -32,7 +32,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Dialog } from "@shared/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@shared/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@shared/ui/popover";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -275,9 +274,10 @@ export default function TestSeries() {
   const [globalAttemptsAllowed, setGlobalAttemptsAllowed] = useState(1);
   const [savingGlobalAttempts, setSavingGlobalAttempts] = useState(false);
 
-  // Create custom test dialog fields
+  // Create / edit custom test dialog fields
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [editingTest, setEditingTest] = useState<any | null>(null);
 
   // Folder UI state
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
@@ -539,7 +539,11 @@ export default function TestSeries() {
               name: test.subject || "General",
               questionsCount: noSectionsTarget,
               format: test.questionFormat || "",
-              chapter: test.chapter || "",
+              chapters: Array.isArray(test.chapters)
+                ? test.chapters
+                : test.chapter
+                  ? [test.chapter]
+                  : [],
               topics: Array.isArray(test.topics) ? test.topics : [],
               tags: Array.isArray(test.tags) ? test.tags : [],
               markingScheme: test.markingScheme || null,
@@ -620,7 +624,13 @@ export default function TestSeries() {
           name: s.name,
           questionsCount: remaining,
           subject: s.subject,
-          chapters: Array.isArray(s.chapter) ? s.chapter : s.chapter ? [s.chapter] : undefined,
+          chapters: Array.isArray(s.chapters)
+            ? s.chapters
+            : Array.isArray(s.chapter)
+              ? s.chapter
+              : s.chapter
+                ? [s.chapter]
+                : undefined,
           topics: s.topics,
           tags: s.tags,
           format: s.format,
@@ -669,13 +679,14 @@ export default function TestSeries() {
           const qRef = doc(
             collection(db, "educators", currentUser.uid, "my_tests", test.id, "questions")
           );
-          const { id, _source, ...rest } = q as any;
+          const { id, _source, _sectionId, ...rest } = q as any;
           const qData: any = {
             ...rest,
             bankQuestionId: id,
             questionOrder: order++,
             addedAt: serverTimestamp(),
             questionType: normalizeQuestionType(rest.questionType || rest.format || "MCQ_SINGLE"),
+            ...(_sectionId && { sectionId: _sectionId }),
           };
           batch.set(qRef, qData);
           usedIds.add(id);
@@ -1119,6 +1130,56 @@ export default function TestSeries() {
   const handleCreateCustom = async (values: any) => {
     if (!currentUser) return;
 
+    // ── EDIT path ──────────────────────────────────────────────────────────────
+    if (editingTest) {
+      const update: any = {
+        title: String(values.title || ""),
+        description: String(values.description || ""),
+        courseId: values.courseId || "",
+        courseName: values.courseName || "",
+        subject: String(values.subject || ""),
+        subjectMode: values.subjectMode || "single",
+        level: String(values.level || "General"),
+        difficultyLevel: values.difficultyLevel ?? 0.5,
+        durationMinutes: Number(values.durationMinutes || 0),
+        useSections: values.useSections ?? true,
+        updatedAt: serverTimestamp(),
+      };
+      if (Array.isArray(values.sections) && values.sections.length > 0) {
+        update.sections = values.sections;
+        update.questionsCount = values.sections.reduce(
+          (a: number, s: any) => a + (Number(s.questionsCount) || 0),
+          0
+        );
+        update.questionsTarget = update.questionsCount;
+      } else {
+        update.sections = [];
+        update.questionsCount = Number(values.questionsCount) || 0;
+        update.questionsTarget = update.questionsCount;
+        update.questionFormat = values.questionFormat || "";
+        update.chapters = Array.isArray(values.chapters) ? values.chapters : [];
+        update.topics = Array.isArray(values.topics) ? values.topics : [];
+        update.tags = Array.isArray(values.tags) ? values.tags : [];
+      }
+      if (values.markingScheme) update.markingScheme = values.markingScheme;
+      setCreating(true);
+      try {
+        await updateDoc(
+          doc(db, "educators", currentUser.uid, "my_tests", editingTest.id),
+          pruneUndefined(update)
+        );
+        toast.success("Test updated");
+        setCreateOpen(false);
+        setEditingTest(null);
+      } catch (err) {
+        console.error(err);
+        toast.error("Failed to update test");
+      } finally {
+        setCreating(false);
+      }
+      return;
+    }
+
     const [templateType, templateId] = String(selectedTemplateId || "none").split(":");
 
     const educatorTemplate =
@@ -1212,7 +1273,10 @@ export default function TestSeries() {
 
   const creatCustomTestState = {
     createOpen,
-    setCreateOpen,
+    setCreateOpen: (open: boolean) => {
+      setCreateOpen(open);
+      if (!open) setEditingTest(null);
+    },
     handleCreateCustom,
     creating,
     selectedTemplateId,
@@ -1225,6 +1289,8 @@ export default function TestSeries() {
       setCreateOpen(false);
       setCreateTemplateOpen(true);
     },
+    initialValues: editingTest ?? undefined,
+    isEditing: !!editingTest,
   };
 
   const moveTestState = {
@@ -1344,7 +1410,13 @@ export default function TestSeries() {
           </Button>
         </div>
 
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <Dialog
+          open={createOpen}
+          onOpenChange={(open) => {
+            setCreateOpen(open);
+            if (!open) setEditingTest(null);
+          }}
+        >
           <CreateCustomTest {...creatCustomTestState} />
         </Dialog>
 
@@ -1654,6 +1726,16 @@ export default function TestSeries() {
                                             </Button>
                                           </DropdownMenuTrigger>
                                           <DropdownMenuContent align="end" className="rounded-xl">
+                                            {!isAdminLinked && (
+                                              <DropdownMenuItem
+                                                onClick={() => {
+                                                  setEditingTest(test);
+                                                  setCreateOpen(true);
+                                                }}
+                                              >
+                                                <Pencil className="mr-2 h-4 w-4" /> Edit Settings
+                                              </DropdownMenuItem>
+                                            )}
                                             <DropdownMenuItem
                                               onClick={() => {
                                                 setTestToMove(test);
@@ -1814,34 +1896,6 @@ export default function TestSeries() {
                                           </Badge>
                                         )}
                                       </div>
-
-                                      <Popover>
-                                        <PopoverTrigger asChild>
-                                          <div className="flex shrink-0 cursor-pointer items-center gap-1 rounded-lg bg-muted/30 px-2 py-1 hover:bg-muted/50">
-                                            <span className="text-[9px] font-bold uppercase text-muted-foreground">
-                                              Attempts:
-                                            </span>
-                                            <span className="text-[10px] font-bold">
-                                              {(test.attemptsAllowed ?? 1) === 0
-                                                ? "∞"
-                                                : (test.attemptsAllowed ?? 1)}
-                                            </span>
-                                          </div>
-                                        </PopoverTrigger>
-                                        <PopoverContent
-                                          className="w-auto p-2"
-                                          align="end"
-                                          sideOffset={4}
-                                        >
-                                          <ScrollPicker
-                                            options={ATTEMPTS_OPTIONS}
-                                            value={String(test.attemptsAllowed ?? 1)}
-                                            onChange={(v) =>
-                                              handleUpdateTestAttempts(test.id, Number(v))
-                                            }
-                                          />
-                                        </PopoverContent>
-                                      </Popover>
                                     </div>
 
                                     <div className="mt-4 space-y-2 border-t pt-4">
