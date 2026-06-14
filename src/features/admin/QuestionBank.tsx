@@ -590,6 +590,8 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
   const csvInputRef = useRef<HTMLInputElement>(null);
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
   // ── Passage / group inline editor state ──────────────────────────────────
   const [qCourseId, setQCourseId] = useState("");
@@ -867,9 +869,10 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
   const qbTotalPages = Math.max(1, Math.ceil(filtered.length / QB_PAGE_SIZE));
   const qbPagedItems = filtered.slice((qbPage - 1) * QB_PAGE_SIZE, qbPage * QB_PAGE_SIZE);
 
-  // Reset to page 1 on filter change
+  // Reset to page 1 and clear selection on filter change
   useEffect(() => {
     setQbPage(1);
+    setSelectedIds(new Set());
   }, [qSearch, fCourseId, fSubjectIds, fChapter, fTopics, fTags, fDifficulty]);
 
   const resetEditor = () => {
@@ -1165,6 +1168,34 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
       toast({ title: "Deleted", description: "Question removed from the bank." });
     } catch {
       toast({ title: "Delete failed", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    setBusy(true);
+    setBulkDeleteConfirm(false);
+    const ids = Array.from(selectedIds);
+    try {
+      let batch = writeBatch(db);
+      let ops = 0;
+      for (const id of ids) {
+        const ref = questionBankDoc(id);
+        if (!ref) continue;
+        batch.delete(ref);
+        ops++;
+        if (ops >= 450) {
+          await batch.commit();
+          batch = writeBatch(db);
+          ops = 0;
+        }
+      }
+      if (ops > 0) await batch.commit();
+      setSelectedIds(new Set());
+      toast({ title: "Deleted", description: `${ids.length} question${ids.length > 1 ? "s" : ""} removed from the bank.` });
+    } catch {
+      toast({ title: "Bulk delete failed", description: "Please try again.", variant: "destructive" });
     } finally {
       setBusy(false);
     }
@@ -2045,15 +2076,43 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
 
           <Separator />
 
+          {/* Results bar */}
           <div className="flex items-center justify-between">
-            <div className="text-sm text-muted-foreground">
-              Showing{" "}
-              <span className="font-medium text-foreground">
-                {filtered.length === 0 ? 0 : (qbPage - 1) * QB_PAGE_SIZE + 1}–
-                {Math.min(qbPage * QB_PAGE_SIZE, filtered.length)}
-              </span>{" "}
-              of {filtered.length}{" "}
-              {filtered.length !== allItems.length && `(${allItems.length} total)`}
+            <div className="flex items-center gap-3">
+              {selectedIds.size > 0 ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium">
+                    {selectedIds.size} selected
+                  </span>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => setBulkDeleteConfirm(true)}
+                    disabled={busy}
+                  >
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                    Delete selected
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedIds(new Set())}
+                    disabled={busy}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  Showing{" "}
+                  <span className="font-medium text-foreground">
+                    {filtered.length === 0 ? 0 : (qbPage - 1) * QB_PAGE_SIZE + 1}–
+                    {Math.min(qbPage * QB_PAGE_SIZE, filtered.length)}
+                  </span>{" "}
+                  of {filtered.length}{" "}
+                  {filtered.length !== allItems.length && `(${allItems.length} total)`}
+                </div>
+              )}
             </div>
             <Button
               variant="ghost"
@@ -2071,77 +2130,123 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
             </Button>
           </div>
 
+          {/* Select-all across all filtered results */}
+          {filtered.length > 0 && (() => {
+            const editableInFilter = filtered.filter(
+              (q) => !(isEducatorScope && q.uploadedByRole === "admin")
+            );
+            const allSelected =
+              editableInFilter.length > 0 &&
+              editableInFilter.every((q) => selectedIds.has(q.id));
+            return (
+              <div className="flex items-center gap-2 px-1">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={(v) => {
+                    setSelectedIds((prev) => {
+                      const next = new Set(prev);
+                      if (v) editableInFilter.forEach((q) => next.add(q.id));
+                      else editableInFilter.forEach((q) => next.delete(q.id));
+                      return next;
+                    });
+                  }}
+                />
+                <span className="text-xs text-muted-foreground">
+                  Select all {editableInFilter.length} filtered question{editableInFilter.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+            );
+          })()}
+
           <div className="space-y-3">
-            {qbPagedItems.map((q) => (
-              <motion.div key={q.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
-                <div className="rounded-xl border bg-card p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-2 flex flex-wrap items-center gap-2">
-                        {q.uploadedByRole === "admin" && isEducatorScope && (
-                          <Badge variant="default" className="text-xs">
-                            Admin
-                          </Badge>
-                        )}
-                        {q.course && <Badge variant="secondary">{q.course}</Badge>}
-                        {q.chapter && <Badge variant="outline">{q.chapter}</Badge>}
-                        {q.topic && <Badge variant="outline">{q.topic}</Badge>}
-                        <Badge className="capitalize" variant="outline">
-                          {q.difficulty || "medium"}
-                        </Badge>
-                        {q.format && (
-                          <Badge variant="outline" className="text-xs capitalize">
-                            {q.format.replace(/_/g, " ")}
-                          </Badge>
-                        )}
-                      </div>
-
-                      <QuestionRenderer
-                        text={q.question || ""}
-                        contentFormat={q.contentFormat}
-                        className="line-clamp-3"
-                      />
-
-                      {q.questionImage && (
-                        <img
-                          src={q.questionImage}
-                          alt=""
-                          className="mt-1 h-10 w-auto rounded border object-contain"
+            {qbPagedItems.map((q) => {
+              const isEditable = !(isEducatorScope && q.uploadedByRole === "admin");
+              const isChecked = selectedIds.has(q.id);
+              return (
+                <motion.div key={q.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+                  <div className={cn("rounded-xl border bg-card p-4 transition-colors", isChecked && "border-primary/50 bg-primary/5")}>
+                    <div className="flex items-start gap-3">
+                      {isEditable && (
+                        <Checkbox
+                          checked={isChecked}
+                          onCheckedChange={(v) => {
+                            setSelectedIds((prev) => {
+                              const next = new Set(prev);
+                              if (v) next.add(q.id);
+                              else next.delete(q.id);
+                              return next;
+                            });
+                          }}
+                          className="mt-1 shrink-0"
                         />
                       )}
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          {q.uploadedByRole === "admin" && isEducatorScope && (
+                            <Badge variant="default" className="text-xs">
+                              Admin
+                            </Badge>
+                          )}
+                          {q.course && <Badge variant="secondary">{q.course}</Badge>}
+                          {q.chapter && <Badge variant="outline">{q.chapter}</Badge>}
+                          {q.topic && <Badge variant="outline">{q.topic}</Badge>}
+                          <Badge className="capitalize" variant="outline">
+                            {q.difficulty || "medium"}
+                          </Badge>
+                          {q.format && (
+                            <Badge variant="outline" className="text-xs capitalize">
+                              {q.format.replace(/_/g, " ")}
+                            </Badge>
+                          )}
+                        </div>
 
-                      <div className="mt-2 text-xs text-muted-foreground">
-                        {q.options?.length ?? 0} options
+                        <QuestionRenderer
+                          text={q.question || ""}
+                          contentFormat={q.contentFormat}
+                          className="line-clamp-3"
+                        />
+
+                        {q.questionImage && (
+                          <img
+                            src={q.questionImage}
+                            alt=""
+                            className="mt-1 h-10 w-auto rounded border object-contain"
+                          />
+                        )}
+
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          {q.options?.length ?? 0} options
+                        </div>
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-2">
+                        {isEditable && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => openEdit(q)}
+                              disabled={busy}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                              onClick={() => setDeleteConfirmId(q.id)}
+                              disabled={busy}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
-
-                    <div className="flex shrink-0 items-center gap-2">
-                      {!(isEducatorScope && q.uploadedByRole === "admin") && (
-                        <>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            onClick={() => openEdit(q)}
-                            disabled={busy}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                            onClick={() => setDeleteConfirmId(q.id)}
-                            disabled={busy}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
                   </div>
-                </div>
-              </motion.div>
-            ))}
+                </motion.div>
+              );
+            })}
 
             {filtered.length === 0 && (
               <div className="py-12 text-center text-muted-foreground">
@@ -2893,6 +2998,38 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
             >
               {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <Dialog open={bulkDeleteConfirm} onOpenChange={(v) => { if (!v) setBulkDeleteConfirm(false); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" />
+              Delete {selectedIds.size} Question{selectedIds.size !== 1 ? "s" : ""}
+            </DialogTitle>
+            <DialogDescription>
+              This will permanently remove {selectedIds.size} question{selectedIds.size !== 1 ? "s" : ""} from the question bank. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setBulkDeleteConfirm(false)}
+              disabled={busy}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleBulkDelete}
+              disabled={busy}
+            >
+              {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Delete {selectedIds.size}
             </Button>
           </div>
         </DialogContent>
