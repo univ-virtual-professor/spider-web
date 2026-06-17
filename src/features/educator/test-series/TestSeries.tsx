@@ -343,49 +343,55 @@ export default function TestSeries() {
       const programList: { id: string; name: string; branchId: string }[] = [];
       const batchList: any[] = [];
 
-      for (const branchDoc of branchSnap.docs) {
-        const branchData = branchDoc.data();
-        branchList.push({ id: branchDoc.id, name: branchData.name || "Unnamed Branch" });
+      await Promise.all(
+        branchSnap.docs.map(async (branchDoc) => {
+          const branchData = branchDoc.data();
+          branchList.push({ id: branchDoc.id, name: branchData.name || "Unnamed Branch" });
 
-        const courseSnap = await getDocs(
-          collection(db, "educators", uid, "branches", branchDoc.id, "courses")
-        );
-        for (const courseDoc of courseSnap.docs) {
-          const courseData = courseDoc.data();
-          programList.push({
-            id: courseDoc.id,
-            name: courseData.name || "Unnamed Program",
-            branchId: branchDoc.id,
-          });
-
-          const batchSnap = await getDocs(
-            collection(
-              db,
-              "educators",
-              uid,
-              "branches",
-              branchDoc.id,
-              "courses",
-              courseDoc.id,
-              "batches"
-            )
+          const courseSnap = await getDocs(
+            collection(db, "educators", uid, "branches", branchDoc.id, "courses")
           );
-          batchSnap.docs.forEach((b) => {
-            const batchData = b.data();
-            batchList.push({
-              id: b.id,
-              name: batchData.name || "Unnamed Batch",
-              courseId: courseDoc.id,
-              branchId: branchDoc.id,
-              label: `${branchData.name || "Unnamed Branch"} / ${courseData.name || "Unnamed Program"} / ${batchData.name || "Unnamed Batch"}`,
-            });
-          });
-        }
-      }
+
+          await Promise.all(
+            courseSnap.docs.map(async (courseDoc) => {
+              const courseData = courseDoc.data();
+              programList.push({
+                id: courseDoc.id,
+                name: courseData.name || "Unnamed Program",
+                branchId: branchDoc.id,
+              });
+
+              const batchSnap = await getDocs(
+                collection(
+                  db,
+                  "educators",
+                  uid,
+                  "branches",
+                  branchDoc.id,
+                  "courses",
+                  courseDoc.id,
+                  "batches"
+                )
+              );
+              batchSnap.docs.forEach((b) => {
+                const batchData = b.data();
+                batchList.push({
+                  id: b.id,
+                  name: batchData.name || "Unnamed Batch",
+                  courseId: courseDoc.id,
+                  branchId: branchDoc.id,
+                  label: `${branchData.name || "Unnamed Branch"} / ${courseData.name || "Unnamed Program"} / ${batchData.name || "Unnamed Batch"}`,
+                });
+              });
+            })
+          );
+        })
+      );
+
       setBranches(branchList);
       setPrograms(programList);
       setAllBatches(batchList);
-    });
+    }).catch(() => toast.error("Failed to load batches"));
 
     // Load educator preferences
     const unsubEdu = onSnapshot(doc(db, "educators", uid), (snap) => {

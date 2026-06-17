@@ -186,76 +186,82 @@ export default function DppGenerator() {
       .then(async (branchSnap) => {
         const loadedBranches: { id: string; name: string }[] = [];
 
-        for (const bDoc of branchSnap.docs) {
-          const branchName = (bDoc.data() as any).name || bDoc.id;
-          const courseSnap = await getDocs(
-            collection(db, "educators", educatorUid, "branches", bDoc.id, "courses")
-          );
-          let branchHasBatches = false;
+        await Promise.all(
+          branchSnap.docs.map(async (bDoc) => {
+            const branchName = (bDoc.data() as any).name || bDoc.id;
+            const courseSnap = await getDocs(
+              collection(db, "educators", educatorUid, "branches", bDoc.id, "courses")
+            );
+            let branchHasBatches = false;
 
-          for (const cDoc of courseSnap.docs) {
-            const courseName = (cDoc.data() as any).name || cDoc.id;
-            const courseKey = `${bDoc.id}::${cDoc.id}`;
+            await Promise.all(
+              courseSnap.docs.map(async (cDoc) => {
+                const courseName = (cDoc.data() as any).name || cDoc.id;
+                const courseKey = `${bDoc.id}::${cDoc.id}`;
 
-            const batchSnap = await getDocs(
-              collection(
-                db,
-                "educators",
-                educatorUid,
-                "branches",
-                bDoc.id,
-                "courses",
-                cDoc.id,
-                "batches"
-              )
+                const [batchSnap, contentSnap] = await Promise.all([
+                  getDocs(
+                    collection(
+                      db,
+                      "educators",
+                      educatorUid,
+                      "branches",
+                      bDoc.id,
+                      "courses",
+                      cDoc.id,
+                      "batches"
+                    )
+                  ),
+                  getDocs(
+                    collection(
+                      db,
+                      "educators",
+                      educatorUid,
+                      "branches",
+                      bDoc.id,
+                      "courses",
+                      cDoc.id,
+                      "content"
+                    )
+                  ),
+                ]);
+
+                if (batchSnap.docs.length > 0) {
+                  branchHasBatches = true;
+                  if (!seenCourseKeys.has(courseKey)) {
+                    seenCourseKeys.add(courseKey);
+                    uniqueCourses.push({
+                      courseId: cDoc.id,
+                      courseName,
+                      branchId: bDoc.id,
+                      branchName,
+                    });
+                  }
+
+                  for (const ctDoc of contentSnap.docs) {
+                    const d = ctDoc.data() as any;
+                    items.push({
+                      id: ctDoc.id,
+                      title: d.title || ctDoc.id,
+                      type: d.type || "book",
+                      courseId: cDoc.id,
+                      courseName,
+                      branchId: bDoc.id,
+                      branchName,
+                    });
+                  }
+                }
+              })
             );
 
-            if (batchSnap.docs.length > 0) {
-              branchHasBatches = true;
-              if (!seenCourseKeys.has(courseKey)) {
-                seenCourseKeys.add(courseKey);
-                uniqueCourses.push({
-                  courseId: cDoc.id,
-                  courseName,
-                  branchId: bDoc.id,
-                  branchName,
-                });
-              }
-
-              const contentSnap = await getDocs(
-                collection(
-                  db,
-                  "educators",
-                  educatorUid,
-                  "branches",
-                  bDoc.id,
-                  "courses",
-                  cDoc.id,
-                  "content"
-                )
-              );
-              for (const ctDoc of contentSnap.docs) {
-                const d = ctDoc.data() as any;
-                items.push({
-                  id: ctDoc.id,
-                  title: d.title || ctDoc.id,
-                  type: d.type || "book",
-                  courseId: cDoc.id,
-                  courseName,
-                  branchId: bDoc.id,
-                  branchName,
-                });
-              }
+            if (branchHasBatches) {
+              loadedBranches.push({
+                id: bDoc.id,
+                name: branchName,
+              });
             }
-          }
-
-          if (branchHasBatches) {
-            loadedBranches.push({
-              id: bDoc.id,
-              name: branchName,
-            });
-          }
-        }
+          })
+        );
 
         setBranches(loadedBranches);
         if (loadedBranches.length === 1) {
