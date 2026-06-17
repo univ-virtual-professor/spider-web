@@ -191,27 +191,26 @@ function SortableSectionCard({
             )}
 
             <div className="min-w-0 flex-1 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span className="rounded-lg bg-primary/10 px-3 py-1 text-sm font-bold text-primary">
-                    Section {index + 1} · {section.name}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <span className="max-w-[160px] truncate rounded-lg bg-primary/10 px-3 py-1 text-sm font-bold text-primary sm:max-w-xs">
+                    S{index + 1} · {section.name}
                   </span>
                   {!readOnly ? (
-                    <>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-7 gap-1 rounded-xl border-primary/20 px-2.5 text-xs text-black hover:bg-primary hover:text-white"
-                        onClick={() => onAddQuestion(section.id)}
-                        disabled={isAtCapacity}
-                      >
-                        <Plus className="h-3.5 w-3.5" /> Add Question
-                      </Button>
-                    </>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 shrink-0 gap-1 rounded-xl border-primary/20 px-2.5 text-xs text-black hover:bg-primary hover:text-white"
+                      onClick={() => onAddQuestion(section.id)}
+                      disabled={isAtCapacity}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Add Question</span>
+                    </Button>
                   ) : null}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-1">
                   <Button
                     type="button"
                     variant="ghost"

@@ -150,6 +150,7 @@ const TESTIMONIALS = [
 
 type FormState = {
   name: string;
+  coaching: string;
   phone: string;
   exam: string;
   date: string;
@@ -161,6 +162,7 @@ function HeroSection() {
   const [activeTag, setActiveTag] = useState(0);
   const [form, setForm] = useState<FormState>({
     name: "",
+    coaching: "",
     phone: "",
     exam: "",
     date: "",
@@ -172,6 +174,7 @@ function HeroSection() {
   const validate = (): FormErrors => {
     const e: FormErrors = {};
     if (!form.name.trim()) e.name = "Required";
+    if (!form.coaching.trim()) e.coaching = "Required";
     if (!form.phone.trim() || !/^[6-9]\d{9}$/.test(form.phone.replace(/\s/g, "")))
       e.phone = "Enter valid 10-digit mobile";
     if (!form.exam) e.exam = "Please select";
@@ -454,6 +457,30 @@ function HeroSection() {
 
                 <div style={{ marginBottom: 14 }}>
                   <label style={labelStyle}>
+                    Coaching / Institute Name <span style={{ color: "#ef4444" }}>*</span>
+                  </label>
+                  <input
+                    style={inputStyle("coaching")}
+                    placeholder="Apex Academy"
+                    value={form.coaching}
+                    onChange={(e) => {
+                      setForm((p) => ({ ...p, coaching: e.target.value }));
+                      setErrors((p) => ({ ...p, coaching: "" }));
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = PRIMARY)}
+                    onBlur={(e) =>
+                      (e.target.style.borderColor = errors.coaching ? "#ef4444" : "#e5e2f5")
+                    }
+                  />
+                  {errors.coaching && (
+                    <div style={{ fontSize: 11, color: "#ef4444", marginTop: 4 }}>
+                      {errors.coaching}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ marginBottom: 14 }}>
+                  <label style={labelStyle}>
                     Mobile Number <span style={{ color: "#ef4444" }}>*</span>
                   </label>
                   <input
@@ -635,7 +662,7 @@ function HeroSection() {
               <button
                 onClick={() => {
                   setStep(1);
-                  setForm({ name: "", phone: "", exam: "", date: "" });
+                  setForm({ name: "", coaching: "", phone: "", exam: "", date: "" });
                 }}
                 style={{
                   fontSize: 13,

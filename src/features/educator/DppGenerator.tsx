@@ -177,14 +177,35 @@ export default function DppGenerator() {
   // Load content & branches
   useEffect(() => {
     if (!educatorUid) return;
-    setLoadingContent(true);
-    const items: ContentItem[] = [];
-    const uniqueCourses: CourseOption[] = [];
-    const seenCourseKeys = new Set<string>();
+    let cancelled = false;
 
-    getDocs(collection(db, "educators", educatorUid, "branches"))
-      .then(async (branchSnap) => {
-        const loadedBranches: { id: string; name: string }[] = [];
+    async function loadBranchesAndContent() {
+      const cacheKey = `dpp_content_${educatorUid}`;
+      try {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+          const { branches: cb, courses: cc, content: ct, ts } = JSON.parse(cached);
+          if (Date.now() - ts < 5 * 60 * 1000) {
+            if (!cancelled) {
+              setBranches(cb);
+              if (cb.length === 1) setSelectedBranchId(cb[0].id);
+              setCoursesList(cc);
+              setContent(ct);
+              setLoadingContent(false);
+            }
+            return;
+          }
+        }
+      } catch {}
+
+      setLoadingContent(true);
+      const items: ContentItem[] = [];
+      const uniqueCourses: CourseOption[] = [];
+      const seenCourseKeys = new Set<string>();
+      const loadedBranches: { id: string; name: string }[] = [];
+
+      try {
+        const branchSnap = await getDocs(collection(db, "educators", educatorUid, "branches"));
 
         await Promise.all(
           branchSnap.docs.map(async (bDoc) => {
@@ -192,88 +213,64 @@ export default function DppGenerator() {
             const courseSnap = await getDocs(
               collection(db, "educators", educatorUid, "branches", bDoc.id, "courses")
             );
-            let branchHasBatches = false;
+
+            if (courseSnap.docs.length > 0) {
+              loadedBranches.push({ id: bDoc.id, name: branchName });
+            }
 
             await Promise.all(
               courseSnap.docs.map(async (cDoc) => {
                 const courseName = (cDoc.data() as any).name || cDoc.id;
                 const courseKey = `${bDoc.id}::${cDoc.id}`;
 
-                const [batchSnap, contentSnap] = await Promise.all([
-                  getDocs(
-                    collection(
-                      db,
-                      "educators",
-                      educatorUid,
-                      "branches",
-                      bDoc.id,
-                      "courses",
-                      cDoc.id,
-                      "batches"
-                    )
-                  ),
-                  getDocs(
-                    collection(
-                      db,
-                      "educators",
-                      educatorUid,
-                      "branches",
-                      bDoc.id,
-                      "courses",
-                      cDoc.id,
-                      "content"
-                    )
-                  ),
-                ]);
+                const contentSnap = await getDocs(
+                  collection(db, "educators", educatorUid, "branches", bDoc.id, "courses", cDoc.id, "content")
+                );
 
-                if (batchSnap.docs.length > 0) {
-                  branchHasBatches = true;
-                  if (!seenCourseKeys.has(courseKey)) {
-                    seenCourseKeys.add(courseKey);
-                    uniqueCourses.push({
-                      courseId: cDoc.id,
-                      courseName,
-                      branchId: bDoc.id,
-                      branchName,
-                    });
-                  }
+                if (!seenCourseKeys.has(courseKey)) {
+                  seenCourseKeys.add(courseKey);
+                  uniqueCourses.push({ courseId: cDoc.id, courseName, branchId: bDoc.id, branchName });
+                }
 
-                  for (const ctDoc of contentSnap.docs) {
-                    const d = ctDoc.data() as any;
-                    items.push({
-                      id: ctDoc.id,
-                      title: d.title || ctDoc.id,
-                      type: d.type || "book",
-                      courseId: cDoc.id,
-                      courseName,
-                      branchId: bDoc.id,
-                      branchName,
-                    });
-                  }
+                for (const ctDoc of contentSnap.docs) {
+                  const d = ctDoc.data() as any;
+                  items.push({
+                    id: ctDoc.id,
+                    title: d.title || ctDoc.id,
+                    type: d.type || "book",
+                    courseId: cDoc.id,
+                    courseName,
+                    branchId: bDoc.id,
+                    branchName,
+                  });
                 }
               })
             );
-
-            if (branchHasBatches) {
-              loadedBranches.push({
-                id: bDoc.id,
-                name: branchName,
-              });
-            }
           })
         );
+      } catch {
+        toast.error("Failed to load content");
+      }
 
-        setBranches(loadedBranches);
-        if (loadedBranches.length === 1) {
-          setSelectedBranchId(loadedBranches[0].id);
-        }
-      })
-      .catch(() => toast.error("Failed to load content"))
-      .finally(() => {
-        setContent(items.sort((a, b) => b.id.localeCompare(a.id)));
-        setCoursesList(uniqueCourses);
-        setLoadingContent(false);
-      });
+      if (cancelled) return;
+
+      const sortedContent = items.sort((a, b) => b.id.localeCompare(a.id));
+      setBranches(loadedBranches);
+      if (loadedBranches.length === 1) setSelectedBranchId(loadedBranches[0].id);
+      setCoursesList(uniqueCourses);
+      setContent(sortedContent);
+      setLoadingContent(false);
+
+      try {
+        sessionStorage.setItem(
+          cacheKey,
+          JSON.stringify({ branches: loadedBranches, courses: uniqueCourses, content: sortedContent, ts: Date.now() })
+        );
+      } catch {}
+    }
+
+    loadBranchesAndContent();
+    return () => { cancelled = true; };
   }, [educatorUid]);
 
   // Auto-select the first program when the branch or coursesList changes

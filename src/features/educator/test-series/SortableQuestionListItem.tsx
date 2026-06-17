@@ -219,60 +219,61 @@ const SortableQuestionListItem = ({
       {/* Add Question bar  */}
       {!readOnly ? (
         <div className="group relative flex w-full items-center">
-          {/* Line */}
           <div className="h-2 w-full rounded-full opacity-0 transition-all duration-200 group-hover:opacity-100" />
-
-          {/* Button to add question after question */}
-          <div className="absolute left-1/2 flex -translate-x-1/2 -translate-y-1/3 gap-2 opacity-0 transition-all duration-200 group-hover:opacity-100">
+          <div className="absolute left-1/2 z-10 flex -translate-x-1/2 -translate-y-1/3 flex-wrap justify-center gap-1.5 opacity-0 transition-all duration-200 group-hover:opacity-100">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="rounded-full"
+              className="rounded-full text-xs"
               onClick={(e) => {
                 e.stopPropagation();
                 onAddAfterQuestion(q);
               }}
               aria-label="Add question after this"
             >
-              <Plus className="h-3 w-3" /> Add Question
+              <Plus className="h-3 w-3" />
+              <span className="hidden sm:inline"> Add Question</span>
             </Button>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="rounded-full"
+              className="rounded-full text-xs"
               onClick={(e) => {
                 e.stopPropagation();
                 onImportAfterQuestion(q);
               }}
               aria-label="Import from question bank after this"
             >
-              <Plus className="h-3 w-3" /> Import From Question Bank
+              <Plus className="h-3 w-3" />
+              <span className="hidden sm:inline"> From Bank</span>
             </Button>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="rounded-full text-destructive"
+              className="rounded-full text-xs text-destructive"
               onClick={(e) => {
                 e.stopPropagation();
                 openReportModal(q.id, contextId || "manager", q.question);
               }}
             >
-              <Flag className="mr-1.5 h-3 w-3" /> Report
+              <Flag className="h-3 w-3" />
+              <span className="hidden sm:inline ml-1">Report</span>
             </Button>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="rounded-full text-blue-600"
+              className="rounded-full text-xs text-blue-600"
               onClick={(e) => {
                 e.stopPropagation();
                 openCommentsDrawer(q.id, contextId || "manager");
               }}
             >
-              <MessageSquare className="mr-1.5 h-3 w-3" /> Comments
+              <MessageSquare className="h-3 w-3" />
+              <span className="hidden sm:inline ml-1">Comments</span>
             </Button>
           </div>
         </div>

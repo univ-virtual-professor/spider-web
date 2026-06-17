@@ -2905,22 +2905,22 @@ const QuestionsManager = ({
       <div
         className={
           isPageMode
-            ? "relative flex h-[calc(100vh-8rem)] w-full flex-col overflow-hidden bg-background"
+            ? "relative flex h-[calc(100dvh-6rem)] w-full flex-col overflow-hidden bg-background md:h-[calc(100dvh-8rem)]"
             : "relative flex h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-background shadow-2xl"
         }
       >
-        <div className="flex items-center justify-between border-b p-4">
+        <div className="flex flex-col gap-3 border-b p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
           <div className="min-w-0">
             <h2 className="text-sm font-bold md:text-lg">
               {readOnly ? "View Questions" : "Manage Questions"}
             </h2>
-            <p className="text-[10px] text-muted-foreground md:text-xs">
+            <p className="hidden text-[10px] text-muted-foreground sm:block md:text-xs">
               {readOnly
                 ? "Read-only mode for admin-imported test."
-                : "Add questions manually or import them from a PDF with AI. Saved questions stay in the same Firestore path."}
+                : "Add questions manually or import them from a PDF with AI."}
             </p>
           </div>
-          <div className="flex flex-wrap justify-end gap-2 lg:justify-start">
+          <div className="flex flex-wrap gap-2">
             {(!isPageMode || !isApp) && (
               <Button variant="outline" onClick={requestCloseManager} className="rounded-xl">
                 <ArrowLeft className="mr-2 h-4 w-4" /> Back
@@ -2942,10 +2942,11 @@ const QuestionsManager = ({
                   ) : (
                     <FileUp className="mr-2 h-4 w-4" />
                   )}
-                  Import PDF with AI
+                  <span className="hidden sm:inline">Import PDF with AI</span>
+                  <span className="sm:hidden">Import PDF</span>
                 </Button>
                 {!isAiPdfImportEnabled ? (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="hidden text-xs text-muted-foreground sm:block">
                     {getAiFeatureDisabledMessage("pdfImport")}
                   </p>
                 ) : null}
