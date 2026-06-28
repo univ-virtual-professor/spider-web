@@ -43,6 +43,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 
+import { updateQBMeta } from "@shared/lib/updateQBMeta";
 import { cn } from "@shared/lib/utils";
 import { toast } from "@shared/hooks/use-toast";
 
@@ -1724,6 +1725,13 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
 
       let batch = writeBatch(db);
       let ops = 0;
+      const indexPayloads: {
+        subjectId?: string;
+        chapter?: string;
+        topic?: string;
+        topics?: string[];
+        tags?: string[];
+      }[] = [];
 
       for (let i = 0; i < rowRefs.length; i++) {
         const { ref, row, csvGroupId } = rowRefs[i];
@@ -1848,6 +1856,14 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
           }
         }
 
+        indexPayloads.push({
+          subjectId: payload.subjectId as string | undefined,
+          chapter: payload.chapter as string | undefined,
+          topic: payload.topic as string | undefined,
+          topics: payload.topics as string[] | undefined,
+          tags: payload.tags as string[] | undefined,
+        });
+
         const cleanPayload = Object.fromEntries(
           Object.entries(payload).filter(([, v]) => v !== undefined)
         );
@@ -1869,6 +1885,28 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
       }
 
       if (ops > 0) await batch.commit();
+
+      // Update precomputed QB meta index so useQBOptions never scans the full collection
+      if (indexPayloads.length > 0) {
+        if (isEducatorScope && educatorUid) {
+          await updateQBMeta(
+            doc(db, "educators", educatorUid, "question_bank_meta", "summary"),
+            indexPayloads
+          );
+        } else {
+          const bySubject = new Map<string, typeof indexPayloads>();
+          indexPayloads.forEach((q) => {
+            if (!q.subjectId) return;
+            if (!bySubject.has(q.subjectId)) bySubject.set(q.subjectId, []);
+            bySubject.get(q.subjectId)!.push(q);
+          });
+          await Promise.all(
+            Array.from(bySubject.entries()).map(([sid, qs]) =>
+              updateQBMeta(doc(db, "question_bank_meta", sid), qs)
+            )
+          );
+        }
+      }
 
       // Write question_groups docs for all groups found in CSV
       for (const [, g] of groupMap) {

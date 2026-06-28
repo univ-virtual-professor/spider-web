@@ -120,10 +120,11 @@ export default function DppGenerator() {
     window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const educatorUid = firebaseUser?.uid || "";
   const { features, loading: featuresLoading } = useEducatorFeatures(educatorUid);
-  const { subjects, allowedSubjectIds } = useAccessibleCourses(educatorUid);
+  const { subjects, allowedSubjectIds, loading: subjectsLoading } = useAccessibleCourses(educatorUid);
   const { chapters, topics } = useQBOptions(
     allowedSubjectIds.length ? allowedSubjectIds : undefined,
-    educatorUid || undefined
+    educatorUid || undefined,
+    subjectsLoading
   );
   const subjectOptions = useMemo(() => subjects.map((s) => s.name), [subjects]);
 

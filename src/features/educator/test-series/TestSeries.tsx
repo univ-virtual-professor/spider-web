@@ -319,9 +319,11 @@ export default function TestSeries() {
   const [autoFillTestId, setAutoFillTestId] = useState<string | null>(null);
 
   // Course/subject filters
-  const { courses: accessibleCourses, subjects: accessibleSubjects } = useAccessibleCourses(
-    currentUser?.uid ?? ""
-  );
+  const {
+    courses: accessibleCourses,
+    subjects: accessibleSubjects,
+    loading: subjectsLoading,
+  } = useAccessibleCourses(currentUser?.uid ?? "");
   const [courseFilter, setCourseFilter] = useState("all");
   const [subjectFilter, setSubjectFilter] = useState("all");
 
@@ -1280,6 +1282,7 @@ export default function TestSeries() {
     educatorTemplates,
     accessibleCourses,
     accessibleSubjects,
+    subjectsLoading,
     onCreateTemplate: () => {
       setCreateOpen(false);
       setCreateTemplateOpen(true);

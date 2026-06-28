@@ -130,6 +130,7 @@ type CreateCustomTestProps = {
   setCreateOpen: (open: boolean) => void;
   handleCreateCustom: (values: Record<string, any>) => Promise<void> | void;
   creating: boolean;
+  subjectsLoading?: boolean;
   selectedTemplateId: string;
   setSelectedTemplateId: (value: string) => void;
   templates: TemplateOption[];
@@ -157,6 +158,7 @@ const CreateCustomTest = ({
   educatorTemplates,
   accessibleCourses = [],
   accessibleSubjects = [],
+  subjectsLoading = false,
   onCreateTemplate,
   initialValues,
   isEditing = false,
@@ -203,11 +205,11 @@ const CreateCustomTest = ({
 
   // QB options scoped to educator's accessible subjects + their own QB
   const allowedSubjectIds = accessibleSubjects.map((s) => s.id);
-  const qbOptions = useQBOptions(allowedSubjectIds, firebaseUser?.uid ?? undefined);
+  const qbOptions = useQBOptions(allowedSubjectIds, firebaseUser?.uid ?? undefined, subjectsLoading);
 
   // Cascading filter options: each filter narrows based on the other two selections
   const filteredChapterOptions = useMemo(() => {
-    if (!formGlobalTopics.length && !formGlobalTags.length) return qbOptions.chapters;
+    if (!qbOptions.rawQuestions.length || (!formGlobalTopics.length && !formGlobalTags.length)) return qbOptions.chapters;
     const topicSet = new Set(formGlobalTopics);
     const tagSet = new Set(formGlobalTags);
     return [...new Set(
@@ -223,7 +225,7 @@ const CreateCustomTest = ({
   }, [formGlobalTopics, formGlobalTags, qbOptions.rawQuestions, qbOptions.chapters]);
 
   const filteredTopicOptions = useMemo(() => {
-    if (!formGlobalChapters.length && !formGlobalTags.length) return qbOptions.topics;
+    if (!qbOptions.rawQuestions.length || (!formGlobalChapters.length && !formGlobalTags.length)) return qbOptions.topics;
     const chapSet = new Set(formGlobalChapters);
     const tagSet = new Set(formGlobalTags);
     return [...new Set(
@@ -240,7 +242,7 @@ const CreateCustomTest = ({
   const filteredTagOptions = useMemo(() => {
     const chapSet = new Set(formGlobalChapters);
     const topicSet = new Set(formGlobalTopics);
-    if (chapSet.size === 0 && topicSet.size === 0) return qbOptions.tags;
+    if (!qbOptions.rawQuestions.length || (chapSet.size === 0 && topicSet.size === 0)) return qbOptions.tags;
     return [...new Set(
       qbOptions.rawQuestions
         .filter((q) => {
@@ -254,7 +256,7 @@ const CreateCustomTest = ({
 
   // Cascading filter options for the "Add Section" dialog
   const newSectionFilteredChapters = useMemo(() => {
-    if (!newSectionTopics.length && !newSectionTags.length) return qbOptions.chapters;
+    if (!qbOptions.rawQuestions.length || (!newSectionTopics.length && !newSectionTags.length)) return qbOptions.chapters;
     const topicSet = new Set(newSectionTopics);
     const tagSet = new Set(newSectionTags);
     return [...new Set(
@@ -270,7 +272,7 @@ const CreateCustomTest = ({
   }, [newSectionTopics, newSectionTags, qbOptions.rawQuestions, qbOptions.chapters]);
 
   const newSectionFilteredTopics = useMemo(() => {
-    if (!newSectionChapters.length && !newSectionTags.length) return qbOptions.topics;
+    if (!qbOptions.rawQuestions.length || (!newSectionChapters.length && !newSectionTags.length)) return qbOptions.topics;
     const chapSet = new Set(newSectionChapters);
     const tagSet = new Set(newSectionTags);
     return [...new Set(
@@ -285,7 +287,7 @@ const CreateCustomTest = ({
   }, [newSectionChapters, newSectionTags, qbOptions.rawQuestions, qbOptions.topics]);
 
   const newSectionFilteredTags = useMemo(() => {
-    if (!newSectionChapters.length && !newSectionTopics.length) return qbOptions.tags;
+    if (!qbOptions.rawQuestions.length || (!newSectionChapters.length && !newSectionTopics.length)) return qbOptions.tags;
     const chapSet = new Set(newSectionChapters);
     const topicSet = new Set(newSectionTopics);
     return [...new Set(
