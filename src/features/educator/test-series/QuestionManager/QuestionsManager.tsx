@@ -98,7 +98,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { db } from "@shared/lib/firebase";
+import { db, auth } from "@shared/lib/firebase";
 
 type AutoImportSection = {
   id: string;
@@ -126,6 +126,7 @@ const QuestionsManager = ({
   testSections,
   useSections = true,
   educatorUid,
+  allowedSubjectIds,
   onClose,
   mode = "modal",
   readOnly = false,
@@ -138,6 +139,7 @@ const QuestionsManager = ({
   testSections?: TestSection[];
   useSections?: boolean;
   educatorUid: string;
+  allowedSubjectIds?: string[];
   onClose: () => void;
   mode?: "modal" | "page";
   readOnly?: boolean;
@@ -236,8 +238,6 @@ const QuestionsManager = ({
   const [questionBankDifficulty, setQuestionBankDifficulty] = useState<"all" | Difficulty>("all");
   const [questionBankSectionId, setQuestionBankSectionId] = useState("");
   const [questionBankInsertAfterId, setQuestionBankInsertAfterId] = useState<string | null>(null);
-  const [adminQuestionBankRows, setAdminQuestionBankRows] = useState<QuestionBankQuestion[]>([]);
-  const [adminQuestionBankLoading, setAdminQuestionBankLoading] = useState(false);
   const [autoFillOpen, setAutoFillOpen] = useState(false);
   const [autoFillGenerating, setAutoFillGenerating] = useState(false);
   const [autoFillApplying, setAutoFillApplying] = useState(false);
@@ -413,34 +413,6 @@ const QuestionsManager = ({
     };
   }, [questionBankOpen, autoFillOpen, educatorUid, managedSections]);
 
-  useEffect(() => {
-    if (!autoFillOpen || !autoImportIncludeAdmin) return;
-    if (adminQuestionBankRows.length > 0) return;
-
-    let active = true;
-    (async () => {
-      try {
-        setAdminQuestionBankLoading(true);
-        const bankSnap = await getDocs(collection(db, "question_bank"));
-        if (!active) return;
-
-        const rows: QuestionBankQuestion[] = bankSnap.docs
-          .map(mapQuestionBankDoc)
-          .sort((a, b) => timestampToMillis(b.updatedAt) - timestampToMillis(a.updatedAt));
-
-        setAdminQuestionBankRows(rows);
-      } catch (error) {
-        console.error(error);
-        toast.error("Failed to load admin question bank");
-      } finally {
-        if (active) setAdminQuestionBankLoading(false);
-      }
-    })();
-
-    return () => {
-      active = false;
-    };
-  }, [autoFillOpen, autoImportIncludeAdmin, adminQuestionBankRows.length]);
 
   const filteredQuestions = useMemo(() => {
     const q = searchQ.trim().toLowerCase();
@@ -582,32 +554,29 @@ const QuestionsManager = ({
     questionBankRows.forEach((q) => {
       if (q.topic && q.topic.trim()) topics.add(q.topic.trim());
     });
-    adminQuestionBankRows.forEach((q) => {
-      if (q.topic && q.topic.trim()) topics.add(q.topic.trim());
-    });
     return Array.from(topics).sort((a, b) => a.localeCompare(b));
-  }, [questionBankRows, adminQuestionBankRows]);
+  }, [questionBankRows]);
 
   const allAvailableSubjects = useMemo(() => {
     const set = new Set<string>();
-    [...questionBankRows, ...adminQuestionBankRows].forEach((q) => {
+    questionBankRows.forEach((q) => {
       const s = (q as any).subjectName || q.subject;
       if (s?.trim()) set.add(s.trim());
     });
     return Array.from(set).sort();
-  }, [questionBankRows, adminQuestionBankRows]);
+  }, [questionBankRows]);
 
   const allAvailableChapters = useMemo(() => {
     const set = new Set<string>();
-    [...questionBankRows, ...adminQuestionBankRows].forEach((q) => {
+    questionBankRows.forEach((q) => {
       if ((q as any).chapter?.trim()) set.add((q as any).chapter.trim());
     });
     return Array.from(set).sort();
-  }, [questionBankRows, adminQuestionBankRows]);
+  }, [questionBankRows]);
 
   const allAvailableTags = useMemo(() => {
     const set = new Set<string>();
-    [...questionBankRows, ...adminQuestionBankRows].forEach((q) => {
+    questionBankRows.forEach((q) => {
       if (Array.isArray((q as any).tags)) {
         (q as any).tags.forEach((t: string) => {
           if (t?.trim()) set.add(t.trim());
@@ -615,7 +584,7 @@ const QuestionsManager = ({
       }
     });
     return Array.from(set).sort();
-  }, [questionBankRows, adminQuestionBankRows]);
+  }, [questionBankRows]);
 
   const autoFillSubjects = useMemo(() => {
     const subjects = new Set<string>();
@@ -733,28 +702,6 @@ const QuestionsManager = ({
     return "medium";
   }
 
-  function difficultyToValue(value?: string | number) {
-    if (typeof value === "number") return clampDifficulty(value);
-    const normalized = normalizeDifficulty(value);
-    if (normalized === "easy") return 0.15;
-    if (normalized === "hard") return 0.85;
-    return 0.5;
-  }
-
-  function normalizeTopicValue(topic?: string) {
-    return String(topic || "")
-      .trim()
-      .toLowerCase();
-  }
-
-  function shuffleList<T>(items: T[]) {
-    const copy = [...items];
-    for (let i = copy.length - 1; i > 0; i -= 1) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [copy[i], copy[j]] = [copy[j], copy[i]];
-    }
-    return copy;
-  }
 
   function mapQuestionBankDoc(docSnap: any): QuestionBankQuestion {
     const data = docSnap.data ? docSnap.data() : docSnap;
@@ -1746,173 +1693,73 @@ const QuestionsManager = ({
 
     setAutoImportApplying(true);
     try {
-      // Build educator pool
-      const educatorPool: QuestionBankQuestion[] = [...questionBankRows];
+      const MONKEY_KING = import.meta.env.VITE_MONKEY_KING_API_URL as string;
+      const token = await auth.currentUser!.getIdToken();
 
-      // Build admin pool (if enabled)
-      const adminPool: QuestionBankQuestion[] = autoImportIncludeAdmin
-        ? [...adminQuestionBankRows]
-        : [];
-
-      console.log(
-        "[AutoImport] Starting. managedSections:",
-        managedSections.map((s) => ({ id: s.id, name: s.name, questionsCount: s.questionsCount }))
-      );
-      console.log(
-        "[AutoImport] autoImportSections:",
-        sections.map((s) => ({
-          id: s.id,
-          name: s.name,
-          questionCount: s.questionCount,
-          topics: s.topics,
-          tags: s.tags,
-        }))
-      );
-      console.log("[AutoImport] QB pool size:", educatorPool.length);
-
-      // Track globally used IDs to prevent cross-section repetition
-      const globalUsedIds = new Set<string>(Array.from(existingBankQuestionIds));
-
-      const allImportedRows: TestQuestion[] = [];
-      const baseOrder = getNextQuestionOrder();
-      let skippedFullCount = 0;
-
-      for (const section of sections) {
-        const sectionTopics = section.topics.map(normalizeTopicValue).filter(Boolean);
-        const topicSet = new Set(sectionTopics);
-
-        const sectionSubjects = section.subjects.map((s) => s.trim().toLowerCase()).filter(Boolean);
-        const subjectSet = new Set(sectionSubjects);
-
-        const sectionChapters = section.chapters.map((c) => c.trim().toLowerCase()).filter(Boolean);
-        const chapterSet = new Set(sectionChapters);
-
-        const sectionTags = section.tags.map((t) => t.trim().toLowerCase()).filter(Boolean);
-        const tagSet = new Set(sectionTags);
-
-        const matchesFilters = (q: QuestionBankQuestion): boolean => {
-          if (topicSet.size > 0) {
-            // Check both singular topic string and topics array
-            const singularMatch = topicSet.has(normalizeTopicValue(q.topic));
-            const qTopicsArr: string[] = Array.isArray((q as any).topics)
-              ? (q as any).topics.map(normalizeTopicValue).filter(Boolean)
-              : [];
-            const arrayMatch = qTopicsArr.some((t) => topicSet.has(t));
-            if (!singularMatch && !arrayMatch) return false;
-          }
-          if (subjectSet.size > 0) {
-            const qs = ((q as any).subjectName || q.subject || "").trim().toLowerCase();
-            if (!subjectSet.has(qs)) return false;
-          }
-          if (chapterSet.size > 0) {
-            const qc = ((q as any).chapter || "").trim().toLowerCase();
-            if (!chapterSet.has(qc)) return false;
-          }
-          if (tagSet.size > 0) {
-            const qTags: string[] = Array.isArray(q.tags)
-              ? q.tags.map((t) => t.trim().toLowerCase())
-              : [];
-            if (!qTags.some((t) => tagSet.has(t))) return false;
-          }
-          return true;
-        };
-
-        const matchesFormat = (q: QuestionBankQuestion) => {
-          if (!section.format) return true;
-          // Default typeless bank questions to MCQ_SINGLE — don't bypass
-          const qType = normalizeQuestionType((q as any).questionType || "MCQ_SINGLE");
-          return qType === normalizeQuestionType(section.format);
-        };
-
-        // Enforce remaining capacity so re-running the dialog never overfills
+      // Compute per-section capacity so we never overfill
+      const sectionsWithCapacity = sections.map((section) => {
         const sectionMeta = managedSections.find((s) => s.id === section.id);
         const currentInSection = getSectionQuestionCount(section.id, questions);
         const cap =
           sectionMeta?.questionsCount != null
             ? Math.max(0, sectionMeta.questionsCount - currentInSection)
             : section.questionCount;
-        const needed = Math.max(0, Math.min(section.questionCount, cap));
-        console.log(
-          `[AutoImport] Section "${section.name}" (id=${section.id}): questionCount=${section.questionCount}, sectionMeta.questionsCount=${sectionMeta?.questionsCount}, currentInSection=${currentInSection}, cap=${cap}, needed=${needed}`
-        );
-        if (needed === 0) {
-          skippedFullCount += 1;
-          continue;
-        }
+        return { ...section, question_count: Math.max(0, Math.min(section.questionCount, cap)) };
+      }).filter((s) => s.question_count > 0);
 
-        // Filter by all active filters and question format
-        const educatorMatches = educatorPool.filter(
-          (q) => !globalUsedIds.has(q.id) && matchesFormat(q) && matchesFilters(q)
-        );
-        console.log(
-          `[AutoImport] Section "${section.name}": educatorMatches=${educatorMatches.length} (after filters: topics=${JSON.stringify(sectionTopics)}, tags=${JSON.stringify(section.tags)})`
-        );
-        const adminMatches = adminPool.filter(
-          (q) => !globalUsedIds.has(q.id) && matchesFormat(q) && matchesFilters(q)
-        );
+      if (!sectionsWithCapacity.length) {
+        toast.info("All sections are already at their question limit.");
+        return;
+      }
 
-        // Score by difficulty proximity
-        const scoreDifficulty = (q: QuestionBankQuestion, targetDifficulty: number): number => {
-          const qVal = difficultyToValue(q.difficulty);
-          return 1 - Math.abs(qVal - targetDifficulty);
-        };
+      const res = await fetch(`${MONKEY_KING}/api/test/auto-fill`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          sections: sectionsWithCapacity.map((s) => ({
+            id: s.id,
+            name: s.name,
+            question_count: s.question_count,
+            topics: s.topics,
+            chapters: s.chapters,
+            tags: s.tags,
+            subjects: s.subjects,
+            format: s.format || null,
+            difficulty: s.difficulty,
+          })),
+          include_admin: autoImportIncludeAdmin,
+          include_educator_qb: true,
+          allowed_subject_ids: allowedSubjectIds ?? [],
+          exclude_ids: Array.from(existingBankQuestionIds),
+        }),
+      });
 
-        // Sort educator matches by difficulty score (best first)
-        const sortedEducator = [...educatorMatches].sort(
-          (a, b) => scoreDifficulty(b, section.difficulty) - scoreDifficulty(a, section.difficulty)
-        );
-        const sortedAdmin = [...adminMatches].sort(
-          (a, b) => scoreDifficulty(b, section.difficulty) - scoreDifficulty(a, section.difficulty)
-        );
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err);
+      }
 
-        // Pick questions: educator first, then admin
-        const picked: QuestionBankQuestion[] = [];
-        const pickedIds = new Set<string>();
+      const data = await res.json() as {
+        sections: Array<{
+          id: string;
+          name: string;
+          questions: any[];
+          needed: number;
+          found: number;
+          shortfall: number;
+        }>;
+      };
 
-        // Phase 1: pick with difficulty preference
-        for (const q of sortedEducator) {
-          if (picked.length >= needed) break;
-          if (pickedIds.has(q.id)) continue;
-          picked.push(q);
-          pickedIds.add(q.id);
-        }
-        for (const q of sortedAdmin) {
-          if (picked.length >= needed) break;
-          if (pickedIds.has(q.id)) continue;
-          picked.push(q);
-          pickedIds.add(q.id);
-        }
+      // Write chosen questions to Firestore (backend did the selection)
+      const allImportedRows: TestQuestion[] = [];
+      const baseOrder = getNextQuestionOrder();
 
-        // Phase 2 (fallback): if not enough, relax difficulty — just pick any remaining topic-matched
-        if (picked.length < needed) {
-          const remainingEducator = educatorMatches.filter((q) => !pickedIds.has(q.id));
-          const remainingAdmin = adminMatches.filter((q) => !pickedIds.has(q.id));
-          for (const q of shuffleList(remainingEducator)) {
-            if (picked.length >= needed) break;
-            picked.push(q);
-            pickedIds.add(q.id);
-          }
-          for (const q of shuffleList(remainingAdmin)) {
-            if (picked.length >= needed) break;
-            picked.push(q);
-            pickedIds.add(q.id);
-          }
-        }
+      for (const sectionResult of data.sections) {
+        const section = sections.find((s) => s.id === sectionResult.id);
+        if (!section) continue;
 
-        // Shuffle the final selection
-        const shuffled = shuffleList(picked);
-        console.log(
-          `[AutoImport] Section "${section.name}": picked ${shuffled.length} questions → writing with sectionId="${section.id}"`
-        );
-
-        // Mark as globally used
-        shuffled.forEach((q) => globalUsedIds.add(q.id));
-
-        // Write to Firestore
-        for (let i = 0; i < shuffled.length; i++) {
-          const question = shuffled[i];
+        for (const question of sectionResult.questions) {
           const questionOrder = baseOrder + allImportedRows.length;
-
           const payload: any = {
             question: question.question,
             options: Array.isArray(question.options) ? question.options : ["", "", "", ""],
@@ -1937,18 +1784,10 @@ const QuestionsManager = ({
             source: "auto_import",
             bankQuestionId: question.id,
             questionOrder,
-            questionType: normalizeQuestionType(
-              (question as any).questionType || section.format || "MCQ_SINGLE"
-            ),
-            ...((question as any).referenceAnswer
-              ? { referenceAnswer: (question as any).referenceAnswer }
-              : {}),
-            ...((question as any).referenceKeywords?.length
-              ? { referenceKeywords: (question as any).referenceKeywords }
-              : {}),
-            ...((question as any).evaluationInstructions
-              ? { evaluationInstructions: (question as any).evaluationInstructions }
-              : {}),
+            questionType: normalizeQuestionType(question.questionType || section.format || "MCQ_SINGLE"),
+            ...(question.referenceAnswer ? { referenceAnswer: question.referenceAnswer } : {}),
+            ...(question.referenceKeywords?.length ? { referenceKeywords: question.referenceKeywords } : {}),
+            ...(question.evaluationInstructions ? { evaluationInstructions: question.evaluationInstructions } : {}),
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           };
@@ -1976,14 +1815,7 @@ const QuestionsManager = ({
       }
 
       if (!allImportedRows.length) {
-        if (
-          skippedFullCount > 0 &&
-          skippedFullCount === sections.filter((s) => s.topics.length > 0).length
-        ) {
-          toast.info("All sections are already at their question limit.");
-        } else {
-          toast.error("No matching questions found for any section. Check topics.");
-        }
+        toast.error("No matching questions found for any section. Check topics and filters.");
         return;
       }
 
@@ -3358,7 +3190,7 @@ const QuestionsManager = ({
                     </p>
                   </div>
                 </label>
-                {autoImportIncludeAdmin && adminQuestionBankLoading && (
+                {false && (
                   <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                     <Loader2 className="h-3 w-3 animate-spin" /> Loading admin question bank...
                   </div>
@@ -3384,9 +3216,7 @@ const QuestionsManager = ({
                     Educator bank: <strong>{questionBankRows.length}</strong> available
                   </span>
                   {autoImportIncludeAdmin && (
-                    <span>
-                      Admin bank: <strong>{adminQuestionBankRows.length}</strong> available
-                    </span>
+                    <span className="text-muted-foreground text-xs">Admin bank: loaded server-side</span>
                   )}
                 </div>
               </div>
@@ -3408,7 +3238,6 @@ const QuestionsManager = ({
                 disabled={
                   autoImportApplying ||
                   questionBankLoading ||
-                  (autoImportIncludeAdmin && adminQuestionBankLoading) ||
                   autoImportSections.every((s) => s.questionCount === 0)
                 }
               >

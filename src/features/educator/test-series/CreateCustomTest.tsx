@@ -41,6 +41,27 @@ import { toast } from "sonner";
 import SectionCard from "@features/admin/components/SectionCard";
 import { Switch } from "@shared/ui/switch";
 
+import type { QBCrossRefs } from "@shared/hooks/useQBOptions";
+
+function xrefFilter(
+  all: string[],
+  refs: QBCrossRefs,
+  selectionMaps: Array<{ selected: string[]; map: Record<string, string[]> }>,
+): string[] {
+  const active = selectionMaps.filter(s => s.selected.length > 0);
+  if (active.length === 0) return all;
+  const hasRefs = Object.keys(refs.chapterTopics).length > 0 || Object.keys(refs.topicChapters).length > 0;
+  if (!hasRefs) return all;
+  let result: Set<string> | null = null;
+  for (const { selected, map } of active) {
+    const candidates = new Set(selected.flatMap(item => map[item] ?? []));
+    result = result ? new Set([...result].filter(x => candidates.has(x))) : candidates;
+  }
+  if (!result || result.size === 0) return all;
+  const allSet = new Set(all);
+  return [...result].filter(v => allSet.has(v)).sort();
+}
+
 function getDifficultyLabel(level: number): string {
   if (level <= 0.3) return "Easy";
   if (level <= 0.7) return "Medium";
@@ -207,99 +228,61 @@ const CreateCustomTest = ({
   const allowedSubjectIds = accessibleSubjects.map((s) => s.id);
   const qbOptions = useQBOptions(allowedSubjectIds, firebaseUser?.uid ?? undefined, subjectsLoading);
 
-  // Cascading filter options: each filter narrows based on the other two selections
+  // Cascading filter options: each filter narrows based on the other two selections (via index cross-refs)
   const filteredChapterOptions = useMemo(() => {
-    if (!qbOptions.rawQuestions.length || (!formGlobalTopics.length && !formGlobalTags.length)) return qbOptions.chapters;
-    const topicSet = new Set(formGlobalTopics);
-    const tagSet = new Set(formGlobalTags);
-    return [...new Set(
-      qbOptions.rawQuestions
-        .filter((q) => {
-          const tm = !topicSet.size || q.topics.some((t) => topicSet.has(t));
-          const gm = !tagSet.size || q.tags.some((t) => tagSet.has(t));
-          return tm && gm;
-        })
-        .map((q) => q.chapter)
-        .filter(Boolean)
-    )].sort();
-  }, [formGlobalTopics, formGlobalTags, qbOptions.rawQuestions, qbOptions.chapters]);
+    const { chapters, crossRefs } = qbOptions;
+    if (!formGlobalTopics.length && !formGlobalTags.length) return chapters;
+    return xrefFilter(chapters, crossRefs, [
+      { selected: formGlobalTopics, map: crossRefs.topicChapters },
+      { selected: formGlobalTags,   map: crossRefs.tagChapters   },
+    ]);
+  }, [formGlobalTopics, formGlobalTags, qbOptions]);
 
   const filteredTopicOptions = useMemo(() => {
-    if (!qbOptions.rawQuestions.length || (!formGlobalChapters.length && !formGlobalTags.length)) return qbOptions.topics;
-    const chapSet = new Set(formGlobalChapters);
-    const tagSet = new Set(formGlobalTags);
-    return [...new Set(
-      qbOptions.rawQuestions
-        .filter((q) => {
-          const cm = !chapSet.size || chapSet.has(q.chapter);
-          const gm = !tagSet.size || q.tags.some((t) => tagSet.has(t));
-          return cm && gm;
-        })
-        .flatMap((q) => q.topics)
-    )].sort();
-  }, [formGlobalChapters, formGlobalTags, qbOptions.rawQuestions, qbOptions.topics]);
+    const { topics, crossRefs } = qbOptions;
+    if (!formGlobalChapters.length && !formGlobalTags.length) return topics;
+    return xrefFilter(topics, crossRefs, [
+      { selected: formGlobalChapters, map: crossRefs.chapterTopics },
+      { selected: formGlobalTags,     map: crossRefs.tagTopics     },
+    ]);
+  }, [formGlobalChapters, formGlobalTags, qbOptions]);
 
   const filteredTagOptions = useMemo(() => {
-    const chapSet = new Set(formGlobalChapters);
-    const topicSet = new Set(formGlobalTopics);
-    if (!qbOptions.rawQuestions.length || (chapSet.size === 0 && topicSet.size === 0)) return qbOptions.tags;
-    return [...new Set(
-      qbOptions.rawQuestions
-        .filter((q) => {
-          if (chapSet.size > 0 && !chapSet.has(q.chapter)) return false;
-          if (topicSet.size > 0 && !q.topics.some((t) => topicSet.has(t))) return false;
-          return true;
-        })
-        .flatMap((q) => q.tags)
-    )].sort();
-  }, [formGlobalChapters, formGlobalTopics, qbOptions.rawQuestions, qbOptions.tags]);
+    const { tags, crossRefs } = qbOptions;
+    if (!formGlobalChapters.length && !formGlobalTopics.length) return tags;
+    return xrefFilter(tags, crossRefs, [
+      { selected: formGlobalChapters, map: crossRefs.chapterTags },
+      { selected: formGlobalTopics,   map: crossRefs.topicTags   },
+    ]);
+  }, [formGlobalChapters, formGlobalTopics, qbOptions]);
 
   // Cascading filter options for the "Add Section" dialog
   const newSectionFilteredChapters = useMemo(() => {
-    if (!qbOptions.rawQuestions.length || (!newSectionTopics.length && !newSectionTags.length)) return qbOptions.chapters;
-    const topicSet = new Set(newSectionTopics);
-    const tagSet = new Set(newSectionTags);
-    return [...new Set(
-      qbOptions.rawQuestions
-        .filter((q) => {
-          const tm = !topicSet.size || q.topics.some((t) => topicSet.has(t));
-          const gm = !tagSet.size || q.tags.some((t) => tagSet.has(t));
-          return tm && gm;
-        })
-        .map((q) => q.chapter)
-        .filter(Boolean)
-    )].sort();
-  }, [newSectionTopics, newSectionTags, qbOptions.rawQuestions, qbOptions.chapters]);
+    const { chapters, crossRefs } = qbOptions;
+    if (!newSectionTopics.length && !newSectionTags.length) return chapters;
+    return xrefFilter(chapters, crossRefs, [
+      { selected: newSectionTopics, map: crossRefs.topicChapters },
+      { selected: newSectionTags,   map: crossRefs.tagChapters   },
+    ]);
+  }, [newSectionTopics, newSectionTags, qbOptions]);
 
   const newSectionFilteredTopics = useMemo(() => {
-    if (!qbOptions.rawQuestions.length || (!newSectionChapters.length && !newSectionTags.length)) return qbOptions.topics;
-    const chapSet = new Set(newSectionChapters);
-    const tagSet = new Set(newSectionTags);
-    return [...new Set(
-      qbOptions.rawQuestions
-        .filter((q) => {
-          const cm = !chapSet.size || chapSet.has(q.chapter);
-          const gm = !tagSet.size || q.tags.some((t) => tagSet.has(t));
-          return cm && gm;
-        })
-        .flatMap((q) => q.topics)
-    )].sort();
-  }, [newSectionChapters, newSectionTags, qbOptions.rawQuestions, qbOptions.topics]);
+    const { topics, crossRefs } = qbOptions;
+    if (!newSectionChapters.length && !newSectionTags.length) return topics;
+    return xrefFilter(topics, crossRefs, [
+      { selected: newSectionChapters, map: crossRefs.chapterTopics },
+      { selected: newSectionTags,     map: crossRefs.tagTopics     },
+    ]);
+  }, [newSectionChapters, newSectionTags, qbOptions]);
 
   const newSectionFilteredTags = useMemo(() => {
-    if (!qbOptions.rawQuestions.length || (!newSectionChapters.length && !newSectionTopics.length)) return qbOptions.tags;
-    const chapSet = new Set(newSectionChapters);
-    const topicSet = new Set(newSectionTopics);
-    return [...new Set(
-      qbOptions.rawQuestions
-        .filter((q) => {
-          const cm = !chapSet.size || chapSet.has(q.chapter);
-          const tm = !topicSet.size || q.topics.some((t) => topicSet.has(t));
-          return cm && tm;
-        })
-        .flatMap((q) => q.tags)
-    )].sort();
-  }, [newSectionChapters, newSectionTopics, qbOptions.rawQuestions, qbOptions.tags]);
+    const { tags, crossRefs } = qbOptions;
+    if (!newSectionChapters.length && !newSectionTopics.length) return tags;
+    return xrefFilter(tags, crossRefs, [
+      { selected: newSectionChapters, map: crossRefs.chapterTags },
+      { selected: newSectionTopics,   map: crossRefs.topicTags   },
+    ]);
+  }, [newSectionChapters, newSectionTopics, qbOptions]);
 
   // Reset form & template selection when dialog opens
   useEffect(() => {
@@ -966,7 +949,7 @@ const CreateCustomTest = ({
                 availableChapters={qbOptions.chapters}
                 availableTopics={qbOptions.topics}
                 availableTagOptions={qbOptions.tags}
-                rawQuestions={qbOptions.rawQuestions}
+                crossRefs={qbOptions.crossRefs}
                 sectionFormat={sec.format}
                 markingScheme={sec.markingScheme}
                 defaultMarkingScheme={formMarkingScheme}

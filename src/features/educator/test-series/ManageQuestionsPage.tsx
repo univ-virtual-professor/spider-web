@@ -5,6 +5,7 @@ import { doc, onSnapshot } from "firebase/firestore";
 
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
+import { useAccessibleCourses } from "@shared/hooks/useAccessibleCourses";
 import { Button } from "@shared/ui/button";
 import { Card, CardContent } from "@shared/ui/card";
 
@@ -49,6 +50,7 @@ export default function ManageQuestionsPage() {
     window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { testId } = useParams<{ testId: string }>();
   const { firebaseUser, loading: authLoading } = useAuth();
+  const { allowedSubjectIds } = useAccessibleCourses(firebaseUser?.uid ?? "");
 
   const [testMeta, setTestMeta] = useState<TestMeta | null>(null);
   const [testLoading, setTestLoading] = useState(true);
@@ -232,6 +234,7 @@ export default function ManageQuestionsPage() {
       useSections={testMeta.useSections}
       testSections={testSections}
       educatorUid={firebaseUser.uid}
+      allowedSubjectIds={allowedSubjectIds}
       readOnly={isAdminLinked}
       questionSource={isAdminLinked ? "admin" : "educator"}
       questionSourceTestId={isAdminLinked ? adminSourceTestId : undefined}

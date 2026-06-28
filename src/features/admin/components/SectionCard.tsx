@@ -17,13 +17,32 @@ import { Switch } from "@shared/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { TopicMultiSelect } from "@shared/ui/topic-multi-select";
 import { MultiSelect } from "@shared/ui/MultiSelect";
-import type { RawQBQ } from "@shared/hooks/useQBOptions";
+import type { QBCrossRefs } from "@shared/hooks/useQBOptions";
 
 type MarkingScheme = {
   correct: number;
   incorrect: number;
   unanswered: number;
 } | null;
+
+function xrefFilter(
+  all: string[],
+  refs: QBCrossRefs,
+  selectionMaps: Array<{ selected: string[]; map: Record<string, string[]> }>,
+): string[] {
+  const active = selectionMaps.filter(s => s.selected.length > 0);
+  if (active.length === 0) return all;
+  const hasRefs = Object.keys(refs.chapterTopics).length > 0 || Object.keys(refs.topicChapters).length > 0;
+  if (!hasRefs) return all;
+  let result: Set<string> | null = null;
+  for (const { selected, map } of active) {
+    const candidates = new Set(selected.flatMap(item => map[item] ?? []));
+    result = result ? new Set([...result].filter(x => candidates.has(x))) : candidates;
+  }
+  if (!result || result.size === 0) return all;
+  const allSet = new Set(all);
+  return [...result].filter(v => allSet.has(v)).sort();
+}
 
 const QUESTION_FORMATS = [
   { value: "MCQ_SINGLE", label: "MCQ (Single Correct)" },
@@ -48,7 +67,7 @@ type SectionCardProps = {
   availableChapters?: string[];
   availableTopics?: string[];
   availableTagOptions?: string[];
-  rawQuestions?: RawQBQ[];
+  crossRefs?: QBCrossRefs;
   showSubjectPicker?: boolean;
   courseSubjects?: { id: string; name: string }[];
   defaultMarkingScheme?: {
@@ -105,7 +124,7 @@ const SectionCard = ({
   availableChapters,
   availableTopics,
   availableTagOptions,
-  rawQuestions,
+  crossRefs,
   showSubjectPicker,
   courseSubjects,
   defaultMarkingScheme,
@@ -131,54 +150,31 @@ const SectionCard = ({
   const [draftTags, setDraftTags] = useState<string[]>(sectionTags || []);
 
   const filteredChapters = useMemo(() => {
-    if (!rawQuestions?.length || (!draftTopics.length && !draftTags.length))
-      return availableChapters || [];
-    const topicSet = new Set(draftTopics);
-    const tagSet = new Set(draftTags);
-    return [...new Set(
-      rawQuestions
-        .filter((q) => {
-          const tm = !topicSet.size || q.topics.some((t) => topicSet.has(t));
-          const gm = !tagSet.size || q.tags.some((t) => tagSet.has(t));
-          return tm && gm;
-        })
-        .map((q) => q.chapter)
-        .filter(Boolean)
-    )].sort();
-  }, [rawQuestions, draftTopics, draftTags, availableChapters]);
+    const all = availableChapters || [];
+    if (!crossRefs || (!draftTopics.length && !draftTags.length)) return all;
+    return xrefFilter(all, crossRefs, [
+      { selected: draftTopics, map: crossRefs.topicChapters },
+      { selected: draftTags,   map: crossRefs.tagChapters   },
+    ]);
+  }, [crossRefs, draftTopics, draftTags, availableChapters]);
 
   const filteredTopics = useMemo(() => {
-    if (!rawQuestions?.length || (!draftChapters.length && !draftTags.length))
-      return availableTopics || [];
-    const chapterSet = new Set(draftChapters.map((c) => c.toLowerCase()));
-    const tagSet = new Set(draftTags);
-    return [...new Set(
-      rawQuestions
-        .filter((q) => {
-          const cm = !chapterSet.size || (q.chapter && chapterSet.has(q.chapter.toLowerCase()));
-          const gm = !tagSet.size || q.tags.some((t) => tagSet.has(t));
-          return cm && gm;
-        })
-        .flatMap((q) => q.topics)
-    )].sort();
-  }, [rawQuestions, draftChapters, draftTags, availableTopics]);
+    const all = availableTopics || [];
+    if (!crossRefs || (!draftChapters.length && !draftTags.length)) return all;
+    return xrefFilter(all, crossRefs, [
+      { selected: draftChapters, map: crossRefs.chapterTopics },
+      { selected: draftTags,     map: crossRefs.tagTopics     },
+    ]);
+  }, [crossRefs, draftChapters, draftTags, availableTopics]);
 
   const filteredTags = useMemo(() => {
-    if (!rawQuestions?.length || (!draftChapters.length && !draftTopics.length))
-      return availableTagOptions || [];
-    const chapterSet = new Set(draftChapters.map((c) => c.toLowerCase()));
-    const topicSet = new Set(draftTopics);
-    const tagSet = new Set<string>();
-    rawQuestions.forEach((q) => {
-      const chapterMatch =
-        !draftChapters.length || (q.chapter && chapterSet.has(q.chapter.toLowerCase()));
-      const topicMatch = !draftTopics.length || q.topics.some((t) => topicSet.has(t));
-      if (chapterMatch && topicMatch) {
-        q.tags.forEach((t) => tagSet.add(t));
-      }
-    });
-    return Array.from(tagSet).sort();
-  }, [rawQuestions, draftChapters, draftTopics, availableTagOptions]);
+    const all = availableTagOptions || [];
+    if (!crossRefs || (!draftChapters.length && !draftTopics.length)) return all;
+    return xrefFilter(all, crossRefs, [
+      { selected: draftChapters, map: crossRefs.chapterTags },
+      { selected: draftTopics,   map: crossRefs.topicTags   },
+    ]);
+  }, [crossRefs, draftChapters, draftTopics, availableTagOptions]);
   const [draftFormat, setDraftFormat] = useState(sectionFormat || "");
   const [draftMarkingEnabled, setDraftMarkingEnabled] = useState(!!markingScheme);
   const [advancedOpen, setAdvancedOpen] = useState(false);

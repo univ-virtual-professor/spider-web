@@ -8,26 +8,95 @@ export type RawQBQ = {
   tags: string[];
 };
 
+export type QBCrossRefs = {
+  chapterTopics:  Record<string, string[]>;
+  chapterTags:    Record<string, string[]>;
+  topicChapters:  Record<string, string[]>;
+  topicTags:      Record<string, string[]>;
+  tagChapters:    Record<string, string[]>;
+  tagTopics:      Record<string, string[]>;
+};
+
+const EMPTY_CROSS_REFS: QBCrossRefs = {
+  chapterTopics: {},
+  chapterTags:   {},
+  topicChapters: {},
+  topicTags:     {},
+  tagChapters:   {},
+  tagTopics:     {},
+};
+
 type QBOptions = {
-  chapters: string[];
-  topics: string[];
-  tags: string[];
-  loading: boolean;
+  chapters:     string[];
+  topics:       string[];
+  tags:         string[];
+  loading:      boolean;
   rawQuestions: RawQBQ[];
+  crossRefs:    QBCrossRefs;
 };
 
 type CacheResult = Omit<QBOptions, "loading">;
 
 type CacheEntry = {
-  result: CacheResult;
+  result:    CacheResult;
   fetchedAt: number;
-  promise?: Promise<CacheResult>;
+  promise?:  Promise<CacheResult>;
 };
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const cache = new Map<string, CacheEntry>();
 
-const EMPTY: CacheResult = { chapters: [], topics: [], tags: [], rawQuestions: [] };
+const EMPTY: CacheResult = {
+  chapters:     [],
+  topics:       [],
+  tags:         [],
+  rawQuestions: [],
+  crossRefs:    EMPTY_CROSS_REFS,
+};
+
+function parsePairs(pairs: string[], sep = "::"): [string, string][] {
+  return pairs
+    .map((p) => p.split(sep) as [string, string])
+    .filter(([a, b]) => a && b);
+}
+
+function buildCrossRefs(data: Record<string, unknown>): QBCrossRefs {
+  const chTpPairs = parsePairs((data.ch_tp_pairs as string[] | undefined) ?? []);
+  const chTgPairs = parsePairs((data.ch_tg_pairs as string[] | undefined) ?? []);
+  const tpTgPairs = parsePairs((data.tp_tg_pairs as string[] | undefined) ?? []);
+
+  const chapterTopics:  Record<string, Set<string>> = {};
+  const chapterTags:    Record<string, Set<string>> = {};
+  const topicChapters:  Record<string, Set<string>> = {};
+  const topicTags:      Record<string, Set<string>> = {};
+  const tagChapters:    Record<string, Set<string>> = {};
+  const tagTopics:      Record<string, Set<string>> = {};
+
+  for (const [ch, tp] of chTpPairs) {
+    (chapterTopics[ch]  ??= new Set()).add(tp);
+    (topicChapters[tp]  ??= new Set()).add(ch);
+  }
+  for (const [ch, tg] of chTgPairs) {
+    (chapterTags[ch]    ??= new Set()).add(tg);
+    (tagChapters[tg]    ??= new Set()).add(ch);
+  }
+  for (const [tp, tg] of tpTgPairs) {
+    (topicTags[tp]      ??= new Set()).add(tg);
+    (tagTopics[tg]      ??= new Set()).add(tp);
+  }
+
+  const toRecord = (m: Record<string, Set<string>>): Record<string, string[]> =>
+    Object.fromEntries(Object.entries(m).map(([k, s]) => [k, Array.from(s).sort()]));
+
+  return {
+    chapterTopics:  toRecord(chapterTopics),
+    chapterTags:    toRecord(chapterTags),
+    topicChapters:  toRecord(topicChapters),
+    topicTags:      toRecord(topicTags),
+    tagChapters:    toRecord(tagChapters),
+    tagTopics:      toRecord(tagTopics),
+  };
+}
 
 async function doFetch(
   subjectIds: string[] | undefined,
@@ -36,11 +105,13 @@ async function doFetch(
   const chSet = new Set<string>();
   const tpSet = new Set<string>();
   const tgSet = new Set<string>();
+  const allDocs: Record<string, unknown>[] = [];
 
   const merge = (data: Record<string, unknown>) => {
     (data.chapters as string[] | undefined ?? []).forEach((v) => v && chSet.add(v));
-    (data.topics as string[] | undefined ?? []).forEach((v) => v && tpSet.add(v));
-    (data.tags as string[] | undefined ?? []).forEach((v) => v && tgSet.add(v));
+    (data.topics   as string[] | undefined ?? []).forEach((v) => v && tpSet.add(v));
+    (data.tags     as string[] | undefined ?? []).forEach((v) => v && tgSet.add(v));
+    allDocs.push(data);
   };
 
   // Admin QB index (always read when subjectIds given or admin context)
@@ -62,11 +133,19 @@ async function doFetch(
     if (snap.exists()) merge(snap.data() as Record<string, unknown>);
   }
 
+  // Merge cross-refs from all docs
+  const mergedCrossRef: Record<string, unknown> = {
+    ch_tp_pairs: allDocs.flatMap((d) => (d.ch_tp_pairs as string[] | undefined) ?? []),
+    ch_tg_pairs: allDocs.flatMap((d) => (d.ch_tg_pairs as string[] | undefined) ?? []),
+    tp_tg_pairs: allDocs.flatMap((d) => (d.tp_tg_pairs as string[] | undefined) ?? []),
+  };
+
   return {
-    chapters: Array.from(chSet).sort(),
-    topics: Array.from(tpSet).sort(),
-    tags: Array.from(tgSet).sort(),
+    chapters:     Array.from(chSet).sort(),
+    topics:       Array.from(tpSet).sort(),
+    tags:         Array.from(tgSet).sort(),
     rawQuestions: [],
+    crossRefs:    buildCrossRefs(mergedCrossRef),
   };
 }
 
@@ -101,17 +180,14 @@ function getOrFetch(
 }
 
 /**
- * Returns QB filter options (chapters, topics, tags) by reading lightweight
- * precomputed index documents — never scans the full question_bank collection.
+ * Returns QB filter options (chapters, topics, tags, crossRefs) by reading
+ * lightweight precomputed index documents — never scans the full question_bank.
  *
- * Index docs are updated by updateQBMeta() after every question upload.
+ * crossRefs enables cascading filters (e.g. pick chapter → see only valid topics)
+ * without needing rawQuestions in memory.
  *
- * - subjectIds=undefined  → admin, reads question_bank_meta/ (one doc per subject)
- * - subjectIds=[]         → empty scope (no subjects yet)
- * - subjectIds=[…]        → reads question_bank_meta/{id} for each subject
- * - educatorUid provided  → reads educators/{uid}/question_bank_meta/summary
- * - skip=true             → returns EMPTY immediately; prevents double-fire
- *   from useAccessibleCourses starting with loading=true
+ * skip=true returns EMPTY immediately — use while useAccessibleCourses is loading
+ * to prevent double-fire reads.
  */
 export function useQBOptions(
   subjectIds?: string[],
@@ -171,15 +247,12 @@ export function useQBOptions(
         if (!cancelled) setLoading(false);
       });
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [key, skip]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { ...result, loading };
 }
 
-/** Bust the in-memory filter cache after adding/editing questions. */
 export function invalidateQBOptionsCache(key?: string) {
   if (key) cache.delete(key);
   else cache.clear();

@@ -32,8 +32,28 @@ import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { useAccessibleCourses } from "@shared/hooks/useAccessibleCourses";
 import { useQBOptions } from "@shared/hooks/useQBOptions";
+import type { QBCrossRefs } from "@shared/hooks/useQBOptions";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
+
+function xrefFilter(
+  all: string[],
+  refs: QBCrossRefs,
+  selectionMaps: Array<{ selected: string[]; map: Record<string, string[]> }>,
+): string[] {
+  const active = selectionMaps.filter(s => s.selected.length > 0);
+  if (active.length === 0) return all;
+  const hasRefs = Object.keys(refs.chapterTopics).length > 0 || Object.keys(refs.topicChapters).length > 0;
+  if (!hasRefs) return all;
+  let result: Set<string> | null = null;
+  for (const { selected, map } of active) {
+    const candidates = new Set(selected.flatMap(item => map[item] ?? []));
+    result = result ? new Set([...result].filter(x => candidates.has(x))) : candidates;
+  }
+  if (!result || result.size === 0) return all;
+  const allSet = new Set(all);
+  return [...result].filter(v => allSet.has(v)).sort();
+}
 
 function getDifficultyLabel(v: number) {
   return v <= 0.3 ? "Easy" : v <= 0.7 ? "Medium" : "Hard";
@@ -447,54 +467,31 @@ export default function TemplateModal({
     : accessibleSubjects;
 
   const globalFilteredChapters = useMemo(() => {
-    if (!qbOptions.rawQuestions.length || (!globalTopics.length && !globalTags.length))
-      return qbOptions.chapters;
-    const topicSet = new Set(globalTopics);
-    const tagSet = new Set(globalTags);
-    return [...new Set(
-      qbOptions.rawQuestions
-        .filter((q) => {
-          const tm = !topicSet.size || q.topics.some((t) => topicSet.has(t));
-          const gm = !tagSet.size || q.tags.some((t) => tagSet.has(t));
-          return tm && gm;
-        })
-        .map((q) => q.chapter)
-        .filter(Boolean)
-    )].sort();
-  }, [qbOptions.rawQuestions, globalTopics, globalTags, qbOptions.chapters]);
+    const { chapters, crossRefs } = qbOptions;
+    if (!globalTopics.length && !globalTags.length) return chapters;
+    return xrefFilter(chapters, crossRefs, [
+      { selected: globalTopics, map: crossRefs.topicChapters },
+      { selected: globalTags,   map: crossRefs.tagChapters   },
+    ]);
+  }, [qbOptions, globalTopics, globalTags]);
 
   const globalFilteredTopics = useMemo(() => {
-    if (!qbOptions.rawQuestions.length || (!globalChapters.length && !globalTags.length))
-      return qbOptions.topics;
-    const chapterSet = new Set(globalChapters.map((c) => c.toLowerCase()));
-    const tagSet = new Set(globalTags);
-    return [...new Set(
-      qbOptions.rawQuestions
-        .filter((q) => {
-          const cm = !chapterSet.size || (q.chapter && chapterSet.has(q.chapter.toLowerCase()));
-          const gm = !tagSet.size || q.tags.some((t) => tagSet.has(t));
-          return cm && gm;
-        })
-        .flatMap((q) => q.topics)
-    )].sort();
-  }, [qbOptions.rawQuestions, globalChapters, globalTags, qbOptions.topics]);
+    const { topics, crossRefs } = qbOptions;
+    if (!globalChapters.length && !globalTags.length) return topics;
+    return xrefFilter(topics, crossRefs, [
+      { selected: globalChapters, map: crossRefs.chapterTopics },
+      { selected: globalTags,     map: crossRefs.tagTopics     },
+    ]);
+  }, [qbOptions, globalChapters, globalTags]);
 
   const globalFilteredTags = useMemo(() => {
-    if (!qbOptions.rawQuestions.length || (!globalChapters.length && !globalTopics.length))
-      return qbOptions.tags;
-    const chapterSet = new Set(globalChapters.map((c) => c.toLowerCase()));
-    const topicSet = new Set(globalTopics);
-    const tagSet = new Set<string>();
-    qbOptions.rawQuestions.forEach((q) => {
-      const chapterMatch =
-        !globalChapters.length || (q.chapter && chapterSet.has(q.chapter.toLowerCase()));
-      const topicMatch = !globalTopics.length || q.topics.some((t) => topicSet.has(t));
-      if (chapterMatch && topicMatch) {
-        q.tags.forEach((t) => tagSet.add(t));
-      }
-    });
-    return Array.from(tagSet).sort();
-  }, [qbOptions.rawQuestions, globalChapters, globalTopics, qbOptions.tags]);
+    const { tags, crossRefs } = qbOptions;
+    if (!globalChapters.length && !globalTopics.length) return tags;
+    return xrefFilter(tags, crossRefs, [
+      { selected: globalChapters, map: crossRefs.chapterTags },
+      { selected: globalTopics,   map: crossRefs.topicTags   },
+    ]);
+  }, [qbOptions, globalChapters, globalTopics]);
 
   // ─── render ──────────────────────────────────────────────────────────────────
 
@@ -778,7 +775,7 @@ export default function TemplateModal({
                   availableChapters={qbOptions.chapters}
                   availableTopics={qbOptions.topics}
                   availableTagOptions={qbOptions.tags}
-                  rawQuestions={qbOptions.rawQuestions}
+                  crossRefs={qbOptions.crossRefs}
                   showSubjectPicker={isAdmin && subjectMode === "section_wise"}
                   courseSubjects={
                     isAdmin ? allSubjects.filter((s) => s.courseId === courseId) : undefined
