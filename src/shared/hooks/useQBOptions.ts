@@ -43,13 +43,8 @@ async function doFetch(
     (data.tags as string[] | undefined ?? []).forEach((v) => v && tgSet.add(v));
   };
 
-  if (educatorUid) {
-    const snap = await getDoc(
-      doc(db, "educators", educatorUid, "question_bank_meta", "summary")
-    );
-    if (snap.exists()) merge(snap.data() as Record<string, unknown>);
-  } else if (subjectIds === undefined) {
-    // admin, all subjects — one tiny doc per subject
+  // Admin QB index (always read when subjectIds given or admin context)
+  if (subjectIds === undefined) {
     const snaps = await getDocs(collection(db, "question_bank_meta"));
     snaps.forEach((d) => merge(d.data() as Record<string, unknown>));
   } else if (subjectIds.length > 0) {
@@ -57,6 +52,14 @@ async function doFetch(
       subjectIds.map((id) => getDoc(doc(db, "question_bank_meta", id)))
     );
     snaps.forEach((d) => d.exists() && merge(d.data() as Record<string, unknown>));
+  }
+
+  // Educator's own QB index (merged on top)
+  if (educatorUid) {
+    const snap = await getDoc(
+      doc(db, "educators", educatorUid, "question_bank_meta", "summary")
+    );
+    if (snap.exists()) merge(snap.data() as Record<string, unknown>);
   }
 
   return {
