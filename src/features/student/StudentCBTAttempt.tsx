@@ -125,12 +125,19 @@ type AttemptQuestion = {
   sortOrder: number;
 };
 
+type TestSection = {
+  id: string;
+  name: string;
+  timeLimit?: number | null;
+  durationMinutes?: number | null;
+};
+
 type TestMeta = {
   id: string;
   title: string;
   subject?: string;
   durationMinutes: number;
-  sections: { id: string; name: string }[];
+  sections: TestSection[];
 };
 
 type AttemptDoc = {
@@ -147,6 +154,7 @@ type AttemptDoc = {
   currentIndex?: number;
   responses?: Record<string, AttemptResponse>;
   exitCount?: number;
+  sectionStartTimes?: Record<string, number>;
   createdAt?: any;
   startedAt?: any;
   updatedAt?: any;
@@ -335,6 +343,8 @@ export default function StudentCBTAttempt() {
   const [evaluationProgress, setEvaluationProgress] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [timerStartSeconds, setTimerStartSeconds] = useState(0);
+  const [sectionStartTimes, setSectionStartTimes] = useState<Record<string, number>>({});
+  const [lockedSections, setLockedSections] = useState<Set<string>>(new Set());
 
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
   const [uploadingSubjectiveImage, setUploadingSubjectiveImage] = useState(false);
@@ -559,7 +569,12 @@ export default function StudentCBTAttempt() {
             questionSource = collection(db, "test_series", linkedAdminTestId, "questions");
           }
 
-          const durationMinutes = safeNumber(resolvedTest?.durationMinutes, 60);
+          const durationMinutes = safeNumber(
+            localTest?.durationMinutes ||
+              resolvedTest?.durationMinutes ||
+              (resolvedTest as any)?.duration,
+            60
+          );
           const computedSections = [
             { id: "main", name: resolvedTest?.subject || localTest?.subject || "General" },
           ];
@@ -592,7 +607,10 @@ export default function StudentCBTAttempt() {
           const globalTestSnap = await getDoc(doc(db, "test_series", testId));
           if (globalTestSnap.exists()) {
             const globalTest = globalTestSnap.data() as any;
-            const durationMinutes = safeNumber(globalTest?.durationMinutes, 60);
+            const durationMinutes = safeNumber(
+              globalTest?.durationMinutes || (globalTest as any)?.duration,
+              60
+            );
             const computedSections = [{ id: "main", name: globalTest?.subject || "General" }];
 
             meta = {
@@ -784,6 +802,9 @@ export default function StudentCBTAttempt() {
 
           setAttemptStartedAtMs(startedMs ? safeNumber(startedMs, Date.now()) : null);
           setDurationSec(safeNumber(foundAttempt.durationSec, meta.durationMinutes * 60));
+          if (foundAttempt.sectionStartTimes && typeof foundAttempt.sectionStartTimes === "object") {
+            setSectionStartTimes(foundAttempt.sectionStartTimes);
+          }
 
           // Auto-resume: skip the start/instructions overlay and call handleStart() via effect
           setIsStarted(false);
@@ -887,8 +908,14 @@ export default function StudentCBTAttempt() {
   };
 
   const switchSection = (sectionId: string) => {
+    if (lockedSections.has(sectionId)) return;
     setCurrentSectionId(sectionId);
-    // Find first question of this section
+    // Record when this section was first entered (for per-section timer)
+    if (!sectionStartTimes[sectionId] && isStarted) {
+      const now = Date.now();
+      setSectionStartTimes((prev) => ({ ...prev, [sectionId]: now }));
+      queueAttemptUpdate({ [`sectionStartTimes.${sectionId}`]: now });
+    }
     const firstQIdx = questions.findIndex((q) => (q.sectionId || "main") === sectionId);
     if (firstQIdx >= 0) {
       goToIndex(firstQIdx);
@@ -955,6 +982,16 @@ export default function StudentCBTAttempt() {
       setAttemptStartedAtMs(startedAtMs!);
       setDurationSec(totalSec);
       setTimerStartSeconds(remaining);
+
+      // Record entry time for the first section (if not already set from resume)
+      const firstSectionId = questions[currentIndex]?.sectionId || testMeta.sections[0]?.id;
+      if (firstSectionId && !sectionStartTimes[firstSectionId]) {
+        const now = Date.now();
+        setSectionStartTimes((prev) => ({ ...prev, [firstSectionId]: now }));
+        if (id) {
+          queueAttemptUpdate({ [`sectionStartTimes.${firstSectionId}`]: now });
+        }
+      }
 
       setIsStarted(true);
       setStartDialogOpen(false);
@@ -1415,6 +1452,54 @@ export default function StudentCBTAttempt() {
     await handleSubmit(true);
   };
 
+  // Section timer: lock expired sections and auto-advance
+  useEffect(() => {
+    if (!isStarted || !testMeta) return;
+
+    const sectionsWithLimit = testMeta.sections.filter((s) => {
+      const limit = s.timeLimit ?? s.durationMinutes;
+      return limit != null && Number(limit) > 0;
+    });
+    if (!sectionsWithLimit.length) return;
+
+    const tick = setInterval(() => {
+      const now = Date.now();
+      setLockedSections((prevLocked) => {
+        const nextLocked = new Set(prevLocked);
+        let changed = false;
+
+        for (const section of sectionsWithLimit) {
+          if (nextLocked.has(section.id)) continue;
+          const startedAt = sectionStartTimes[section.id];
+          if (!startedAt) continue;
+          const limitSec = Number(section.timeLimit ?? section.durationMinutes) * 60;
+          if (now - startedAt >= limitSec * 1000) {
+            nextLocked.add(section.id);
+            changed = true;
+            // Auto-advance only if currently in this section
+            setCurrentSectionId((curId) => {
+              if (curId !== section.id) return curId;
+              toast.warning(`Time for "${section.name}" is up.`);
+              const sections = testMeta.sections;
+              const idx = sections.findIndex((s) => s.id === section.id);
+              const nextSection = sections.slice(idx + 1).find((s) => !nextLocked.has(s.id));
+              if (nextSection) {
+                // Navigate to next section (deferred so state update completes first)
+                setTimeout(() => switchSection(nextSection.id), 0);
+                return nextSection.id;
+              }
+              return curId;
+            });
+          }
+        }
+
+        return changed ? nextLocked : prevLocked;
+      });
+    }, 1000);
+
+    return () => clearInterval(tick);
+  }, [isStarted, testMeta, sectionStartTimes]);
+
   // Proctoring: Prevent copy, cut, paste, context menu
   useEffect(() => {
     if (!isStarted) return;
@@ -1577,6 +1662,17 @@ export default function StudentCBTAttempt() {
     document.addEventListener("nativeSubmitTest", handler);
     return () => document.removeEventListener("nativeSubmitTest", handler);
   }, [isStarted]);
+
+  // Compute current section's remaining seconds (null if no per-section timer)
+  const currentSectionMeta = testMeta?.sections.find((s) => s.id === currentSectionId);
+  const currentSectionLimitMinutes = currentSectionMeta
+    ? Number(currentSectionMeta.timeLimit ?? currentSectionMeta.durationMinutes ?? 0) || null
+    : null;
+  const currentSectionStartedAt = currentSectionId ? sectionStartTimes[currentSectionId] : undefined;
+  const currentSectionRemainingSec =
+    currentSectionLimitMinutes && currentSectionStartedAt && isStarted
+      ? Math.max(0, currentSectionLimitMinutes * 60 - Math.floor((Date.now() - currentSectionStartedAt) / 1000))
+      : null;
 
   if (loading || authLoading || tenantLoading)
     return <div className="py-12 text-center">Loading...</div>;
@@ -1823,26 +1919,31 @@ export default function StudentCBTAttempt() {
             padding: "0 8px",
           }}
         >
-          {sections.map((section) => (
-            <button
-              key={section.id}
-              onClick={() => switchSection(section.id)}
-              style={{
-                padding: "6px 12px",
-                fontSize: 12,
-                fontWeight: currentSectionId === section.id ? 700 : 400,
-                borderBottom:
-                  currentSectionId === section.id ? "3px solid #2563eb" : "3px solid transparent",
-                color: currentSectionId === section.id ? "#2563eb" : "#374151",
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {section.name}
-            </button>
-          ))}
+          {sections.map((section) => {
+            const isLocked = lockedSections.has(section.id);
+            return (
+              <button
+                key={section.id}
+                onClick={() => !isLocked && switchSection(section.id)}
+                disabled={isLocked}
+                style={{
+                  padding: "6px 12px",
+                  fontSize: 12,
+                  fontWeight: currentSectionId === section.id ? 700 : 400,
+                  borderBottom:
+                    currentSectionId === section.id ? "3px solid #2563eb" : "3px solid transparent",
+                  color: isLocked ? "#9ca3af" : currentSectionId === section.id ? "#2563eb" : "#374151",
+                  background: "none",
+                  border: "none",
+                  cursor: isLocked ? "not-allowed" : "pointer",
+                  whiteSpace: "nowrap",
+                  opacity: isLocked ? 0.6 : 1,
+                }}
+              >
+                {isLocked ? `🔒 ${section.name}` : section.name}
+              </button>
+            );
+          })}
         </div>
       )}
 
@@ -2220,6 +2321,18 @@ export default function StudentCBTAttempt() {
           {testMeta.title}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {isStarted && currentSectionRemainingSec !== null && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", lineHeight: 1 }}>
+                {currentSectionMeta?.name ?? "Section"}
+              </span>
+              <TimerChip
+                key={`sec_${currentSectionId}`}
+                initialSeconds={currentSectionRemainingSec}
+                className="h-6 border border-yellow-300/50 bg-yellow-400/20 px-2 py-0 text-xs font-bold text-yellow-100"
+              />
+            </div>
+          )}
           <div style={{ fontSize: 12, padding: "0", borderRadius: 20, whiteSpace: "nowrap" }}>
             {isStarted ? (
               <TimerChip
@@ -2292,28 +2405,33 @@ export default function StudentCBTAttempt() {
                 flexShrink: 0,
               }}
             >
-              {sections.map((section) => (
-                <button
-                  key={section.id}
-                  onClick={() => switchSection(section.id)}
-                  style={{
-                    padding: "7px 16px",
-                    fontSize: 13,
-                    fontWeight: currentSectionId === section.id ? 700 : 400,
-                    borderBottom:
-                      currentSectionId === section.id
-                        ? "3px solid #1e3a8a"
-                        : "3px solid transparent",
-                    color: currentSectionId === section.id ? "#1e3a8a" : "#374151",
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {section.name}
-                </button>
-              ))}
+              {sections.map((section) => {
+                const isLocked = lockedSections.has(section.id);
+                return (
+                  <button
+                    key={section.id}
+                    onClick={() => !isLocked && switchSection(section.id)}
+                    disabled={isLocked}
+                    style={{
+                      padding: "7px 16px",
+                      fontSize: 13,
+                      fontWeight: currentSectionId === section.id ? 700 : 400,
+                      borderBottom:
+                        currentSectionId === section.id
+                          ? "3px solid #1e3a8a"
+                          : "3px solid transparent",
+                      color: isLocked ? "#9ca3af" : currentSectionId === section.id ? "#1e3a8a" : "#374151",
+                      background: "none",
+                      border: "none",
+                      cursor: isLocked ? "not-allowed" : "pointer",
+                      whiteSpace: "nowrap",
+                      opacity: isLocked ? 0.6 : 1,
+                    }}
+                  >
+                    {isLocked ? `🔒 ${section.name}` : section.name}
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -3123,6 +3241,7 @@ export default function StudentCBTAttempt() {
                     const currentSectionIdx = sections.findIndex((s) => s.id === currentSectionId);
                     if (currentSectionIdx > 0) {
                       const prevSection = sections[currentSectionIdx - 1];
+                      if (lockedSections.has(prevSection.id)) return;
                       setCurrentSectionId(prevSection.id);
                       // Go to last question of previous section
                       const prevSectionQs = questions.filter(

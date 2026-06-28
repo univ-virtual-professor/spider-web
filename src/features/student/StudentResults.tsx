@@ -38,6 +38,7 @@ type AttemptDoc = {
   durationSec?: number;
   startedAtMs?: number;
   timeTakenSec?: number;
+  submittedAt?: { toMillis: () => number } | null;
 
   score?: number;
   maxScore?: number;
@@ -136,8 +137,8 @@ function computeFromQuestionsAndResponses(
   for (const q of questions) {
     const d = q.data;
     const sectionId = d.sectionId || "main";
-    const pos = safeNumber((d as any).marks ?? d.positiveMarks, 5);
-    const neg = Math.abs(safeNumber(d.negativeMarks, 1));
+    const pos = safeNumber((d as any).marks ?? d.positiveMarks, 1);
+    const neg = Math.abs(safeNumber(d.negativeMarks, 0));
 
     maxScore += pos;
     perSection[sectionId] = perSection[sectionId] || { score: 0, maxScore: 0 };
@@ -160,14 +161,21 @@ function computeFromQuestionsAndResponses(
       continue;
     }
 
-    // Fill-up: direct case-insensitive comparison
+    // Fill-up: numeric parseFloat for numeric inputs, case-insensitive string otherwise
     if (normalizedType === "FILL_UP") {
-      const userAns = String(userAnswer).toLowerCase().trim();
-      const expected = String((d as any).referenceAnswer ?? "")
-        .toLowerCase()
-        .trim();
-      if (userAns && expected) {
-        if (userAns === expected) {
+      const isNumeric = (d as any).answerInputType === "numeric";
+      let match = false;
+      if (isNumeric) {
+        const sNum = parseFloat(String(userAnswer).trim());
+        const rNum = parseFloat(String((d as any).referenceAnswer ?? "").trim());
+        match = !isNaN(sNum) && !isNaN(rNum) && sNum === rNum;
+      } else {
+        const userAns = String(userAnswer).toLowerCase().trim();
+        const expected = String((d as any).referenceAnswer ?? "").toLowerCase().trim();
+        match = Boolean(userAns && expected && userAns === expected);
+      }
+      if (isAnswered(userAnswer)) {
+        if (match) {
           score += pos;
           perSection[sectionId].score += pos;
           correctCount += 1;
@@ -362,12 +370,9 @@ export default function StudentResults() {
 
         setSectionScores(derived.sectionScores);
 
-        setComputedScore(typeof a.score === "number" ? a.score : derived.score);
-        setComputedMaxScore(typeof a.maxScore === "number" ? a.maxScore : derived.maxScore);
-
-        const storedAcc =
-          typeof a.accuracy === "number" ? normalizeAccuracyPercent(a.accuracy) : null;
-        setComputedAccuracyPct(storedAcc ?? derived.accuracyPct);
+        setComputedScore(derived.score);
+        setComputedMaxScore(derived.maxScore);
+        setComputedAccuracyPct(derived.accuracyPct);
       } catch (e: any) {
         console.error(e);
         if (!mounted) return;
@@ -390,7 +395,13 @@ export default function StudentResults() {
   const score = computedScore ?? 0;
   const maxScore = computedMaxScore ?? 0;
   const accuracyPct = computedAccuracyPct ?? 0;
-  const timeSpentSec = safeNumber(attempt.timeTakenSec, 0);
+  let timeSpentSec = safeNumber(attempt.timeTakenSec, 0);
+  if (!timeSpentSec && attempt.startedAtMs && attempt.submittedAt) {
+    timeSpentSec = Math.max(
+      0,
+      Math.floor((attempt.submittedAt.toMillis() - attempt.startedAtMs) / 1000)
+    );
+  }
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">

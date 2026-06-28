@@ -1637,6 +1637,7 @@ const QuestionsManager = ({
           ...(qAny.evaluationInstructions
             ? { evaluationInstructions: qAny.evaluationInstructions }
             : {}),
+          ...(qAny.answerInputType === "numeric" ? { answerInputType: "numeric" } : {}),
           // Preserve group linkage so CBT can load passage
           ...(qAny.groupId ? { groupId: qAny.groupId, groupOrder: qAny.groupOrder ?? null } : {}),
           createdAt: serverTimestamp(),
@@ -1788,6 +1789,7 @@ const QuestionsManager = ({
             ...(question.referenceAnswer ? { referenceAnswer: question.referenceAnswer } : {}),
             ...(question.referenceKeywords?.length ? { referenceKeywords: question.referenceKeywords } : {}),
             ...(question.evaluationInstructions ? { evaluationInstructions: question.evaluationInstructions } : {}),
+            ...(question.answerInputType === "numeric" ? { answerInputType: "numeric" } : {}),
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp(),
           };
@@ -1908,6 +1910,7 @@ const QuestionsManager = ({
           source: "question_bank",
           bankQuestionId: bankQuestion.id,
           questionOrder,
+          ...(bankQuestion.answerInputType === "numeric" ? { answerInputType: "numeric" } : {}),
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
@@ -2630,6 +2633,7 @@ const QuestionsManager = ({
       evaluationInstructions: data?.evaluationInstructions
         ? String(data.evaluationInstructions)
         : undefined,
+      answerInputType: data?.answerInputType === "numeric" ? "numeric" : undefined,
       isActive: isQuestionPublished(data?.isActive),
       createdAt: data?.createdAt,
       updatedAt: data?.updatedAt,

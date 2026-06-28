@@ -29,6 +29,7 @@ import {
   arrayUnion,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -556,6 +557,7 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
   const [referenceAnswer, setReferenceAnswer] = useState("");
   const [referenceKeywords, setReferenceKeywords] = useState("");
   const [evaluationInstructions, setEvaluationInstructions] = useState("");
+  const [answerInputType, setAnswerInputType] = useState<"string" | "numeric">("string");
   const [qSubjectId, setQSubjectId] = useState("");
   const [topicsInput, setTopicsInput] = useState(""); // comma-separated
   const [multiCorrects, setMultiCorrects] = useState<number[]>([0]);
@@ -906,6 +908,7 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
     setReferenceAnswer("");
     setReferenceKeywords("");
     setEvaluationInstructions("");
+    setAnswerInputType("string");
   };
 
   const openCreate = () => {
@@ -948,6 +951,7 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
     setReferenceAnswer(x.referenceAnswer || "");
     setReferenceKeywords((x.referenceKeywords || []).join(", "));
     setEvaluationInstructions(x.evaluationInstructions || "");
+    setAnswerInputType((x as any).answerInputType === "numeric" ? "numeric" : "string");
     // Load group/passage state
     const xAny = x as any;
     if (xAny.groupId) {
@@ -1057,6 +1061,11 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
       if (qFormat === "MCQ_MULTI") base.correctOptions = multiCorrects;
       if (qFormat === "FILL_UP") {
         base.referenceAnswer = referenceAnswer.trim();
+        if (answerInputType === "numeric") {
+          base.answerInputType = "numeric";
+        } else if (editingId) {
+          base.answerInputType = deleteField() as any;
+        }
       } else if (qFormat === "SUBJECTIVE_LONG") {
         base.referenceAnswer = referenceAnswer.trim();
         base.referenceKeywords = referenceKeywords
@@ -2718,10 +2727,31 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
                 <Input
                   value={referenceAnswer}
                   onChange={(e) => setReferenceAnswer(e.target.value)}
-                  placeholder="e.g. photosynthesis"
+                  placeholder={answerInputType === "numeric" ? "e.g. 5" : "e.g. photosynthesis"}
                 />
+                <div className="flex items-center gap-3 pt-1">
+                  <span className="text-sm text-muted-foreground">Answer type:</span>
+                  <div className="flex overflow-hidden rounded-lg border border-border text-sm">
+                    <button
+                      type="button"
+                      onClick={() => setAnswerInputType("string")}
+                      className={`px-3 py-1 transition-colors ${answerInputType === "string" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                    >
+                      Text
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAnswerInputType("numeric")}
+                      className={`border-l border-border px-3 py-1 transition-colors ${answerInputType === "numeric" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                    >
+                      Numeric
+                    </button>
+                  </div>
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  Matched case-insensitively. Keep it one word or a short exact phrase.
+                  {answerInputType === "numeric"
+                    ? "Matched numerically — 5, 5.0, and 05 are treated as equal."
+                    : "Matched case-insensitively. Keep it one word or a short exact phrase."}
                 </p>
               </div>
             </>

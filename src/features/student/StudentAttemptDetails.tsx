@@ -59,6 +59,7 @@ type AttemptQuestion = {
   id: string;
   sectionId: string;
   type: "mcq" | "integer" | "subjective" | "fill_up";
+  answerInputType?: "numeric" | "string";
   stem: string;
   options?: { id: string; text: string }[];
   correctAnswer?: string; // for mcq => option index as string, for integer => exact string
@@ -123,13 +124,14 @@ function mapQuestion(id: string, data: any): AttemptQuestion {
         );
   const correctIndex = parsedCorrectIndex ?? 0;
 
-  const positive = data.marks ?? data.positiveMarks ?? 5;
-  const negative = Math.abs(data.negativeMarks ?? 1);
+  const positive = data.marks ?? data.positiveMarks ?? 1;
+  const negative = Math.abs(data.negativeMarks ?? 0);
 
   return {
     id,
     sectionId: data.sectionId || "main",
     type,
+    answerInputType: data.answerInputType === "numeric" ? "numeric" : "string",
     stem: data.question || data.text || "",
     options: type === "mcq" ? opts.map((t, i) => ({ id: String(i), text: String(t) })) : undefined,
     correctAnswer: isSubjective
@@ -151,13 +153,19 @@ function isAnswered(val: any) {
 function isCorrectAnswer(q: AttemptQuestion, userAnswer: string | null) {
   if (q.type === "subjective") return false; // subjective graded by AI, not boolean correct/incorrect
   if (!isAnswered(userAnswer)) return false;
-  if (q.type === "fill_up")
+  if (q.type === "fill_up") {
+    if (q.answerInputType === "numeric") {
+      const sNum = parseFloat(String(userAnswer).trim());
+      const rNum = parseFloat(String(q.correctAnswer ?? "").trim());
+      return !isNaN(sNum) && !isNaN(rNum) && sNum === rNum;
+    }
     return (
       String(userAnswer).toLowerCase().trim() ===
       String(q.correctAnswer ?? "")
         .toLowerCase()
         .trim()
     );
+  }
   if (q.type === "integer")
     return String(userAnswer).trim() === String(q.correctAnswer ?? "").trim();
   return String(userAnswer) === String(q.correctAnswer ?? "");
