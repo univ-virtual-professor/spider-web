@@ -49,6 +49,7 @@ export type TestQuestion = {
   referenceAnswerFileUrl?: string; // legacy single image
   referenceAnswerFileUrls?: string[]; // multi-image
   evaluationInstructions?: string;
+  answerInputType?: "string" | "numeric";
 
   // AI import metadata
   source?: "ai_import" | "ai_import_partial" | string;
@@ -111,6 +112,7 @@ export type EditorDraftSnapshot = {
   evaluationInstructions: string;
   marks: string;
   negativeMarks: string;
+  answerInputType: "string" | "numeric";
 };
 
 export type PendingEditorAction =

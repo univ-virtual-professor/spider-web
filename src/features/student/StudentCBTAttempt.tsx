@@ -114,6 +114,7 @@ type AttemptQuestion = {
   referenceKeywords?: string[];
   referenceAnswerFileUrls?: string[]; // multiple images (preferred)
   evaluationInstructions?: string;
+  answerInputType?: "string" | "numeric";
   explanation?: string;
   marks: { correct: number; incorrect: number };
   passage?: { title: string; content: string; contentFormat?: "html" | "latex" } | null;
@@ -253,6 +254,7 @@ const mapQuestion = (
         ? [String(data.referenceAnswerFileUrl)]
         : [],
     evaluationInstructions: data.evaluationInstructions ? String(data.evaluationInstructions) : "",
+    answerInputType: data.answerInputType === "numeric" ? "numeric" : "string",
     explanation: data.explanation || "",
     marks: { correct: positive, incorrect: negative },
     // Passage resolved later via enrichQuestionsWithPassages()
@@ -1137,13 +1139,18 @@ export default function StudentCBTAttempt() {
         continue;
       }
 
-      // Fill-up: direct case-insensitive exact match
+      // Fill-up: numeric or case-insensitive string match
       if (q.type === "fill_up") {
-        const match =
-          String(ans).toLowerCase().trim() ===
-          String(q.referenceAnswer ?? "")
-            .toLowerCase()
-            .trim();
+        let match = false;
+        if (q.answerInputType === "numeric") {
+          const sNum = parseFloat(String(ans).trim());
+          const rNum = parseFloat(String(q.referenceAnswer ?? "").trim());
+          match = !isNaN(sNum) && !isNaN(rNum) && sNum === rNum;
+        } else {
+          match =
+            String(ans).toLowerCase().trim() ===
+            String(q.referenceAnswer ?? "").toLowerCase().trim();
+        }
         if (match) {
           score += safeNumber(q.marks.correct, 0);
           correctCount += 1;

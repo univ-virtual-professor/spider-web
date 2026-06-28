@@ -1455,6 +1455,7 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
       "passage_format",
       "group_title",
       "group_order",
+      "answer_input_type",
     ];
     const rows = [
       [
@@ -1483,6 +1484,7 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
         "",
         "",
         "",
+        "",
       ],
       [
         "The process by which plants make food using sunlight is called ___.",
@@ -1495,14 +1497,16 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
         "",
         "",
         "",
-        "",
         "photosynthesis",
+        "",
         "",
         "Plant Biology",
         "FILL_UP",
         "Biology",
         "easy",
         "NEET",
+        "",
+        "",
         "",
         "",
         "",
@@ -1530,6 +1534,7 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
         "Physics",
         "easy",
         "NEET",
+        "",
         "",
         "",
         "",
@@ -1565,6 +1570,7 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
         "html",
         "Photosynthesis Passage",
         "1",
+        "",
       ],
       [
         "What is the primary raw material for photosynthesis?",
@@ -1593,6 +1599,7 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
         "html",
         "Photosynthesis Passage",
         "2",
+        "",
       ],
     ];
     const csv = [headers, ...rows]
@@ -1816,6 +1823,8 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
         if (isFillUp) {
           payload.referenceAnswer = correctAnsRaw;
           if (solnRaw) payload.explanation = solnRaw;
+          const ait = (row.answer_input_type ?? "").trim().toLowerCase();
+          if (ait === "numeric") payload.answerInputType = "numeric";
         } else {
           // MCQ and SUBJECTIVE_LONG: save options, correctOption, and explanation
           payload.options = opts;

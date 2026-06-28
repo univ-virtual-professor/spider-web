@@ -75,6 +75,8 @@ type QuestionEditorProps = {
   setFormReferenceAnswerFileUrls: (value: string[]) => void;
   formEvaluationInstructions: string;
   setFormEvaluationInstructions: (value: string) => void;
+  formAnswerInputType: "string" | "numeric";
+  setFormAnswerInputType: (value: "string" | "numeric") => void;
   formMarks: string;
   setFormMarks: (value: string) => void;
   formNegMarks: string;
@@ -289,6 +291,8 @@ const QuestionEditor = (props: QuestionEditorProps) => {
     setFormReferenceAnswerFileUrls,
     formEvaluationInstructions,
     setFormEvaluationInstructions,
+    formAnswerInputType,
+    setFormAnswerInputType,
     formMarks,
     setFormMarks,
     formNegMarks,
@@ -482,16 +486,39 @@ const QuestionEditor = (props: QuestionEditorProps) => {
 
         {/* Fill-up: single expected answer, direct match */}
         {formQuestionType === "FILL_UP" && (
-          <div className="space-y-2">
-            <Label>Expected Answer</Label>
-            <Input
-              value={formReferenceAnswer}
-              onChange={(e) => setFormReferenceAnswer(e.target.value)}
-              placeholder="e.g. photosynthesis"
-              className="rounded-xl"
-            />
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label>Expected Answer</Label>
+              <Input
+                value={formReferenceAnswer}
+                onChange={(e) => setFormReferenceAnswer(e.target.value)}
+                placeholder={formAnswerInputType === "numeric" ? "e.g. 5" : "e.g. photosynthesis"}
+                className="rounded-xl"
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-muted-foreground">Answer type:</span>
+              <div className="flex overflow-hidden rounded-lg border border-border text-sm">
+                <button
+                  type="button"
+                  onClick={() => setFormAnswerInputType("string")}
+                  className={`px-3 py-1 transition-colors ${formAnswerInputType === "string" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                >
+                  Text
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormAnswerInputType("numeric")}
+                  className={`border-l border-border px-3 py-1 transition-colors ${formAnswerInputType === "numeric" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                >
+                  Numeric
+                </button>
+              </div>
+            </div>
             <p className="text-xs text-muted-foreground">
-              Matched case-insensitively. Keep it one word or a short exact phrase.
+              {formAnswerInputType === "numeric"
+                ? "Matched numerically — 5, 5.0, and 05 are treated as equal."
+                : "Matched case-insensitively. Keep it one word or a short exact phrase."}
             </p>
           </div>
         )}

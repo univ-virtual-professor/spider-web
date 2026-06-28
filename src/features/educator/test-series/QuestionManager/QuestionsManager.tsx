@@ -172,6 +172,7 @@ const QuestionsManager = ({
   const [formReferenceKeywords, setFormReferenceKeywords] = useState("");
   const [formReferenceAnswerFileUrls, setFormReferenceAnswerFileUrls] = useState<string[]>([]);
   const [formEvaluationInstructions, setFormEvaluationInstructions] = useState("");
+  const [formAnswerInputType, setFormAnswerInputType] = useState<"string" | "numeric">("string");
   const [formMarks, setFormMarks] = useState("1");
   const [formNegMarks, setFormNegMarks] = useState("0");
   const [editorSnapshot, setEditorSnapshot] = useState<EditorDraftSnapshot | null>(null);
@@ -670,6 +671,7 @@ const QuestionsManager = ({
       referenceKeywords: formReferenceKeywords,
       referenceAnswerFileUrls: formReferenceAnswerFileUrls,
       evaluationInstructions: formEvaluationInstructions,
+      answerInputType: formAnswerInputType,
       marks: formMarks,
       negativeMarks: formNegMarks,
     }),
@@ -688,6 +690,7 @@ const QuestionsManager = ({
       formReferenceKeywords,
       formReferenceAnswerFileUrls,
       formEvaluationInstructions,
+      formAnswerInputType,
       formMarks,
       formNegMarks,
     ]
@@ -1110,6 +1113,7 @@ const QuestionsManager = ({
     setFormReferenceKeywords("");
     setFormReferenceAnswerFileUrls([]);
     setFormEvaluationInstructions("");
+    setFormAnswerInputType("string");
     setFormMarks("1");
     setFormNegMarks("0");
     setInsertAfterQuestionId(null);
@@ -1174,6 +1178,7 @@ const QuestionsManager = ({
           : []
     );
     setFormEvaluationInstructions(q.evaluationInstructions || "");
+    setFormAnswerInputType(q.answerInputType === "numeric" ? "numeric" : "string");
     setFormMarks(q.marks != null ? String(q.marks) : "1");
     setFormNegMarks(q.negativeMarks != null ? String(q.negativeMarks) : "0");
     setEditorSnapshot(buildSnapshotFromQuestion(q));
@@ -2335,6 +2340,7 @@ const QuestionsManager = ({
 
     if (formQuestionType === "FILL_UP") {
       payload.referenceAnswer = formReferenceAnswer || "";
+      payload.answerInputType = formAnswerInputType;
     } else if (isSubjective) {
       payload.referenceAnswer = formReferenceAnswer || "";
       payload.referenceKeywords = formReferenceKeywords
@@ -3106,6 +3112,8 @@ const QuestionsManager = ({
                             setFormReferenceAnswerFileUrls={setFormReferenceAnswerFileUrls}
                             formEvaluationInstructions={formEvaluationInstructions}
                             setFormEvaluationInstructions={setFormEvaluationInstructions}
+                            formAnswerInputType={formAnswerInputType}
+                            setFormAnswerInputType={setFormAnswerInputType}
                             formMarks={formMarks}
                             setFormMarks={setFormMarks}
                             formNegMarks={formNegMarks}
