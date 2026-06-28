@@ -122,7 +122,8 @@ export default function DppGenerator() {
   const { features, loading: featuresLoading } = useEducatorFeatures(educatorUid);
   const { subjects, allowedSubjectIds } = useAccessibleCourses(educatorUid);
   const { chapters, topics } = useQBOptions(
-    allowedSubjectIds.length ? allowedSubjectIds : undefined
+    allowedSubjectIds.length ? allowedSubjectIds : undefined,
+    educatorUid || undefined
   );
   const subjectOptions = useMemo(() => subjects.map((s) => s.name), [subjects]);
 

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "@shared/lib/firebase";
+import { useQBOptions } from "@shared/hooks/useQBOptions";
 import { Badge } from "@shared/ui/badge";
 import { Input } from "@shared/ui/input";
 import { X, ChevronDown, Check, Loader2 } from "lucide-react";
@@ -24,45 +23,14 @@ export function TopicMultiSelect({
 }: TopicMultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [allTopics, setAllTopics] = useState<string[]>([]);
-  const [loadingTopics, setLoadingTopics] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  // Use external topics if provided, otherwise fetch from Firestore
-  useEffect(() => {
-    if (externalTopics) {
-      setAllTopics(externalTopics);
-      return;
-    }
-
-    let cancelled = false;
-    setLoadingTopics(true);
-    getDocs(collection(db, "question_bank"))
-      .then((snap) => {
-        if (cancelled) return;
-        const topicSet = new Set<string>();
-        snap.docs.forEach((d) => {
-          const data = d.data() as any;
-          const t = data?.topic;
-          if (t && typeof t === "string" && t.trim()) topicSet.add(t.trim());
-          const ts = data?.topics;
-          if (Array.isArray(ts)) {
-            ts.forEach((tp) => {
-              if (tp && typeof tp === "string" && tp.trim()) topicSet.add(tp.trim());
-            });
-          }
-        });
-        setAllTopics(Array.from(topicSet).sort());
-      })
-      .catch(console.error)
-      .finally(() => {
-        if (!cancelled) setLoadingTopics(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [externalTopics]);
+  // Only hit Firestore when externalTopics isn't supplied
+  const { topics: fetchedTopics, loading: loadingTopics } = useQBOptions(
+    externalTopics ? [] : undefined
+  );
+  const allTopics = externalTopics ?? fetchedTopics;
 
   // Close on outside click
   useEffect(() => {

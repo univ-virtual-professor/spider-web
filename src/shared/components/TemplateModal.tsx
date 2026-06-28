@@ -118,8 +118,11 @@ export default function TemplateModal({
     allowedSubjectIds,
   } = useAccessibleCourses(!isAdmin ? (firebaseUser?.uid ?? "") : "");
 
-  // QB options scoped: admin sees all, educator sees only their subjects
-  const qbOptions = useQBOptions(isAdmin ? undefined : allowedSubjectIds);
+  // QB options scoped: admin sees all, educator sees their subjects + own QB
+  const qbOptions = useQBOptions(
+    isAdmin ? undefined : allowedSubjectIds,
+    isAdmin ? undefined : (firebaseUser?.uid ?? undefined)
+  );
 
   // Admin-scoped course/subject data
   const [allCourses, setAllCourses] = useState<{ id: string; name: string }[]>([]);

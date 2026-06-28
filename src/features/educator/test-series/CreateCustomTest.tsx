@@ -26,6 +26,7 @@ import { Badge } from "@shared/ui/badge";
 import { Slider } from "@shared/ui/slider";
 import { MultiSelect } from "@shared/ui/MultiSelect";
 import { useQBOptions } from "@shared/hooks/useQBOptions";
+import { useAuth } from "@app/providers/AuthProvider";
 import {
   Plus,
   Loader2,
@@ -198,9 +199,11 @@ const CreateCustomTest = ({
   const [formGlobalTags, setFormGlobalTags] = useState<string[]>([]);
   const [globalAdvancedOpen, setGlobalAdvancedOpen] = useState(false);
 
-  // QB options scoped to educator's accessible subjects
+  const { firebaseUser } = useAuth();
+
+  // QB options scoped to educator's accessible subjects + their own QB
   const allowedSubjectIds = accessibleSubjects.map((s) => s.id);
-  const qbOptions = useQBOptions(allowedSubjectIds);
+  const qbOptions = useQBOptions(allowedSubjectIds, firebaseUser?.uid ?? undefined);
 
   // Cascading filter options: each filter narrows based on the other two selections
   const filteredChapterOptions = useMemo(() => {
