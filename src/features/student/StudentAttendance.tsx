@@ -9,7 +9,7 @@ import { Badge } from "@shared/ui/badge";
 import { CalendarCheck, Loader2 } from "lucide-react";
 
 type Status = "present" | "absent" | "late";
-type Session = { id: string; date: string; status: Status | undefined };
+type Session = { id: string; date: string; subject?: string; status: Status | undefined };
 
 const STATUS_BADGE: Record<Status, string> = {
   present: "bg-green-500/10 text-green-700 border-green-200",
@@ -58,6 +58,7 @@ export default function StudentAttendance() {
             return {
               id: d.id,
               date: String(data.date || d.id),
+              subject: data.subject ? String(data.subject) : undefined,
               status: (data.attendance || {})[uid] as Status | undefined,
             };
           })
@@ -139,15 +140,18 @@ export default function StudentAttendance() {
             <div className="divide-y divide-border/50">
               {sessions.map((s) => (
                 <div key={s.id} className="flex items-center justify-between py-2.5">
-                  <p className="text-sm">
-                    {(() => {
-                      try {
-                        return format(parseISO(s.date), "EEEE, MMM d, yyyy");
-                      } catch {
-                        return s.date;
-                      }
-                    })()}
-                  </p>
+                  <div>
+                    <p className="text-sm">
+                      {(() => {
+                        try {
+                          return format(parseISO(s.date), "EEEE, MMM d, yyyy");
+                        } catch {
+                          return s.date;
+                        }
+                      })()}
+                    </p>
+                    {s.subject && <p className="text-xs text-muted-foreground">{s.subject}</p>}
+                  </div>
                   {s.status ? (
                     <Badge
                       variant="outline"

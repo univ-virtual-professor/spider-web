@@ -6,6 +6,7 @@ export { default as EducatorDashboard } from "./Dashboard";
 export { default as TestPlatformDashboard } from "./TestPlatformDashboard";
 export { default as Curriculum } from "./Curriculum";
 export { default as Attendance } from "./Attendance";
+export { default as Timetable } from "./Timetable";
 export { default as Divisions } from "./Divisions";
 export { default as DppGenerator } from "./DppGenerator";
 export { default as InstituteBuilder } from "./InstituteBuilder";

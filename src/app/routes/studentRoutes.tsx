@@ -11,6 +11,7 @@ import StudentLayout from "@features/student/StudentLayout";
 import StudentMessages from "@features/student/StudentMessages";
 import PracticeGenerator from "@features/student/PracticeGenerator";
 import StudentCurriculum from "@features/student/StudentCurriculum";
+import StudentTimetable from "@features/student/StudentTimetable";
 import StudentAttendance from "@features/student/StudentAttendance";
 import StudentGrades from "@features/student/StudentGrades";
 import StudentRankings from "@features/student/StudentRankings";
@@ -43,6 +44,7 @@ export function getStudentRoutes() {
         <Route path="reports" element={<StudentReports />} />
         <Route path="practice" element={<PracticeGenerator />} />
         <Route path="curriculum" element={<StudentCurriculum />} />
+        <Route path="timetable" element={<StudentTimetable />} />
         <Route path="attendance" element={<StudentAttendance />} />
         <Route path="grades" element={<StudentGrades />} />
         <Route path="my-results" element={<StudentAllResults />} />

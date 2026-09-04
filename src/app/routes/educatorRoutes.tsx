@@ -12,6 +12,7 @@ import {
   TestPlatformDashboard,
   Curriculum,
   Attendance,
+  Timetable,
   Divisions,
   DppGenerator,
   InstituteBuilder,
@@ -53,6 +54,7 @@ export function getEducatorRoutes() {
       <Route path="testing" element={<TestPlatformDashboard />} />
       <Route path="curriculum" element={<Curriculum />} />
       <Route path="attendance" element={<Attendance />} />
+      <Route path="timetable" element={<Timetable />} />
       <Route path="students" element={<StudentsListing />} />
       <Route path="students/:studentId" element={<StudentDetails />} />
       <Route path="batches" element={<BatchesListing />} />

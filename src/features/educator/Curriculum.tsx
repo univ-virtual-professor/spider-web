@@ -4,6 +4,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -44,7 +45,10 @@ type LessonDoc = {
   description?: string;
   order: number;
   contentIds: string[];
+  linkedTestId?: string;
+  linkedTestTitle?: string;
 };
+type TestOption = { id: string; title: string };
 
 export default function Curriculum() {
   const { profile } = useAuth();
@@ -70,6 +74,8 @@ export default function Curriculum() {
   const [lessonTitle, setLessonTitle] = useState("");
   const [lessonDesc, setLessonDesc] = useState("");
   const [lessonContentIds, setLessonContentIds] = useState<string[]>([]);
+  const [myTests, setMyTests] = useState<TestOption[]>([]);
+  const [linkedTestId, setLinkedTestId] = useState<string>("none");
 
   const selectedCourse = courses.find((c) => c.id === selectedCourseId) || null;
 
@@ -309,13 +315,33 @@ export default function Curriculum() {
     ]);
   }
 
+  async function loadMyTests() {
+    if (!educatorId) return;
+    try {
+      const snap = await getDocs(collection(db, "educators", educatorId, "my_tests"));
+      setMyTests(
+        snap.docs
+          .map((d) => ({
+            id: d.id,
+            title: String(d.data().title || "Untitled"),
+            type: d.data().type,
+          }))
+          .filter((t: any) => t.type !== "personalized")
+      );
+    } catch {
+      setMyTests([]);
+    }
+  }
+
   function openNewLesson(moduleId: string) {
     setLessonModuleId(moduleId);
     setEditingLesson(null);
     setLessonTitle("");
     setLessonDesc("");
     setLessonContentIds([]);
+    setLinkedTestId("none");
     setLessonDialogOpen(true);
+    loadMyTests();
   }
 
   function openEditLesson(moduleId: string, lesson: LessonDoc) {
@@ -324,18 +350,23 @@ export default function Curriculum() {
     setLessonTitle(lesson.title);
     setLessonDesc(lesson.description || "");
     setLessonContentIds(lesson.contentIds || []);
+    setLinkedTestId(lesson.linkedTestId || "none");
     setLessonDialogOpen(true);
+    loadMyTests();
   }
 
   async function saveLesson() {
     const ref = lessonsRef(lessonModuleId);
     if (!ref || !lessonTitle.trim()) return;
+    const linkedTest = linkedTestId !== "none" ? myTests.find((t) => t.id === linkedTestId) : null;
     try {
       if (editingLesson) {
         await updateDoc(doc(ref, editingLesson.id), {
           title: lessonTitle.trim(),
           description: lessonDesc.trim(),
           contentIds: lessonContentIds,
+          linkedTestId: linkedTest?.id || null,
+          linkedTestTitle: linkedTest?.title || null,
           updatedAt: Timestamp.now(),
         });
       } else {
@@ -344,6 +375,8 @@ export default function Curriculum() {
           title: lessonTitle.trim(),
           description: lessonDesc.trim(),
           contentIds: lessonContentIds,
+          linkedTestId: linkedTest?.id || null,
+          linkedTestTitle: linkedTest?.title || null,
           order: existing.length,
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
@@ -647,6 +680,24 @@ export default function Curriculum() {
                   ))}
                 </div>
               )}
+            </div>
+            <div>
+              <p className="mb-2 text-xs font-medium text-muted-foreground">
+                Link a test (optional)
+              </p>
+              <Select value={linkedTestId} onValueChange={setLinkedTestId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="None" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {myTests.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

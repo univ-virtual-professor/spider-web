@@ -7,11 +7,12 @@ import {
   UserCheck,
   Layers,
   CalendarCheck,
+  CalendarClock,
   BookOpen,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
-import { collection, doc, onSnapshot, getDocs } from "firebase/firestore";
+import { collection, doc, onSnapshot, getDocs, query, where } from "firebase/firestore";
 
 import { Button } from "@shared/ui/button";
 import { db } from "@shared/lib/firebase";
@@ -31,8 +32,20 @@ type EducatorProfileDoc = {
   allowedCourseIds?: string[];
 };
 
+type TodayClass = {
+  id: string;
+  subject: string;
+  startTime: string;
+  endTime: string;
+  teacherUid: string;
+  teacherName: string;
+  batchId: string;
+  batchName: string;
+};
+
 export default function EducatorDashboard() {
   const { firebaseUser, profile, loading: authLoading } = useAuth();
+  const navigate = useNavigate();
   const uid = firebaseUser?.uid || null;
   const educatorId = profile?.educatorId || uid;
 
@@ -45,6 +58,7 @@ export default function EducatorDashboard() {
   const [allowedCourseNames, setAllowedCourseNames] = useState<string[]>([]);
   const [studentsCount, setStudentsCount] = useState(0);
   const [batchesCount, setBatchesCount] = useState(0);
+  const [allClassesToday, setAllClassesToday] = useState<TodayClass[]>([]);
 
   useEffect(() => {
     if (!educatorId) return;
@@ -95,7 +109,7 @@ export default function EducatorDashboard() {
     };
   }, [educatorId]);
 
-  // Batches count — fan out branches → courses → batches
+  // Batches count + today's timetable — fan out branches → courses → batches → timetable
   useEffect(() => {
     if (!educatorId) return;
     let cancelled = false;
@@ -127,11 +141,62 @@ export default function EducatorDashboard() {
             )
           )
         );
-        if (!cancelled) {
-          setBatchesCount(batchLists.reduce((sum, snap) => sum + snap.size, 0));
-        }
+        if (cancelled) return;
+        setBatchesCount(batchLists.reduce((sum, snap) => sum + snap.size, 0));
+
+        const batchRefs = batchLists.flatMap((snap, i) =>
+          snap.docs.map((b) => ({
+            branchId: courseRefs[i].branchId,
+            courseId: courseRefs[i].courseId,
+            batchId: b.id,
+            batchName: String(b.data().name || b.id),
+          }))
+        );
+        const todayDow = new Date().getDay();
+        const slotLists = await Promise.all(
+          batchRefs.map((b) =>
+            getDocs(
+              query(
+                collection(
+                  db,
+                  "educators",
+                  educatorId,
+                  "branches",
+                  b.branchId,
+                  "courses",
+                  b.courseId,
+                  "batches",
+                  b.batchId,
+                  "timetable"
+                ),
+                where("dayOfWeek", "==", todayDow)
+              )
+            )
+          )
+        );
+        if (cancelled) return;
+        const classes: TodayClass[] = slotLists.flatMap((snap, i) =>
+          snap.docs.map((d) => {
+            const data = d.data() as any;
+            return {
+              id: d.id,
+              subject: String(data.subject || "Class"),
+              startTime: String(data.startTime || ""),
+              endTime: String(data.endTime || ""),
+              teacherUid: String(data.teacherUid || ""),
+              teacherName: String(data.teacherName || ""),
+              batchId: batchRefs[i].batchId,
+              batchName: batchRefs[i].batchName,
+            };
+          })
+        );
+        classes.sort((a, b) => a.startTime.localeCompare(b.startTime));
+        setAllClassesToday(classes);
       } catch {
-        if (!cancelled) setBatchesCount(0);
+        if (!cancelled) {
+          setBatchesCount(0);
+          setAllClassesToday([]);
+        }
       }
     })();
 
@@ -139,6 +204,9 @@ export default function EducatorDashboard() {
       cancelled = true;
     };
   }, [educatorId]);
+
+  const myClassesToday = allClassesToday.filter((c) => c.teacherUid === uid);
+  const todayStr = new Date().toISOString().slice(0, 10);
 
   useEffect(() => {
     const ids = educatorDoc?.allowedCourseIds;
@@ -222,6 +290,44 @@ export default function EducatorDashboard() {
         </div>
       </div>
 
+      {myClassesToday.length > 0 && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CalendarClock className="h-4 w-4" />
+              My Classes Today
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {myClassesToday.map((c) => (
+              <div
+                key={c.id}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card px-3 py-2.5"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{c.subject}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {c.startTime}–{c.endTime} · {c.batchName}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() =>
+                    navigate("/educator/attendance", {
+                      state: { batchId: c.batchId, date: todayStr },
+                    })
+                  }
+                >
+                  Mark Attendance
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       {/* LMS snapshot cards */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Link to="/educator/batches" className="group block">
@@ -277,6 +383,33 @@ export default function EducatorDashboard() {
           </Card>
         </Link>
       </div>
+
+      {allClassesToday.length > 0 && (
+        <Card className="border-border/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CalendarClock className="h-4 w-4 text-muted-foreground" />
+              Today Across All Batches
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="divide-y divide-border/50">
+              {allClassesToday.map((c) => (
+                <div key={c.id} className="flex items-center justify-between gap-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {c.subject} <span className="text-muted-foreground">· {c.batchName}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {c.startTime}–{c.endTime} · {c.teacherName}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="border-border/50">
         <CardHeader className="pb-3">
@@ -343,6 +476,12 @@ export default function EducatorDashboard() {
               <Link to="/educator/attendance">
                 <CalendarCheck className="h-4 w-4" />
                 Mark Attendance
+              </Link>
+            </Button>
+            <Button variant="outline" asChild className="gap-2">
+              <Link to="/educator/timetable">
+                <CalendarClock className="h-4 w-4" />
+                View Timetable
               </Link>
             </Button>
             <Button variant="outline" asChild className="gap-2">

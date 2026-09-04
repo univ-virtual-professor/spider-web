@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { Link, useLocation } from "react-router-dom";
 
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
@@ -21,25 +22,44 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@shared/ui/popover";
 import { Calendar } from "@shared/ui/calendar";
 import { ToggleGroup, ToggleGroupItem } from "@shared/ui/toggle-group";
-import { CalendarCheck, CalendarIcon, Loader2, CheckCheck, Users as UsersIcon } from "lucide-react";
+import {
+  CalendarCheck,
+  CalendarClock,
+  CalendarIcon,
+  Loader2,
+  CheckCheck,
+  Users as UsersIcon,
+} from "lucide-react";
 
 type Branch = { id: string; name: string };
 type Course = { id: string; branchId: string; name: string };
 type Batch = { id: string; courseId: string; branchId: string; name: string };
 type Student = { id: string; name: string; email?: string };
+type Slot = {
+  id: string;
+  subject: string;
+  teacherUid: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+};
 
 type Status = "present" | "absent" | "late";
 
 export default function Attendance() {
   const { profile } = useAuth();
   const educatorId: string = profile?.uid ?? "";
+  const location = useLocation();
+  const navState = location.state as { batchId?: string; date?: string } | null;
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
-  const [selectedBatchId, setSelectedBatchId] = useState<string>("");
-  const [date, setDate] = useState<Date>(new Date());
+  const [selectedBatchId, setSelectedBatchId] = useState<string>(navState?.batchId || "");
+  const [date, setDate] = useState<Date>(navState?.date ? new Date(navState.date) : new Date());
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [slots, setSlots] = useState<Slot[]>([]);
+  const [selectedSlotId, setSelectedSlotId] = useState<string>("");
 
   const [students, setStudents] = useState<Student[]>([]);
   const [statuses, setStatuses] = useState<Record<string, Status>>({});
@@ -142,7 +162,50 @@ export default function Attendance() {
     return () => unsub();
   }, [educatorId, selectedBatchId]);
 
-  // Load existing session for this batch+date, if any
+  // Timetable slots for the selected batch
+  useEffect(() => {
+    if (!educatorId || !selectedBatch) {
+      setSlots([]);
+      return;
+    }
+    const unsub = onSnapshot(
+      collection(
+        db,
+        "educators",
+        educatorId,
+        "branches",
+        selectedBatch.branchId,
+        "courses",
+        selectedBatch.courseId,
+        "batches",
+        selectedBatch.id,
+        "timetable"
+      ),
+      (snap) => setSlots(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })))
+    );
+    return () => unsub();
+  }, [educatorId, selectedBatch]);
+
+  const daySlots = useMemo(
+    () =>
+      slots
+        .filter((s) => s.dayOfWeek === date.getDay())
+        .sort((a, b) => a.startTime.localeCompare(b.startTime)),
+    [slots, date]
+  );
+
+  useEffect(() => {
+    if (daySlots.length > 0 && !daySlots.some((s) => s.id === selectedSlotId)) {
+      setSelectedSlotId(daySlots[0].id);
+    } else if (daySlots.length === 0) {
+      setSelectedSlotId("");
+    }
+  }, [daySlots, selectedSlotId]);
+
+  const sessionId = selectedSlotId ? `${selectedSlotId}_${dateStr}` : dateStr;
+  const selectedSlot = daySlots.find((s) => s.id === selectedSlotId) || null;
+
+  // Load existing session for this batch+date(+slot), if any
   useEffect(() => {
     if (!educatorId || !selectedBatch) return;
     setSessionLoaded(false);
@@ -157,14 +220,14 @@ export default function Attendance() {
       "batches",
       selectedBatch.id,
       "sessions",
-      dateStr
+      sessionId
     );
     getDoc(ref).then((snap) => {
       const existing = (snap.exists() ? snap.data().attendance : {}) || {};
       setStatuses(existing);
       setSessionLoaded(true);
     });
-  }, [educatorId, selectedBatch, dateStr]);
+  }, [educatorId, selectedBatch, sessionId]);
 
   const effectiveStatuses: Record<string, Status> = useMemo(() => {
     const out: Record<string, Status> = {};
@@ -201,7 +264,7 @@ export default function Attendance() {
         "batches",
         selectedBatch.id,
         "sessions",
-        dateStr
+        sessionId
       );
       await setDoc(
         ref,
@@ -211,6 +274,13 @@ export default function Attendance() {
           batchName: selectedBatch.name,
           attendance: effectiveStatuses,
           markedBy: educatorId,
+          ...(selectedSlot
+            ? {
+                slotId: selectedSlot.id,
+                subject: selectedSlot.subject,
+                teacherUid: selectedSlot.teacherUid,
+              }
+            : {}),
           updatedAt: Timestamp.now(),
           createdAt: Timestamp.now(),
         },
@@ -291,6 +361,34 @@ export default function Attendance() {
               {students.length} students
             </Badge>
           </div>
+
+          {selectedBatch &&
+            (daySlots.length > 0 ? (
+              <ToggleGroup
+                type="single"
+                value={selectedSlotId}
+                onValueChange={(v) => v && setSelectedSlotId(v)}
+                className="flex-wrap justify-start"
+              >
+                {daySlots.map((s) => (
+                  <ToggleGroupItem key={s.id} value={s.id} className="h-8 gap-1.5 px-3 text-xs">
+                    {s.subject}
+                    <span className="text-muted-foreground">
+                      {s.startTime}–{s.endTime}
+                    </span>
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+            ) : (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <CalendarClock className="h-3.5 w-3.5" />
+                No class scheduled for this batch on {format(date, "EEEE")}s —{" "}
+                <Link to="/educator/timetable" className="underline">
+                  set up a timetable
+                </Link>{" "}
+                or mark attendance without one below.
+              </p>
+            ))}
 
           {!selectedBatch ? null : students.length === 0 ? (
             <Card>

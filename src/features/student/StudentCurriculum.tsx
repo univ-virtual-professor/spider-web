@@ -17,7 +17,8 @@ import { Badge } from "@shared/ui/badge";
 import { Progress } from "@shared/ui/progress";
 import { Button } from "@shared/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@shared/ui/accordion";
-import { Layers, BookOpen, Eye, CheckCircle2, Circle, Loader2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Layers, BookOpen, Eye, CheckCircle2, Circle, Loader2, FileText } from "lucide-react";
 import ContentViewer from "./ContentViewer";
 
 type ModuleDoc = { id: string; title: string; description?: string; order: number };
@@ -27,6 +28,8 @@ type LessonDoc = {
   description?: string;
   order: number;
   contentIds: string[];
+  linkedTestId?: string;
+  linkedTestTitle?: string;
 };
 type ContentItem = {
   id: string;
@@ -271,7 +274,7 @@ export default function StudentCurriculum() {
                                   {lesson.description}
                                 </p>
                               )}
-                              {(lesson.contentIds || []).length > 0 && (
+                              {((lesson.contentIds || []).length > 0 || lesson.linkedTestId) && (
                                 <div className="mt-2 flex flex-wrap gap-1.5">
                                   {lesson.contentIds.map((cid) => {
                                     const item = content[cid];
@@ -290,6 +293,19 @@ export default function StudentCurriculum() {
                                       </Button>
                                     );
                                   })}
+                                  {lesson.linkedTestId && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 gap-1.5 text-xs"
+                                      asChild
+                                    >
+                                      <Link to={`/student/tests/${lesson.linkedTestId}`}>
+                                        <FileText className="h-3 w-3" />
+                                        Take Test: {lesson.linkedTestTitle || "Test"}
+                                      </Link>
+                                    </Button>
+                                  )}
                                 </div>
                               )}
                             </div>

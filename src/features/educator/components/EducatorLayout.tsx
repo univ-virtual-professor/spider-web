@@ -26,6 +26,7 @@ import {
   ClipboardCheck,
   FileCheck2,
   CalendarCheck,
+  CalendarClock,
   Layers,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
@@ -209,6 +210,12 @@ function EducatorLayoutInner() {
         icon: CalendarCheck,
         label: "Attendance",
         href: "/educator/attendance",
+        workspace: "lms",
+      });
+      items.push({
+        icon: CalendarClock,
+        label: "Timetable",
+        href: "/educator/timetable",
         workspace: "lms",
       });
     }
@@ -453,7 +460,7 @@ function EducatorLayoutInner() {
                         : "text-muted-foreground hover:text-foreground"
                     )}
                   >
-                    LMS
+                    Academics
                   </button>
                   <button
                     type="button"

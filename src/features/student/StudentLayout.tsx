@@ -23,6 +23,7 @@ import {
   Sparkles,
   Layers,
   CalendarCheck,
+  CalendarClock,
   GraduationCap,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
@@ -280,6 +281,12 @@ function StudentLayoutInner() {
       { icon: ClipboardList, label: "My Results", href: "/student/my-results", workspace: "test" },
       { icon: Layers, label: "Curriculum", href: "/student/curriculum", workspace: "course" },
       {
+        icon: CalendarClock,
+        label: "Timetable",
+        href: "/student/timetable",
+        workspace: "course",
+      },
+      {
         icon: CalendarCheck,
         label: "Attendance",
         href: "/student/attendance",
@@ -451,7 +458,7 @@ function StudentLayoutInner() {
                         : "text-muted-foreground hover:text-foreground"
                     )}
                   >
-                    My Course
+                    Academics
                   </button>
                   <button
                     type="button"

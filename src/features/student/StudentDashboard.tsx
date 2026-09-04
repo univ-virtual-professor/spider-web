@@ -43,7 +43,16 @@ import {
   where,
 } from "firebase/firestore";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, GraduationCap, Users2, Zap as DppIcon, BookOpenCheck } from "lucide-react";
+import {
+  BookOpen,
+  GraduationCap,
+  Users2,
+  Zap as DppIcon,
+  BookOpenCheck,
+  CalendarClock,
+  Video,
+  MapPin,
+} from "lucide-react";
 
 type AttemptStatus = "in-progress" | "completed" | "expired";
 
@@ -238,6 +247,52 @@ export default function StudentDashboard() {
   });
 
   const studentBatchId = profile?.batchId;
+
+  // Today's timetable slots for the student's batch
+  const { data: todayClasses = [], isFetched: todayClassesFetched } = useQuery({
+    queryKey: [
+      "studentTodayClasses",
+      educatorId,
+      profile?.branchId,
+      profile?.courseId,
+      studentBatchId,
+    ],
+    queryFn: async () => {
+      const snap = await getDocs(
+        query(
+          collection(
+            db,
+            "educators",
+            educatorId!,
+            "branches",
+            profile!.branchId,
+            "courses",
+            profile!.courseId,
+            "batches",
+            studentBatchId!,
+            "timetable"
+          ),
+          where("dayOfWeek", "==", new Date().getDay())
+        )
+      );
+      return snap.docs
+        .map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            subject: String(data.subject || "Class"),
+            startTime: String(data.startTime || ""),
+            endTime: String(data.endTime || ""),
+            teacherName: String(data.teacherName || ""),
+            mode: data.mode as "offline" | "online",
+            meetingLink: data.meetingLink as string | undefined,
+          };
+        })
+        .sort((a, b) => a.startTime.localeCompare(b.startTime));
+    },
+    enabled: canLoad && !!profile?.branchId && !!profile?.courseId && !!studentBatchId,
+    staleTime: 5 * 60 * 1000,
+  });
 
   // All tests split into running / unlocked (via access code) / upcoming
   const {
@@ -614,6 +669,46 @@ export default function StudentDashboard() {
           </Link>
         </Button>
       </div>
+
+      {/* Today's Classes */}
+      {todayClassesFetched && todayClasses.length > 0 && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CalendarClock className="h-4 w-4" />
+              Today's Classes
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {todayClasses.map((c) => (
+              <div
+                key={c.id}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card px-3 py-2.5"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{c.subject}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {c.startTime}–{c.endTime} · {c.teacherName}
+                  </p>
+                </div>
+                {c.mode === "online" && c.meetingLink ? (
+                  <Button size="sm" variant="outline" className="shrink-0 gap-1.5" asChild>
+                    <a href={c.meetingLink} target="_blank" rel="noreferrer">
+                      <Video className="h-3.5 w-3.5" />
+                      Join
+                    </a>
+                  </Button>
+                ) : (
+                  <Badge variant="outline" className="shrink-0 gap-1 text-[10px]">
+                    <MapPin className="h-3 w-3" />
+                    {c.mode}
+                  </Badge>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Daily Quote */}
       {tenant?.quotes && tenant.quotes.length > 0 && (

@@ -137,7 +137,12 @@ type StudentStatCard = {
   hint: string;
 };
 
-type SessionDoc = { id: string; date: string; status?: "present" | "absent" | "late" };
+type SessionDoc = {
+  id: string;
+  date: string;
+  subject?: string;
+  status?: "present" | "absent" | "late";
+};
 type ManualGradeDoc = {
   id: string;
   title: string;
@@ -292,6 +297,7 @@ export default function StudentDetails() {
             return {
               id: d.id,
               date: String(data.date || d.id),
+              subject: data.subject ? String(data.subject) : undefined,
               status: (data.attendance || {})[studentId],
             };
           })
@@ -723,15 +729,18 @@ export default function StudentDetails() {
                 <div className="divide-y divide-border/50">
                   {sessions.map((s) => (
                     <div key={s.id} className="flex items-center justify-between px-6 py-3">
-                      <p className="text-sm">
-                        {(() => {
-                          try {
-                            return format(parseISO(s.date), "EEEE, MMM d, yyyy");
-                          } catch {
-                            return s.date;
-                          }
-                        })()}
-                      </p>
+                      <div>
+                        <p className="text-sm">
+                          {(() => {
+                            try {
+                              return format(parseISO(s.date), "EEEE, MMM d, yyyy");
+                            } catch {
+                              return s.date;
+                            }
+                          })()}
+                        </p>
+                        {s.subject && <p className="text-xs text-muted-foreground">{s.subject}</p>}
+                      </div>
                       <Badge
                         variant="outline"
                         className={cn(
