@@ -139,7 +139,11 @@ export default function StudentTests() {
         orderBy("createdAt", "desc")
       );
       const snap = await getDocs(qTests);
-      const all = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      const all = snap.docs
+        .map((d) => ({ id: d.id, ...(d.data() as any) }))
+        // Personalized practice tests are private to the student who generated
+        // them — surfaced only via /student/practice, not the shared test grid.
+        .filter((t: any) => t.type !== "personalized");
       const visible = all.filter((t: any) =>
         t.targetBatches === undefined || t.targetBatches === null
           ? true
@@ -166,7 +170,13 @@ export default function StudentTests() {
           };
         }
         if (assignment.accessType === "open") {
-          return { ...assignmentBase, isPublic: true, startTime: null, endTime: null, isScheduleActive: false };
+          return {
+            ...assignmentBase,
+            isPublic: true,
+            startTime: null,
+            endTime: null,
+            isScheduleActive: false,
+          };
         }
         // access_code: no time-based schedule; test is visible but locked until code entered
         return { ...assignmentBase, startTime: null, endTime: null, isScheduleActive: false };

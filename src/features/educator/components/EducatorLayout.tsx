@@ -51,7 +51,34 @@ import { PERMISSIONS } from "@shared/lib/rolesConfig";
 import { useAppTokenBootstrap } from "@shared/hooks/useAppTokenBootstrap";
 
 type SubItem = { icon: any; label: string; href: string; badge?: number };
-type SidebarItem = { icon: any; label: string; href: string; badge?: number; children?: SubItem[] };
+type Workspace = "lms" | "test";
+type SidebarItem = {
+  icon: any;
+  label: string;
+  href: string;
+  badge?: number;
+  children?: SubItem[];
+  // Which workspace this item belongs to in the LMS / Test Platform switcher.
+  // Omitted (or "both") means it shows regardless of the selected workspace.
+  workspace?: Workspace | "both";
+};
+
+const WORKSPACE_STORAGE_KEY = "pk_educator_workspace";
+// Routes that live under the Test Platform grouping — used to infer a sensible
+// default workspace from the current URL (e.g. a deep link into DPP Generator).
+const TEST_PLATFORM_PATH_PREFIXES = [
+  "/educator/test-series",
+  "/educator/question-bank",
+  "/educator/scheduled-tests",
+  "/educator/scheduled-dpps",
+  "/educator/dpp",
+  "/educator/access-codes",
+  "/educator/reported-questions",
+  "/educator/review-submissions",
+  "/educator/proctoring",
+  "/educator/exam-grading",
+  "/educator/question-papers",
+];
 
 function initials(name: string) {
   const parts = (name || "").trim().split(/\s+/).filter(Boolean);
@@ -72,6 +99,28 @@ function EducatorLayoutInner() {
   const [examConfig, setExamConfig] = useState<any>(null);
   const location = useLocation();
   const navigate = useNavigate();
+
+  const [workspace, setWorkspace] = useState<Workspace>(() => {
+    try {
+      const stored = window.localStorage.getItem(WORKSPACE_STORAGE_KEY) as Workspace | null;
+      if (stored === "lms" || stored === "test") return stored;
+    } catch {
+      // localStorage unavailable — fall through to path-based default
+    }
+    return TEST_PLATFORM_PATH_PREFIXES.some((p) => location.pathname.startsWith(p))
+      ? "test"
+      : "lms";
+  });
+
+  const setWorkspaceAndPersist = (next: Workspace) => {
+    setWorkspace(next);
+    try {
+      window.localStorage.setItem(WORKSPACE_STORAGE_KEY, next);
+    } catch {
+      // ignore — per-viewer convenience only
+    }
+    navigate(next === "test" ? "/educator/test-series" : "/educator/dashboard");
+  };
 
   const isApp =
     new URLSearchParams(window.location.search).get("_app") === "1" ||
@@ -176,16 +225,28 @@ function EducatorLayoutInner() {
     const subjectiveEnabled = examConfig?.subjective?.enabled ?? false;
 
     const items: SidebarItem[] = [
-      { icon: LayoutDashboard, label: "Dashboard", href: "/educator/dashboard" },
+      { icon: LayoutDashboard, label: "Dashboard", href: "/educator/dashboard", workspace: "lms" },
     ];
 
     if (!isEmployee || hasPermission(PERMISSIONS.STUDENTS_VIEW)) {
-      items.push({ icon: Users, label: "Batches", href: "/educator/batches" });
-      items.push({ icon: UserCheck, label: "Students", href: "/educator/learners" });
+      items.push({ icon: Users, label: "Batches", href: "/educator/batches", workspace: "lms" });
+      items.push({
+        icon: UserCheck,
+        label: "Students",
+        href: "/educator/learners",
+        workspace: "lms",
+      });
     }
 
     if (!isEmployee || hasPermission(PERMISSIONS.ANALYTICS_VIEW)) {
-      items.push({ icon: BarChart3, label: "Analytics", href: "/educator/analytics" });
+      // Mixes student-growth (LMS) and attempt/score (Test Platform) metrics —
+      // shown in both workspaces rather than picking one.
+      items.push({
+        icon: BarChart3,
+        label: "Analytics",
+        href: "/educator/analytics",
+        workspace: "both",
+      });
     }
 
     // Build Test Series children based on permissions
@@ -234,19 +295,33 @@ function EducatorLayoutInner() {
         label: "Objective Exams",
         href: "/educator/test-series",
         children: testChildren.length > 0 ? testChildren : undefined,
+        workspace: "test",
       });
     }
 
     if (!isEmployee || hasPermission(PERMISSIONS.CONTENT_VIEW)) {
-      items.push({ icon: BookOpen, label: "Content", href: "/educator/content" });
+      items.push({ icon: BookOpen, label: "Content", href: "/educator/content", workspace: "lms" });
     }
 
     if (subjectiveEnabled && (!isEmployee || hasPermission(PERMISSIONS.TESTS_VIEW))) {
-      items.push({ icon: FileCheck2, label: "Subjective Exams", href: "/educator/exam-grading" });
+      items.push({
+        icon: FileCheck2,
+        label: "Subjective Exams",
+        href: "/educator/exam-grading",
+        workspace: "test",
+      });
     }
 
     return items;
   }, [isEmployee, empLoading, hasPermission, pendingReviewCount, examConfig]);
+
+  const visibleSidebarItems = useMemo(
+    () =>
+      sidebarItems.filter(
+        (item) => !item.workspace || item.workspace === "both" || item.workspace === workspace
+      ),
+    [sidebarItems, workspace]
+  );
 
   const isActive = (href: string) => {
     if (href === "/educator/dashboard")
@@ -381,13 +456,44 @@ function EducatorLayoutInner() {
               </Button>
             </div>
 
+            {!sidebarCollapsed && (
+              <div className="border-b border-border p-3">
+                <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+                  <button
+                    type="button"
+                    onClick={() => setWorkspaceAndPersist("lms")}
+                    className={cn(
+                      "rounded-md px-2 py-1.5 text-xs font-semibold transition-colors",
+                      workspace === "lms"
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    LMS
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWorkspaceAndPersist("test")}
+                    className={cn(
+                      "rounded-md px-2 py-1.5 text-xs font-semibold transition-colors",
+                      workspace === "test"
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Test Platform
+                  </button>
+                </div>
+              </div>
+            )}
+
             <nav className="flex-1 space-y-1 overflow-y-auto p-4">
               {isEmployee && empLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <div className="h-5 w-5 animate-spin rounded-full border-2 border-border border-t-muted-foreground" />
                 </div>
               ) : null}
-              {sidebarItems.map((item) => {
+              {visibleSidebarItems.map((item) => {
                 const active = isActive(item.href);
                 const childActive = isChildActive(item);
                 const hasChildren = !!item.children?.length;

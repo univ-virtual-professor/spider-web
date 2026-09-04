@@ -32,7 +32,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Dialog } from "@shared/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@shared/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@shared/ui/popover";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -340,60 +339,62 @@ export default function TestSeries() {
     const uid = currentUser.uid;
 
     // Load all branches, courses/programs, and batches for cascading filters and batch-assignment dialog
-    getDocs(collection(db, "educators", uid, "branches")).then(async (branchSnap) => {
-      const branchList: { id: string; name: string }[] = [];
-      const programList: { id: string; name: string; branchId: string }[] = [];
-      const batchList: any[] = [];
+    getDocs(collection(db, "educators", uid, "branches"))
+      .then(async (branchSnap) => {
+        const branchList: { id: string; name: string }[] = [];
+        const programList: { id: string; name: string; branchId: string }[] = [];
+        const batchList: any[] = [];
 
-      await Promise.all(
-        branchSnap.docs.map(async (branchDoc) => {
-          const branchData = branchDoc.data();
-          branchList.push({ id: branchDoc.id, name: branchData.name || "Unnamed Branch" });
+        await Promise.all(
+          branchSnap.docs.map(async (branchDoc) => {
+            const branchData = branchDoc.data();
+            branchList.push({ id: branchDoc.id, name: branchData.name || "Unnamed Branch" });
 
-          const courseSnap = await getDocs(
-            collection(db, "educators", uid, "branches", branchDoc.id, "courses")
-          );
+            const courseSnap = await getDocs(
+              collection(db, "educators", uid, "branches", branchDoc.id, "courses")
+            );
 
-          await Promise.all(
-            courseSnap.docs.map(async (courseDoc) => {
-              const courseData = courseDoc.data();
-              programList.push({
-                id: courseDoc.id,
-                name: courseData.name || "Unnamed Program",
-                branchId: branchDoc.id,
-              });
-
-              const batchSnap = await getDocs(
-                collection(
-                  db,
-                  "educators",
-                  uid,
-                  "branches",
-                  branchDoc.id,
-                  "courses",
-                  courseDoc.id,
-                  "batches"
-                )
-              );
-              batchSnap.docs.forEach((b) => {
-                const batchData = b.data();
-                batchList.push({
-                  id: b.id,
-                  name: batchData.name || "Unnamed Batch",
-                  courseId: courseDoc.id,
+            await Promise.all(
+              courseSnap.docs.map(async (courseDoc) => {
+                const courseData = courseDoc.data();
+                programList.push({
+                  id: courseDoc.id,
+                  name: courseData.name || "Unnamed Program",
                   branchId: branchDoc.id,
-                  label: `${branchData.name || "Unnamed Branch"} / ${courseData.name || "Unnamed Program"} / ${batchData.name || "Unnamed Batch"}`,
                 });
-              });
-            })
-          );
-        })
-      );
 
-      setBranches(branchList);
-      setPrograms(programList);
-      setAllBatches(batchList);
-    }).catch(() => toast.error("Failed to load batches"));
+                const batchSnap = await getDocs(
+                  collection(
+                    db,
+                    "educators",
+                    uid,
+                    "branches",
+                    branchDoc.id,
+                    "courses",
+                    courseDoc.id,
+                    "batches"
+                  )
+                );
+                batchSnap.docs.forEach((b) => {
+                  const batchData = b.data();
+                  batchList.push({
+                    id: b.id,
+                    name: batchData.name || "Unnamed Batch",
+                    courseId: courseDoc.id,
+                    branchId: branchDoc.id,
+                    label: `${branchData.name || "Unnamed Branch"} / ${courseData.name || "Unnamed Program"} / ${batchData.name || "Unnamed Batch"}`,
+                  });
+                });
+              })
+            );
+          })
+        );
+
+        setBranches(branchList);
+        setPrograms(programList);
+        setAllBatches(batchList);
+      })
+      .catch(() => toast.error("Failed to load batches"));
 
     // Load educator preferences
     const unsubEdu = onSnapshot(doc(db, "educators", uid), (snap) => {
@@ -430,7 +431,11 @@ export default function TestSeries() {
     const unsubMy = onSnapshot(
       myTestsQ,
       async (snap) => {
-        const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        // Student-generated personalized practice tests are private and don't
+        // belong in the educator's own test-authoring list.
+        const rows = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((t: any) => t.type !== "personalized");
         setMyTests(rows);
 
         // Async drift check — non-blocking; errors silently ignored
@@ -548,7 +553,11 @@ export default function TestSeries() {
               name: test.subject || "General",
               questionsCount: noSectionsTarget,
               format: test.questionFormat || "",
-              chapters: Array.isArray(test.chapters) ? test.chapters : test.chapter ? [test.chapter] : [],
+              chapters: Array.isArray(test.chapters)
+                ? test.chapters
+                : test.chapter
+                  ? [test.chapter]
+                  : [],
               topics: Array.isArray(test.topics) ? test.topics : [],
               tags: Array.isArray(test.tags) ? test.tags : [],
               markingScheme: test.markingScheme || null,
@@ -629,7 +638,13 @@ export default function TestSeries() {
           name: s.name,
           questionsCount: remaining,
           subject: s.subject,
-          chapters: Array.isArray(s.chapters) ? s.chapters : Array.isArray(s.chapter) ? s.chapter : s.chapter ? [s.chapter] : undefined,
+          chapters: Array.isArray(s.chapters)
+            ? s.chapters
+            : Array.isArray(s.chapter)
+              ? s.chapter
+              : s.chapter
+                ? [s.chapter]
+                : undefined,
           topics: s.topics,
           tags: s.tags,
           format: s.format,
@@ -685,7 +700,7 @@ export default function TestSeries() {
             questionOrder: order++,
             addedAt: serverTimestamp(),
             questionType: normalizeQuestionType(rest.questionType || rest.format || "MCQ_SINGLE"),
-            ...((_sectionId) && { sectionId: _sectionId }),
+            ...(_sectionId && { sectionId: _sectionId }),
           };
           batch.set(qRef, qData);
           usedIds.add(id);
@@ -1146,7 +1161,10 @@ export default function TestSeries() {
       };
       if (Array.isArray(values.sections) && values.sections.length > 0) {
         update.sections = values.sections;
-        update.questionsCount = values.sections.reduce((a: number, s: any) => a + (Number(s.questionsCount) || 0), 0);
+        update.questionsCount = values.sections.reduce(
+          (a: number, s: any) => a + (Number(s.questionsCount) || 0),
+          0
+        );
         update.questionsTarget = update.questionsCount;
       } else {
         update.sections = [];
@@ -1219,7 +1237,8 @@ export default function TestSeries() {
       payload.questionsCount = Number(values.questionsCount) || 0;
       payload.questionsTarget = payload.questionsCount;
       if (values.questionFormat) payload.questionFormat = values.questionFormat;
-      if (Array.isArray(values.chapters) && values.chapters.length) payload.chapters = values.chapters;
+      if (Array.isArray(values.chapters) && values.chapters.length)
+        payload.chapters = values.chapters;
       if (Array.isArray(values.topics) && values.topics.length) payload.topics = values.topics;
       if (Array.isArray(values.tags) && values.tags.length) payload.tags = values.tags;
     }
@@ -1408,7 +1427,13 @@ export default function TestSeries() {
           </Button>
         </div>
 
-        <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setEditingTest(null); }}>
+        <Dialog
+          open={createOpen}
+          onOpenChange={(open) => {
+            setCreateOpen(open);
+            if (!open) setEditingTest(null);
+          }}
+        >
           <CreateCustomTest {...creatCustomTestState} />
         </Dialog>
 
@@ -1888,7 +1913,6 @@ export default function TestSeries() {
                                           </Badge>
                                         )}
                                       </div>
-
                                     </div>
 
                                     <div className="mt-4 space-y-2 border-t pt-4">

@@ -9,6 +9,7 @@ import StudentContent from "@features/student/StudentContent";
 import StudentDashboard from "@features/student/StudentDashboard";
 import StudentLayout from "@features/student/StudentLayout";
 import StudentMessages from "@features/student/StudentMessages";
+import PracticeGenerator from "@features/student/PracticeGenerator";
 import StudentRankings from "@features/student/StudentRankings";
 import StudentReports from "@features/student/StudentReports";
 import StudentResults from "@features/student/StudentResults";
@@ -37,6 +38,7 @@ export function getStudentRoutes() {
         <Route path="content" element={<StudentContent />} />
         <Route path="chatbot" element={<StudentChatbot />} />
         <Route path="reports" element={<StudentReports />} />
+        <Route path="practice" element={<PracticeGenerator />} />
         <Route path="my-results" element={<StudentAllResults />} />
         <Route path="exam-results" element={<StudentExamResultsList />} />
         <Route path="exam-results/:sheetId" element={<StudentExamResultDetail />} />

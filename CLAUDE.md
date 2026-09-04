@@ -79,7 +79,8 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
 - `/educator/organization` — Branches, Programs, and **Employees** tabs; employees tab: invite staff, assign role + branch scope, filter list
 - `/student/*` — student portal (dashboard, tests, results, rankings, content)
 - `/student/dashboard` — live tests grid, resume in-progress, rank + avg score, leaderboard preview (top 5), score trend
-- `/student/reports` — performance analytics: readiness score, weak areas, strong holds, strategy list, subject accuracy bar chart, weekly trend line chart; calls `monkey-king GET /api/reports/my` (STUDENT auth via Firebase ID token); Refresh button calls `POST /api/reports/recompute` (202, rate-limited 10 min)
+- `/student/reports` — performance analytics: readiness score, weak areas, strong holds, strategy list, subject accuracy bar chart, weekly trend line chart; calls `monkey-king GET /api/reports/my` (STUDENT auth via Firebase ID token); Refresh button calls `POST /api/reports/recompute` (202, rate-limited 10 min); subject filter + "Show all" toggle over the now-uncapped `weak_areas_full`/`strong_holds_full`; "Practice this" per weak-area row → `/student/practice`
+- `/student/practice` — Personalized Practice Generator (new, master_revamped); Auto (from weak areas) / Custom mode toggle, question-count slider; calls `monkey-king GET/POST /api/test/personalized/*`; on generate, redirects straight into `StudentCBTAttempt` (`/student/tests/:testId/attempt`) — no separate detail step
 - `/student/content` — view books/notes for enrolled course
 
 ## Employee RBAC System
@@ -250,6 +251,20 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
 - **ScheduledAssessmentsList enhancement**:
   - Shows actual batch names (resolved from IDs) instead of "N Batch(es) assigned"
   - "Manage by Batch" shortcut button → `/educator/batches`
+
+## Personalized Practice Generator (master_revamped)
+
+- **Route**: `/student/practice` — `src/features/student/PracticeGenerator.tsx`; API client `src/features/student/practice/api.ts` (mirrors `examResults/api.ts`'s fetch pattern, `VITE_MONKEY_KING_API_URL` + Firebase ID token)
+- **Backend**: `monkey-king /api/test/personalized/*` — `GET /filters` (distinct subject/chapter/topic tree + current weak areas), `POST /generate` (`{mode, subject?, chapters?, topics?, difficulty?, question_count}` → `{testId}`)
+- No LLM involved — monkey-king's `personalized_test_manager.py` does a plain weighted allocation across the student's weak (subject, chapter, topic) nodes and samples from a Postgres question pool (synced from `qbank-scraper`, see monkey-king's CLAUDE.md)
+- Generated tests are normal `educators/{uid}/my_tests/{testId}` docs (`type: "personalized"`, `visibility: "private"`) under the _student's own_ educator — reuses `StudentCBTAttempt` and the whole existing attempt/scoring/report pipeline. Excluded from `StudentTests.tsx`'s grid and `TestSeries.tsx`'s educator listing via a `type !== "personalized"` filter.
+
+## Workspace Split — LMS vs Test Platform (master_revamped)
+
+- Nav-only reorganization, no route renames (preserves bookmarks, batchAssignment links, and the `spider-desktop` deep link which references `testId`/`assignmentId`, not paths).
+- **Educator** (`EducatorLayout.tsx`): a two-way segmented switcher ("LMS" / "Test Platform") above the sidebar nav, persisted in `localStorage` (`pk_educator_workspace`), defaulted from the current pathname on first load. `sidebarItems` entries carry an optional `workspace: "lms" | "test" | "both"` tag; `visibleSidebarItems` filters by the active workspace. LMS: Dashboard, Batches, Students. Test Platform: Objective Exams (+children), Subjective Exams. Analytics is tagged `"both"` (mixes growth and attempt metrics). Organization/Billing/Settings remain in the profile dropdown, unaffected by the switcher.
+- **Student** (`StudentLayout.tsx`): same pattern, "My Course" / "Test Platform" switcher (`pk_student_workspace`). My Course: Dashboard, Content, AI Tutor. Test Platform: Tests, My Results, Reports, Practice for Me, Rankings.
+- No Attendance/Grades modules built in this pass (confirmed absent from the codebase before this change) — deferred.
 
 ## Desktop Exam Integration (spider-desktop)
 

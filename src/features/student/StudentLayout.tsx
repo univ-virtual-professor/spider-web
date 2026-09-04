@@ -20,6 +20,7 @@ import {
   Bot,
   BarChart2,
   Lock,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
@@ -69,12 +70,49 @@ function safeStr(v: any, fallback = "") {
   return typeof v === "string" && v.trim() ? v.trim() : fallback;
 }
 
+type StudentWorkspace = "course" | "test";
+const STUDENT_WORKSPACE_STORAGE_KEY = "pk_student_workspace";
+const STUDENT_TEST_PLATFORM_PATH_PREFIXES = [
+  "/student/tests",
+  "/student/my-results",
+  "/student/attempts",
+  "/student/results",
+  "/student/reports",
+  "/student/rankings",
+  "/student/practice",
+  "/student/exam-results",
+];
+
 export default function StudentLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
+
+  const [workspace, setWorkspace] = useState<StudentWorkspace>(() => {
+    try {
+      const stored = window.localStorage.getItem(
+        STUDENT_WORKSPACE_STORAGE_KEY
+      ) as StudentWorkspace | null;
+      if (stored === "course" || stored === "test") return stored;
+    } catch {
+      // localStorage unavailable — fall through to path-based default
+    }
+    return STUDENT_TEST_PLATFORM_PATH_PREFIXES.some((p) => location.pathname.startsWith(p))
+      ? "test"
+      : "course";
+  });
+
+  const setWorkspaceAndPersist = (next: StudentWorkspace) => {
+    setWorkspace(next);
+    try {
+      window.localStorage.setItem(STUDENT_WORKSPACE_STORAGE_KEY, next);
+    } catch {
+      // ignore — per-viewer convenience only
+    }
+    navigate(next === "test" ? "/student/tests" : "/student/dashboard");
+  };
 
   const { firebaseUser, profile, loading: authLoading } = useAuth();
   const { tenant, tenantSlug, loading: tenantLoading } = useTenant();
@@ -250,18 +288,35 @@ export default function StudentLayout() {
   }, [userDoc, profile, tenant]);
 
   const sidebarItems = useMemo<
-    { icon: any; label: string; href: string; badge?: string | number | null }[]
+    {
+      icon: any;
+      label: string;
+      href: string;
+      badge?: string | number | null;
+      workspace?: StudentWorkspace;
+    }[]
   >(
     () => [
-      { icon: LayoutDashboard, label: "Dashboard", href: "/student/dashboard" },
-      { icon: FileText, label: "Tests", href: "/student/tests" },
-      { icon: ClipboardList, label: "My Results", href: "/student/my-results" },
-      { icon: BookOpen, label: "Content", href: "/student/content" },
-      { icon: Bot, label: "AI Tutor", href: "/student/chatbot" },
-      { icon: BarChart2, label: "Reports", href: "/student/reports" },
-      { icon: Trophy, label: "Rankings", href: "/student/rankings" },
+      {
+        icon: LayoutDashboard,
+        label: "Dashboard",
+        href: "/student/dashboard",
+        workspace: "course",
+      },
+      { icon: FileText, label: "Tests", href: "/student/tests", workspace: "test" },
+      { icon: ClipboardList, label: "My Results", href: "/student/my-results", workspace: "test" },
+      { icon: BookOpen, label: "Content", href: "/student/content", workspace: "course" },
+      { icon: Bot, label: "AI Tutor", href: "/student/chatbot", workspace: "course" },
+      { icon: BarChart2, label: "Reports", href: "/student/reports", workspace: "test" },
+      { icon: Sparkles, label: "Practice for Me", href: "/student/practice", workspace: "test" },
+      { icon: Trophy, label: "Rankings", href: "/student/rankings", workspace: "test" },
     ],
     []
+  );
+
+  const visibleSidebarItems = useMemo(
+    () => sidebarItems.filter((item) => !item.workspace || item.workspace === workspace),
+    [sidebarItems, workspace]
   );
 
   const isActive = (href: string) => {
@@ -402,9 +457,40 @@ export default function StudentLayout() {
               </div>
             </div>
 
+            {!sidebarCollapsed && (
+              <div className="shrink-0 border-b border-border p-3">
+                <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+                  <button
+                    type="button"
+                    onClick={() => setWorkspaceAndPersist("course")}
+                    className={cn(
+                      "rounded-md px-2 py-1.5 text-xs font-semibold transition-colors",
+                      workspace === "course"
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    My Course
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWorkspaceAndPersist("test")}
+                    className={cn(
+                      "rounded-md px-2 py-1.5 text-xs font-semibold transition-colors",
+                      workspace === "test"
+                        ? "bg-card text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    Test Platform
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Navigation (no scroll) */}
             <nav className="shrink-0 space-y-1 p-4">
-              {sidebarItems.map((item) => {
+              {visibleSidebarItems.map((item) => {
                 const active = isActive(item.href);
                 return (
                   <Link

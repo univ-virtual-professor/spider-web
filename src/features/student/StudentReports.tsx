@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   BarChart,
@@ -29,6 +30,7 @@ import { useAuth } from "@app/providers/AuthProvider";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Badge } from "@shared/ui/badge";
 import { Button } from "@shared/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 
 const API_BASE = import.meta.env.VITE_MONKEY_KING_API_URL as string;
 
@@ -71,6 +73,8 @@ type Report = {
   overall_trend: string | null;
   weak_areas: WeakArea[];
   strong_holds: StrongHold[];
+  weak_areas_full: WeakArea[];
+  strong_holds_full: StrongHold[];
   strategies: Strategy[];
   subject_breakdown: SubjectBreakdown[];
   tag_gaps: string[];
@@ -220,10 +224,12 @@ function AreaList({
   title,
   items,
   variant,
+  onPractice,
 }: {
   title: string;
   items: WeakArea[];
   variant: "weak" | "strong";
+  onPractice?: (area: WeakArea) => void;
 }) {
   const isWeak = variant === "weak";
 
@@ -260,16 +266,28 @@ function AreaList({
                   <p className="truncate text-sm font-medium">{label}</p>
                   {sub && <p className="truncate text-xs text-muted-foreground">{sub}</p>}
                 </div>
-                <Badge
-                  variant={isWeak ? "destructive" : "default"}
-                  className={
-                    isWeak
-                      ? "shrink-0 bg-red-100 text-red-700 hover:bg-red-100"
-                      : "shrink-0 bg-green-100 text-green-700 hover:bg-green-100"
-                  }
-                >
-                  {pct(area.weighted_accuracy)}
-                </Badge>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Badge
+                    variant={isWeak ? "destructive" : "default"}
+                    className={
+                      isWeak
+                        ? "bg-red-100 text-red-700 hover:bg-red-100"
+                        : "bg-green-100 text-green-700 hover:bg-green-100"
+                    }
+                  >
+                    {pct(area.weighted_accuracy)}
+                  </Badge>
+                  {isWeak && onPractice && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => onPractice(area)}
+                    >
+                      Practice this
+                    </Button>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -442,7 +460,10 @@ function WeeklyTrendChart({ history }: { history: Record<string, WeeklyPoint[]> 
 export default function StudentReports() {
   const { firebaseUser } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [refreshing, setRefreshing] = useState(false);
+  const [subjectFilter, setSubjectFilter] = useState<string>("all");
+  const [showAll, setShowAll] = useState(false);
 
   const {
     data: report,
@@ -490,6 +511,30 @@ export default function StudentReports() {
     recomputeMutation.mutate();
   };
 
+  const handlePractice = (area: WeakArea) => {
+    navigate("/student/practice", {
+      state: {
+        subject: area.subject,
+        chapter: area.chapter || undefined,
+        topic: area.topic || undefined,
+      },
+    });
+  };
+
+  const subjectOptions = useMemo(
+    () => Array.from(new Set((report?.subject_breakdown ?? []).map((s) => s.subject))).sort(),
+    [report?.subject_breakdown]
+  );
+
+  const filterArea = (area: WeakArea) => subjectFilter === "all" || area.subject === subjectFilter;
+
+  const weakItems = (showAll ? (report?.weak_areas_full ?? []) : (report?.weak_areas ?? [])).filter(
+    filterArea
+  );
+  const strongItems = (
+    showAll ? (report?.strong_holds_full ?? []) : (report?.strong_holds ?? [])
+  ).filter(filterArea);
+
   // ── Header ────────────────────────────────────────────────────────────────
   const header = (
     <div className="flex items-start justify-between gap-4">
@@ -500,16 +545,22 @@ export default function StudentReports() {
         </p>
       </div>
       <div className="flex flex-col items-end gap-1">
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-2"
-          onClick={handleRefresh}
-          disabled={refreshing || recomputeMutation.isPending}
-        >
-          <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Button size="sm" className="gap-2" onClick={() => navigate("/student/practice")}>
+            <BookOpen className="h-4 w-4" />
+            Practice for Me
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={handleRefresh}
+            disabled={refreshing || recomputeMutation.isPending}
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+        </div>
         {report?.computed_at && (
           <span className="hidden text-xs text-muted-foreground md:block">
             {report.is_stale ? "Updating…" : `Updated ${timeAgo(report.computed_at)}`}
@@ -611,10 +662,37 @@ export default function StudentReports() {
         trend={report.overall_trend}
       />
 
+      {/* Filters */}
+      {subjectOptions.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+            <SelectTrigger className="h-8 w-[160px] text-sm">
+              <SelectValue placeholder="All subjects" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All subjects</SelectItem>
+              {subjectOptions.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={() => setShowAll((v) => !v)}
+          >
+            {showAll ? "Show top 5" : "Show all"}
+          </Button>
+        </div>
+      )}
+
       {/* Weak + Strong side by side on wide screens */}
       <div className="grid gap-4 md:grid-cols-2">
-        <AreaList title="Weak Areas" items={report.weak_areas} variant="weak" />
-        <AreaList title="Strong Holds" items={report.strong_holds} variant="strong" />
+        <AreaList title="Weak Areas" items={weakItems} variant="weak" onPractice={handlePractice} />
+        <AreaList title="Strong Holds" items={strongItems} variant="strong" />
       </div>
 
       {/* Strategies */}
