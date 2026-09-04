@@ -9,6 +9,9 @@ import {
   Billing,
   EducatorContent,
   EducatorDashboard,
+  TestPlatformDashboard,
+  Curriculum,
+  Attendance,
   Divisions,
   DppGenerator,
   InstituteBuilder,
@@ -47,6 +50,9 @@ export function getEducatorRoutes() {
     >
       <Route index element={<EducatorDashboard />} />
       <Route path="dashboard" element={<EducatorDashboard />} />
+      <Route path="testing" element={<TestPlatformDashboard />} />
+      <Route path="curriculum" element={<Curriculum />} />
+      <Route path="attendance" element={<Attendance />} />
       <Route path="students" element={<StudentsListing />} />
       <Route path="students/:studentId" element={<StudentDetails />} />
       <Route path="batches" element={<BatchesListing />} />

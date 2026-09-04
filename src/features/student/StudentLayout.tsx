@@ -21,6 +21,9 @@ import {
   BarChart2,
   Lock,
   Sparkles,
+  Layers,
+  CalendarCheck,
+  GraduationCap,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
@@ -44,6 +47,11 @@ import { getAuth, signOut } from "firebase/auth";
 import ImpersonationBanner from "@shared/components/ImpersonationBanner";
 import NotificationBell from "@shared/components/NotificationBell";
 import { WelcomeModal } from "./components/WelcomeModal";
+import {
+  StudentWorkspaceProvider,
+  useStudentWorkspace,
+  type StudentWorkspace,
+} from "@shared/contexts/StudentWorkspaceContext";
 
 type UserDoc = {
   displayName?: string;
@@ -70,49 +78,14 @@ function safeStr(v: any, fallback = "") {
   return typeof v === "string" && v.trim() ? v.trim() : fallback;
 }
 
-type StudentWorkspace = "course" | "test";
-const STUDENT_WORKSPACE_STORAGE_KEY = "pk_student_workspace";
-const STUDENT_TEST_PLATFORM_PATH_PREFIXES = [
-  "/student/tests",
-  "/student/my-results",
-  "/student/attempts",
-  "/student/results",
-  "/student/reports",
-  "/student/rankings",
-  "/student/practice",
-  "/student/exam-results",
-];
-
-export default function StudentLayout() {
+function StudentLayoutInner() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
 
-  const [workspace, setWorkspace] = useState<StudentWorkspace>(() => {
-    try {
-      const stored = window.localStorage.getItem(
-        STUDENT_WORKSPACE_STORAGE_KEY
-      ) as StudentWorkspace | null;
-      if (stored === "course" || stored === "test") return stored;
-    } catch {
-      // localStorage unavailable — fall through to path-based default
-    }
-    return STUDENT_TEST_PLATFORM_PATH_PREFIXES.some((p) => location.pathname.startsWith(p))
-      ? "test"
-      : "course";
-  });
-
-  const setWorkspaceAndPersist = (next: StudentWorkspace) => {
-    setWorkspace(next);
-    try {
-      window.localStorage.setItem(STUDENT_WORKSPACE_STORAGE_KEY, next);
-    } catch {
-      // ignore — per-viewer convenience only
-    }
-    navigate(next === "test" ? "/student/tests" : "/student/dashboard");
-  };
+  const { workspace, setWorkspace: setWorkspaceAndPersist } = useStudentWorkspace();
 
   const { firebaseUser, profile, loading: authLoading } = useAuth();
   const { tenant, tenantSlug, loading: tenantLoading } = useTenant();
@@ -305,6 +278,14 @@ export default function StudentLayout() {
       },
       { icon: FileText, label: "Tests", href: "/student/tests", workspace: "test" },
       { icon: ClipboardList, label: "My Results", href: "/student/my-results", workspace: "test" },
+      { icon: Layers, label: "Curriculum", href: "/student/curriculum", workspace: "course" },
+      {
+        icon: CalendarCheck,
+        label: "Attendance",
+        href: "/student/attendance",
+        workspace: "course",
+      },
+      { icon: GraduationCap, label: "Grades", href: "/student/grades", workspace: "course" },
       { icon: BookOpen, label: "Content", href: "/student/content", workspace: "course" },
       { icon: Bot, label: "AI Tutor", href: "/student/chatbot", workspace: "course" },
       { icon: BarChart2, label: "Reports", href: "/student/reports", workspace: "test" },
@@ -680,5 +661,13 @@ export default function StudentLayout() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function StudentLayout() {
+  return (
+    <StudentWorkspaceProvider>
+      <StudentLayoutInner />
+    </StudentWorkspaceProvider>
   );
 }

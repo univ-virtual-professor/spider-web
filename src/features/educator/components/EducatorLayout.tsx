@@ -25,6 +25,8 @@ import {
   AlertTriangle,
   ClipboardCheck,
   FileCheck2,
+  CalendarCheck,
+  Layers,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
@@ -47,11 +49,15 @@ import ImpersonationBanner from "@shared/components/ImpersonationBanner";
 import NotificationBell from "@shared/components/NotificationBell";
 import EducatorBroadcastModal from "./EducatorBroadcastModal";
 import { EmployeeProvider, useEmployee } from "@shared/contexts/EmployeeContext";
+import {
+  EducatorWorkspaceProvider,
+  useEducatorWorkspace,
+  type EducatorWorkspace,
+} from "@shared/contexts/EducatorWorkspaceContext";
 import { PERMISSIONS } from "@shared/lib/rolesConfig";
 import { useAppTokenBootstrap } from "@shared/hooks/useAppTokenBootstrap";
 
 type SubItem = { icon: any; label: string; href: string; badge?: number };
-type Workspace = "lms" | "test";
 type SidebarItem = {
   icon: any;
   label: string;
@@ -60,25 +66,8 @@ type SidebarItem = {
   children?: SubItem[];
   // Which workspace this item belongs to in the LMS / Test Platform switcher.
   // Omitted (or "both") means it shows regardless of the selected workspace.
-  workspace?: Workspace | "both";
+  workspace?: EducatorWorkspace | "both";
 };
-
-const WORKSPACE_STORAGE_KEY = "pk_educator_workspace";
-// Routes that live under the Test Platform grouping — used to infer a sensible
-// default workspace from the current URL (e.g. a deep link into DPP Generator).
-const TEST_PLATFORM_PATH_PREFIXES = [
-  "/educator/test-series",
-  "/educator/question-bank",
-  "/educator/scheduled-tests",
-  "/educator/scheduled-dpps",
-  "/educator/dpp",
-  "/educator/access-codes",
-  "/educator/reported-questions",
-  "/educator/review-submissions",
-  "/educator/proctoring",
-  "/educator/exam-grading",
-  "/educator/question-papers",
-];
 
 function initials(name: string) {
   const parts = (name || "").trim().split(/\s+/).filter(Boolean);
@@ -100,27 +89,7 @@ function EducatorLayoutInner() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [workspace, setWorkspace] = useState<Workspace>(() => {
-    try {
-      const stored = window.localStorage.getItem(WORKSPACE_STORAGE_KEY) as Workspace | null;
-      if (stored === "lms" || stored === "test") return stored;
-    } catch {
-      // localStorage unavailable — fall through to path-based default
-    }
-    return TEST_PLATFORM_PATH_PREFIXES.some((p) => location.pathname.startsWith(p))
-      ? "test"
-      : "lms";
-  });
-
-  const setWorkspaceAndPersist = (next: Workspace) => {
-    setWorkspace(next);
-    try {
-      window.localStorage.setItem(WORKSPACE_STORAGE_KEY, next);
-    } catch {
-      // ignore — per-viewer convenience only
-    }
-    navigate(next === "test" ? "/educator/test-series" : "/educator/dashboard");
-  };
+  const { workspace, setWorkspace: setWorkspaceAndPersist } = useEducatorWorkspace();
 
   const isApp =
     new URLSearchParams(window.location.search).get("_app") === "1" ||
@@ -234,6 +203,21 @@ function EducatorLayoutInner() {
         icon: UserCheck,
         label: "Students",
         href: "/educator/learners",
+        workspace: "lms",
+      });
+      items.push({
+        icon: CalendarCheck,
+        label: "Attendance",
+        href: "/educator/attendance",
+        workspace: "lms",
+      });
+    }
+
+    if (!isEmployee || hasPermission(PERMISSIONS.CONTENT_VIEW)) {
+      items.push({
+        icon: Layers,
+        label: "Curriculum",
+        href: "/educator/curriculum",
         workspace: "lms",
       });
     }
@@ -806,7 +790,9 @@ function EducatorLayoutInner() {
 export default function EducatorLayout() {
   return (
     <EmployeeProvider>
-      <EducatorLayoutInner />
+      <EducatorWorkspaceProvider>
+        <EducatorLayoutInner />
+      </EducatorWorkspaceProvider>
     </EmployeeProvider>
   );
 }
