@@ -24,6 +24,7 @@ import {
   Layers,
   CalendarCheck,
   CalendarClock,
+  CalendarDays,
   GraduationCap,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
@@ -87,6 +88,16 @@ function StudentLayoutInner() {
   const { theme, setTheme } = useTheme();
 
   const { workspace, setWorkspace: setWorkspaceAndPersist } = useStudentWorkspace();
+
+  // See the matching effect in EducatorLayout.tsx for why this toggles on
+  // <body> rather than relying on the layout root's own ds-scope class alone
+  // — Radix Dialog/Select/Popover/DropdownMenu content portals to
+  // document.body, and CSS custom properties only cascade through the real
+  // DOM tree.
+  useEffect(() => {
+    document.body.classList.add("ds-scope");
+    return () => document.body.classList.remove("ds-scope");
+  }, []);
 
   const { firebaseUser, profile, loading: authLoading } = useAuth();
   const { tenant, tenantSlug, loading: tenantLoading } = useTenant();
@@ -278,6 +289,12 @@ function StudentLayoutInner() {
         workspace: "course",
       },
       { icon: FileText, label: "Tests", href: "/student/tests", workspace: "test" },
+      {
+        icon: CalendarDays,
+        label: "Exam Schedule",
+        href: "/student/exam-schedule",
+        workspace: "test",
+      },
       { icon: ClipboardList, label: "My Results", href: "/student/my-results", workspace: "test" },
       { icon: Layers, label: "Curriculum", href: "/student/curriculum", workspace: "course" },
       {
@@ -357,9 +374,11 @@ function StudentLayoutInner() {
 
   // Root fixed height + overflow hidden => only main scrolls
   return (
-    <div className="flex h-[100dvh] min-h-screen flex-col overflow-hidden bg-background">
-      <ImpersonationBanner />
-      <div className="flex flex-1 overflow-hidden">
+    <div className="ds-scope flex h-[100dvh] min-h-screen flex-col overflow-hidden bg-background text-foreground print:h-auto print:min-h-0 print:overflow-visible">
+      <div className="print:hidden">
+        <ImpersonationBanner />
+      </div>
+      <div className="flex flex-1 overflow-hidden print:block print:overflow-visible">
         {/* Mobile Overlay */}
         <AnimatePresence>
           {sidebarOpen && (
@@ -376,7 +395,7 @@ function StudentLayoutInner() {
         {/* Sidebar: sticky + no scroll */}
         <aside
           className={cn(
-            "fixed left-0 top-0 z-50 h-[100dvh] w-64 border-r border-border bg-card transition-all duration-300 lg:static lg:translate-x-0",
+            "fixed left-0 top-0 z-50 h-[100dvh] w-64 border-r border-border bg-card transition-all duration-300 lg:static lg:translate-x-0 print:hidden",
             sidebarCollapsed ? "lg:w-20" : "lg:w-64",
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           )}
@@ -543,7 +562,7 @@ function StudentLayoutInner() {
         {/* Main */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Top Navbar */}
-          <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-border bg-card px-4 lg:px-6">
+          <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-border bg-card px-4 lg:px-6 print:hidden">
             <div className="flex items-center gap-4">
               <Button
                 variant="ghost"
@@ -634,7 +653,7 @@ function StudentLayoutInner() {
           </header>
 
           {/* ONLY this scrolls */}
-          <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-6">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-6 print:overflow-visible print:p-0">
             {!seatLoading && !seatActive ? (
               <div className="flex h-full min-h-[60vh] flex-col items-center justify-center gap-4 text-center">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">

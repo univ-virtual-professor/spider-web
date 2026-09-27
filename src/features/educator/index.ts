@@ -30,3 +30,7 @@ export { default as ProctoringReview } from "./ProctoringReview";
 export { default as ExamGradingList } from "./examGrading/ExamGradingList";
 export { default as ExamGradingDetail } from "./examGrading/ExamGradingDetail";
 export { default as ExamGradingReview } from "./examGrading/ExamGradingReview";
+export { default as ExamSchedule } from "./ExamSchedule";
+export { default as Enrolments } from "./Enrolments";
+export { default as AttendanceOps } from "./AttendanceOps";
+export { default as WebsitePages } from "./WebsitePages";

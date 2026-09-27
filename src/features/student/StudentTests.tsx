@@ -485,10 +485,10 @@ export default function StudentTests() {
 
   // Allowed
   return (
-    <div className="space-y-5 p-6">
+    <div className="space-y-5 p-6 font-ds-sans">
       <div className="flex items-center gap-2">
-        <ShieldCheck className="h-5 w-5 text-green-600" />
-        <h1 className="text-xl font-semibold">Available Tests</h1>
+        <ShieldCheck className="h-5 w-5 text-ds-positive" />
+        <h1 className="font-ds-serif text-[21px] font-semibold text-ds-ink">Available Tests</h1>
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "tests" | "dpp")}>

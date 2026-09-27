@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  addDoc,
   collection,
   doc,
   getDoc,
@@ -7,6 +8,7 @@ import {
   query,
   setDoc,
   Timestamp,
+  updateDoc,
   where,
 } from "firebase/firestore";
 import { format } from "date-fns";
@@ -15,21 +17,16 @@ import { Link, useLocation } from "react-router-dom";
 
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
+import { useEmployee } from "@shared/contexts/EmployeeContext";
 import { Button } from "@shared/ui/button";
-import { Card, CardContent } from "@shared/ui/card";
-import { Badge } from "@shared/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@shared/ui/popover";
 import { Calendar } from "@shared/ui/calendar";
+import { Textarea } from "@shared/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@shared/ui/dialog";
 import { ToggleGroup, ToggleGroupItem } from "@shared/ui/toggle-group";
-import {
-  CalendarCheck,
-  CalendarClock,
-  CalendarIcon,
-  Loader2,
-  CheckCheck,
-  Users as UsersIcon,
-} from "lucide-react";
+import { DsPageHeader, DsCard, DsDetailRail } from "@shared/ui/ds";
+import { CalendarClock, CalendarIcon, Loader2, MessageSquarePlus, Check, X } from "lucide-react";
 
 type Branch = { id: string; name: string };
 type Course = { id: string; branchId: string; name: string };
@@ -46,9 +43,21 @@ type Slot = {
 
 type Status = "present" | "absent" | "late";
 
+type CorrectionRequest = {
+  id: string;
+  studentId: string;
+  studentName: string;
+  currentStatus: Status;
+  requestedStatus: Status;
+  reason: string;
+  status: "pending" | "applied" | "rejected";
+  requestedByName: string;
+};
+
 export default function Attendance() {
   const { profile } = useAuth();
   const educatorId: string = profile?.uid ?? "";
+  const { isEmployee } = useEmployee();
   const location = useLocation();
   const navState = location.state as { batchId?: string; date?: string } | null;
 
@@ -66,6 +75,13 @@ export default function Attendance() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sessionLoaded, setSessionLoaded] = useState(false);
+  const [sessionTeacherUid, setSessionTeacherUid] = useState<string>("");
+  const [sessionExists, setSessionExists] = useState(false);
+  const [corrections, setCorrections] = useState<CorrectionRequest[]>([]);
+  const [correctionTarget, setCorrectionTarget] = useState<Student | null>(null);
+  const [correctionStatus, setCorrectionStatus] = useState<Status>("present");
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [correctionBusy, setCorrectionBusy] = useState(false);
 
   const selectedBatch = batches.find((b) => b.id === selectedBatchId) || null;
   const dateStr = format(date, "yyyy-MM-dd");
@@ -205,11 +221,9 @@ export default function Attendance() {
   const sessionId = selectedSlotId ? `${selectedSlotId}_${dateStr}` : dateStr;
   const selectedSlot = daySlots.find((s) => s.id === selectedSlotId) || null;
 
-  // Load existing session for this batch+date(+slot), if any
-  useEffect(() => {
-    if (!educatorId || !selectedBatch) return;
-    setSessionLoaded(false);
-    const ref = doc(
+  function sessionRef() {
+    if (!selectedBatch) return null;
+    return doc(
       db,
       "educators",
       educatorId,
@@ -222,12 +236,46 @@ export default function Attendance() {
       "sessions",
       sessionId
     );
+  }
+
+  // Load existing session for this batch+date(+slot), if any
+  useEffect(() => {
+    if (!educatorId || !selectedBatch) return;
+    setSessionLoaded(false);
+    const ref = sessionRef();
+    if (!ref) return;
     getDoc(ref).then((snap) => {
-      const existing = (snap.exists() ? snap.data().attendance : {}) || {};
-      setStatuses(existing);
+      const data = snap.exists() ? snap.data() : null;
+      setStatuses((data?.attendance as Record<string, Status>) || {});
+      setSessionTeacherUid(String(data?.teacherUid || ""));
+      setSessionExists(!!data);
       setSessionLoaded(true);
     });
   }, [educatorId, selectedBatch, sessionId]);
+
+  // Correction requests for this session (business rule #6) — Faculty who owns
+  // the session applies/rejects; Ops (or anyone else) sees them read-only here
+  // and files new ones from the org-wide AttendanceCorrections page instead.
+  useEffect(() => {
+    const ref = sessionRef();
+    if (!ref) {
+      setCorrections([]);
+      return;
+    }
+    const unsub = onSnapshot(collection(ref, "correctionRequests"), (snap) => {
+      setCorrections(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
+    });
+    return () => unsub();
+  }, [educatorId, selectedBatch, sessionId]);
+
+  // Business rule #6: once a session has a recorded owner (teacherUid), only
+  // that teacher (or the org head) can edit it directly — anyone else files a
+  // correction request instead of overwriting the record themselves. Before a
+  // session is ever saved, whoever marks it first becomes its owner, same as
+  // today's behavior.
+  const isSessionOwner =
+    !isEmployee || !sessionExists || !sessionTeacherUid || profile?.uid === sessionTeacherUid;
+  const pendingCorrections = corrections.filter((c) => c.status === "pending");
 
   const effectiveStatuses: Record<string, Status> = useMemo(() => {
     const out: Record<string, Status> = {};
@@ -250,7 +298,7 @@ export default function Attendance() {
   }
 
   async function saveSession() {
-    if (!educatorId || !selectedBatch) return;
+    if (!educatorId || !selectedBatch || !isSessionOwner) return;
     setSaving(true);
     try {
       const ref = doc(
@@ -294,35 +342,87 @@ export default function Attendance() {
     }
   }
 
+  function openCorrectionDialog(student: Student) {
+    setCorrectionTarget(student);
+    setCorrectionStatus(effectiveStatuses[student.id] || "present");
+    setCorrectionReason("");
+  }
+
+  async function submitCorrection() {
+    const ref = sessionRef();
+    if (!ref || !correctionTarget) return;
+    setCorrectionBusy(true);
+    try {
+      await addDoc(collection(ref, "correctionRequests"), {
+        studentId: correctionTarget.id,
+        studentName: correctionTarget.name,
+        currentStatus: effectiveStatuses[correctionTarget.id] || "present",
+        requestedStatus: correctionStatus,
+        reason: correctionReason.trim(),
+        status: "pending",
+        requestedBy: profile?.uid || "",
+        requestedByName: profile?.displayName || profile?.email || "Staff",
+        batchId: selectedBatch?.id,
+        batchName: selectedBatch?.name,
+        date: dateStr,
+        createdAt: Timestamp.now(),
+      });
+      toast.success("Correction requested");
+      setCorrectionTarget(null);
+    } catch {
+      toast.error("Failed to request correction");
+    } finally {
+      setCorrectionBusy(false);
+    }
+  }
+
+  async function resolveCorrection(correction: CorrectionRequest, apply: boolean) {
+    const ref = sessionRef();
+    if (!ref) return;
+    try {
+      if (apply) {
+        await updateDoc(ref, {
+          [`attendance.${correction.studentId}`]: correction.requestedStatus,
+          updatedAt: Timestamp.now(),
+        });
+      }
+      await updateDoc(doc(ref, "correctionRequests", correction.id), {
+        status: apply ? "applied" : "rejected",
+        resolvedBy: profile?.uid || "",
+        resolvedAt: Timestamp.now(),
+      });
+      toast.success(apply ? "Correction applied" : "Correction rejected");
+    } catch {
+      toast.error("Failed to resolve correction");
+    }
+  }
+
+  const absentCount = Object.values(effectiveStatuses).filter((s) => s === "absent").length;
+  const lateCount = Object.values(effectiveStatuses).filter((s) => s === "late").length;
+
   if (loading) {
     return (
       <div className="flex justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-6 w-6 animate-spin text-ds-slate" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-bold">
-          <CalendarCheck className="h-6 w-6" />
-          Attendance
-        </h1>
-        <p className="text-sm text-muted-foreground">Mark daily attendance for a batch.</p>
-      </div>
+    <div className="space-y-5 font-ds-sans">
+      <DsPageHeader title="Attendance" subtitle="Mark today's session and chase what's missing." />
 
       {batches.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
+        <DsCard className="p-12 text-center">
+          <p className="font-ds-sans text-[12.5px] text-ds-slate">
             No batches yet — create one under Batches first.
-          </CardContent>
-        </Card>
+          </p>
+        </DsCard>
       ) : (
         <>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex flex-wrap items-center gap-2">
             <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
-              <SelectTrigger className="w-full sm:w-72">
+              <SelectTrigger className="h-9 w-full border-ds-ink/15 sm:w-64">
                 <SelectValue placeholder="Select a batch" />
               </SelectTrigger>
               <SelectContent>
@@ -337,10 +437,10 @@ export default function Attendance() {
 
             <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="gap-2">
-                  <CalendarIcon className="h-4 w-4" />
+                <button className="flex h-9 items-center gap-2 rounded-md border border-ds-ink/15 px-3 font-ds-sans text-[12.5px] font-medium text-ds-ink hover:bg-ds-fill">
+                  <CalendarIcon className="h-3.5 w-3.5" />
                   {format(date, "MMM d, yyyy")}
-                </Button>
+                </button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start">
                 <Calendar
@@ -356,110 +456,263 @@ export default function Attendance() {
               </PopoverContent>
             </Popover>
 
-            <Badge variant="outline" className="gap-1.5 text-xs">
-              <UsersIcon className="h-3 w-3" />
-              {students.length} students
-            </Badge>
-          </div>
-
-          {selectedBatch &&
-            (daySlots.length > 0 ? (
-              <ToggleGroup
-                type="single"
-                value={selectedSlotId}
-                onValueChange={(v) => v && setSelectedSlotId(v)}
-                className="flex-wrap justify-start"
-              >
+            {selectedBatch && daySlots.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
                 {daySlots.map((s) => (
-                  <ToggleGroupItem key={s.id} value={s.id} className="h-8 gap-1.5 px-3 text-xs">
-                    {s.subject}
-                    <span className="text-muted-foreground">
+                  <button
+                    key={s.id}
+                    onClick={() => setSelectedSlotId(s.id)}
+                    className={
+                      "rounded-md px-2.5 py-1.5 font-ds-sans text-[12px] font-medium " +
+                      (selectedSlotId === s.id
+                        ? "bg-ds-accent/15 text-ds-accent"
+                        : "border border-ds-ink/15 text-ds-ink hover:bg-ds-fill")
+                    }
+                  >
+                    {s.subject}{" "}
+                    <span className="text-ds-ink/45">
                       {s.startTime}–{s.endTime}
                     </span>
-                  </ToggleGroupItem>
+                  </button>
                 ))}
-              </ToggleGroup>
-            ) : (
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <CalendarClock className="h-3.5 w-3.5" />
-                No class scheduled for this batch on {format(date, "EEEE")}s —{" "}
-                <Link to="/educator/timetable" className="underline">
-                  set up a timetable
-                </Link>{" "}
-                or mark attendance without one below.
-              </p>
-            ))}
+              </div>
+            )}
+            <div className="flex-1" />
+            <div className="font-ds-mono text-[11.5px] text-ds-ink/45">
+              {students.length} students
+            </div>
+          </div>
+
+          {selectedBatch && daySlots.length === 0 && (
+            <p className="flex items-center gap-1.5 font-ds-sans text-[12px] text-ds-ink/50">
+              <CalendarClock className="h-3.5 w-3.5" />
+              No class scheduled for this batch on {format(date, "EEEE")}s —{" "}
+              <Link to="/educator/timetable" className="text-ds-accent hover:underline">
+                set up a timetable
+              </Link>{" "}
+              or mark attendance without one below.
+            </p>
+          )}
+
+          {!isSessionOwner && (
+            <p className="rounded-[10px] border border-ds-accent/25 bg-ds-accent/[.08] px-3.5 py-2.5 font-ds-sans text-[12px] text-ds-accent">
+              This session belongs to another teacher — you can request a correction per student,
+              but only that teacher (or the org head) can apply it.
+            </p>
+          )}
 
           {!selectedBatch ? null : students.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center text-sm text-muted-foreground">
+            <DsCard className="p-12 text-center">
+              <p className="font-ds-sans text-[12.5px] text-ds-slate">
                 No students enrolled in this batch yet.
-              </CardContent>
-            </Card>
+              </p>
+            </DsCard>
           ) : (
-            <Card>
-              <CardContent className="space-y-3 pt-6">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    {presentCount}/{students.length} marked present
-                  </p>
-                  <Button variant="outline" size="sm" className="gap-1.5" onClick={markAllPresent}>
-                    <CheckCheck className="h-3.5 w-3.5" />
-                    Mark all present
-                  </Button>
+            <div className="grid items-start gap-3.5 lg:grid-cols-[minmax(0,1.5fr)_1fr]">
+              <DsCard className="overflow-hidden">
+                <div className="flex items-center gap-2 border-b border-ds-ink/[.08] px-4 py-3">
+                  <div className="font-ds-sans text-[13.5px] font-semibold text-ds-ink">
+                    {selectedSlot
+                      ? `${selectedSlot.subject} · ${selectedSlot.startTime}`
+                      : selectedBatch.name}
+                  </div>
+                  <div className="flex-1" />
+                  {isSessionOwner && (
+                    <>
+                      <button
+                        onClick={markAllPresent}
+                        className="h-7 rounded-md border border-ds-ink/15 px-2.5 font-ds-sans text-[11.5px] font-medium text-ds-ink hover:bg-ds-fill"
+                      >
+                        Mark all present
+                      </button>
+                      <button
+                        onClick={saveSession}
+                        disabled={saving || !sessionLoaded}
+                        className="flex h-7 items-center gap-1.5 rounded-md bg-ds-accent px-2.5 font-ds-sans text-[11.5px] font-semibold text-white hover:bg-ds-accent/90 disabled:opacity-60"
+                      >
+                        {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+                        Submit
+                      </button>
+                    </>
+                  )}
                 </div>
+                {students.map((s, idx) => (
+                  <div
+                    key={s.id}
+                    className="flex items-center gap-2.5 border-b border-ds-ink/[.055] px-4 py-2.5 last:border-0"
+                  >
+                    <div className="w-6 font-ds-mono text-[11px] text-ds-ink/40">{idx + 1}</div>
+                    <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-ds-fill font-ds-sans text-[10px] font-semibold text-ds-ink/70">
+                      {s.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1 truncate font-ds-sans text-[12.5px] font-medium text-ds-ink">
+                      {s.name}
+                    </div>
+                    {isSessionOwner ? (
+                      <div className="flex gap-0.5 rounded-md bg-ds-fill p-0.5">
+                        {(["present", "absent", "late"] as Status[]).map((st) => (
+                          <button
+                            key={st}
+                            onClick={() => setStatus(s.id, st)}
+                            className={
+                              "rounded px-2.5 py-1 font-ds-sans text-[11px] font-semibold " +
+                              (effectiveStatuses[s.id] === st
+                                ? st === "present"
+                                  ? "bg-ds-positive text-white"
+                                  : st === "absent"
+                                    ? "bg-ds-accent text-white"
+                                    : "bg-ds-info text-white"
+                                : "text-ds-ink/50")
+                            }
+                          >
+                            {st === "present" ? "P" : st === "absent" ? "A" : "L"}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="rounded-md bg-ds-fill px-2 py-0.5 font-ds-mono text-[10px] font-semibold uppercase text-ds-ink/60">
+                          {effectiveStatuses[s.id]}
+                        </span>
+                        <button
+                          onClick={() => openCorrectionDialog(s)}
+                          className="rounded p-1 text-ds-slate hover:bg-ds-fill"
+                        >
+                          <MessageSquarePlus className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </DsCard>
 
-                <div className="divide-y divide-border/50">
-                  {students.map((s) => (
-                    <div key={s.id} className="flex items-center justify-between gap-3 py-2.5">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{s.name}</p>
-                        {s.email && (
-                          <p className="truncate text-xs text-muted-foreground">{s.email}</p>
+              <DsDetailRail>
+                <DsCard className="p-4">
+                  <div className="mb-3 font-ds-sans text-[13.5px] font-semibold text-ds-ink">
+                    This session
+                  </div>
+                  <div className="flex gap-2.5">
+                    <div className="flex-1 rounded-lg bg-ds-canvas p-3">
+                      <div className="font-ds-serif text-[21px] font-semibold leading-none text-ds-ink">
+                        {presentCount}
+                      </div>
+                      <div className="mt-1.5 font-ds-sans text-[10.5px] font-medium text-ds-ink/45">
+                        Present
+                      </div>
+                    </div>
+                    <div className="flex-1 rounded-lg bg-ds-accent/10 p-3">
+                      <div className="font-ds-serif text-[21px] font-semibold leading-none text-ds-accent">
+                        {absentCount}
+                      </div>
+                      <div className="mt-1.5 font-ds-sans text-[10.5px] font-medium text-ds-accent">
+                        Absent
+                      </div>
+                    </div>
+                    <div className="flex-1 rounded-lg bg-ds-canvas p-3">
+                      <div className="font-ds-serif text-[21px] font-semibold leading-none text-ds-ink">
+                        {lateCount}
+                      </div>
+                      <div className="mt-1.5 font-ds-sans text-[10.5px] font-medium text-ds-ink/45">
+                        Late
+                      </div>
+                    </div>
+                  </div>
+                </DsCard>
+
+                {pendingCorrections.length > 0 && (
+                  <DsCard className="p-4">
+                    <div className="mb-1 font-ds-sans text-[13.5px] font-semibold text-ds-ink">
+                      Corrections requested
+                    </div>
+                    <p className="mb-3 font-ds-sans text-[11.5px] text-ds-ink/50">
+                      {pendingCorrections.length} pending.
+                    </p>
+                    {pendingCorrections.map((c) => (
+                      <div
+                        key={c.id}
+                        className="border-b border-ds-ink/[.055] py-2.5 last:border-0"
+                      >
+                        <div className="flex items-baseline gap-2">
+                          <div className="font-ds-sans text-[12.5px] font-medium text-ds-ink">
+                            {c.studentName}
+                          </div>
+                        </div>
+                        <div className="mt-0.5 font-ds-sans text-[11.5px] text-ds-ink/50">
+                          {c.currentStatus} → {c.requestedStatus}
+                          {c.reason ? ` · ${c.reason}` : ""}
+                        </div>
+                        {isSessionOwner && (
+                          <div className="mt-2 flex gap-1.5">
+                            <button
+                              onClick={() => resolveCorrection(c, true)}
+                              className="flex h-[26px] items-center gap-1 rounded-md bg-ds-fill px-2.5 font-ds-sans text-[11px] font-semibold text-ds-ink"
+                            >
+                              <Check className="h-3 w-3" />
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => resolveCorrection(c, false)}
+                              className="flex h-[26px] items-center gap-1 rounded-md border border-ds-ink/15 px-2.5 font-ds-sans text-[11px] font-medium text-ds-ink/60"
+                            >
+                              <X className="h-3 w-3" />
+                              Reject
+                            </button>
+                          </div>
                         )}
                       </div>
-                      <ToggleGroup
-                        type="single"
-                        value={effectiveStatuses[s.id]}
-                        onValueChange={(v) => v && setStatus(s.id, v as Status)}
-                        className="shrink-0"
-                      >
-                        <ToggleGroupItem
-                          value="present"
-                          className="h-7 px-2.5 text-xs data-[state=on]:bg-green-500/15 data-[state=on]:text-green-700"
-                        >
-                          Present
-                        </ToggleGroupItem>
-                        <ToggleGroupItem
-                          value="late"
-                          className="h-7 px-2.5 text-xs data-[state=on]:bg-amber-500/15 data-[state=on]:text-amber-700"
-                        >
-                          Late
-                        </ToggleGroupItem>
-                        <ToggleGroupItem
-                          value="absent"
-                          className="h-7 px-2.5 text-xs data-[state=on]:bg-red-500/15 data-[state=on]:text-red-700"
-                        >
-                          Absent
-                        </ToggleGroupItem>
-                      </ToggleGroup>
-                    </div>
-                  ))}
-                </div>
-
-                <Button
-                  className="w-full gap-2 sm:w-auto"
-                  onClick={saveSession}
-                  disabled={saving || !sessionLoaded}
-                >
-                  {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Save Attendance
-                </Button>
-              </CardContent>
-            </Card>
+                    ))}
+                  </DsCard>
+                )}
+              </DsDetailRail>
+            </div>
           )}
         </>
       )}
+
+      <Dialog open={!!correctionTarget} onOpenChange={(open) => !open && setCorrectionTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Request Correction — {correctionTarget?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">Requested status</p>
+              <ToggleGroup
+                type="single"
+                value={correctionStatus}
+                onValueChange={(v) => v && setCorrectionStatus(v as Status)}
+              >
+                <ToggleGroupItem value="present" className="h-8 px-3 text-xs">
+                  Present
+                </ToggleGroupItem>
+                <ToggleGroupItem value="late" className="h-8 px-3 text-xs">
+                  Late
+                </ToggleGroupItem>
+                <ToggleGroupItem value="absent" className="h-8 px-3 text-xs">
+                  Absent
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">Reason</p>
+              <Textarea
+                value={correctionReason}
+                onChange={(e) => setCorrectionReason(e.target.value)}
+                rows={3}
+                placeholder="Why should this change?"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCorrectionTarget(null)}>
+              Cancel
+            </Button>
+            <Button onClick={submitCorrection} disabled={correctionBusy}>
+              Submit Request
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

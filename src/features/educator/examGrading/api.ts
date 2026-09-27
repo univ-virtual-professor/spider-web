@@ -14,6 +14,8 @@ export type Exam = {
   subject: string;
   school_id: string | null;
   status: string;
+  results_released: boolean;
+  results_released_at: string | null;
   created_at: string;
 };
 
@@ -144,6 +146,19 @@ export const extractQuestionsFromPaper = (token: string | undefined, examId: str
   gradeEngineFetch(token, `/api/exams/${examId}/question-paper/extract`, {
     method: "POST",
   }) as Promise<ExamQuestion[]>;
+
+// Test-level "release to students" step (business rules #3 + #8) — until
+// called, no student can see ANY grading for this exam regardless of
+// individual sheet/question status. See grade-engine's CLAUDE.md.
+export const releaseResults = (token: string | undefined, examId: string) =>
+  gradeEngineFetch(token, `/api/exams/${examId}/release-results`, {
+    method: "POST",
+  }) as Promise<Exam>;
+
+export const unreleaseResults = (token: string | undefined, examId: string) =>
+  gradeEngineFetch(token, `/api/exams/${examId}/unrelease-results`, {
+    method: "POST",
+  }) as Promise<Exam>;
 
 // ── uploads (multiple images OR a single PDF) ───────────────────────────────
 

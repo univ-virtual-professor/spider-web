@@ -16,13 +16,12 @@ import { Link } from "react-router-dom";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { Button } from "@shared/ui/button";
-import { Card, CardContent } from "@shared/ui/card";
-import { Badge } from "@shared/ui/badge";
 import { Input } from "@shared/ui/input";
 import { Label } from "@shared/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@shared/ui/dialog";
-import { CalendarClock, Plus, Pencil, Trash2, Loader2, Video, MapPin } from "lucide-react";
+import { DsPageHeader, DsCard } from "@shared/ui/ds";
+import { Plus, Trash2, Loader2 } from "lucide-react";
 
 type Branch = { id: string; name: string };
 type Course = { id: string; branchId: string; name: string };
@@ -51,6 +50,13 @@ type Slot = {
 };
 
 const DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const HOUR_PX = 56;
+
+function toMinutes(t: string) {
+  const [h, m] = t.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
 
 export default function Timetable() {
   const { profile } = useAuth();
@@ -363,26 +369,39 @@ export default function Timetable() {
   if (loading) {
     return (
       <div className="flex justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-6 w-6 animate-spin text-ds-slate" />
       </div>
     );
   }
 
+  const startHour = slots.length
+    ? Math.max(6, Math.min(...slots.map((s) => Math.floor(toMinutes(s.startTime) / 60))))
+    : 8;
+  const endHour = slots.length
+    ? Math.min(21, Math.max(...slots.map((s) => Math.ceil(toMinutes(s.endTime) / 60))))
+    : 18;
+  const hours = Array.from({ length: Math.max(1, endHour - startHour) }, (_, i) => startHour + i);
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold">
-            <CalendarClock className="h-6 w-6" />
-            Timetable
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Set up each batch's weekly class schedule — attendance is marked against these.
-          </p>
-        </div>
-        {batches.length > 0 && (
+    <div className="space-y-5 font-ds-sans">
+      <DsPageHeader
+        title="Timetable"
+        subtitle="Set up each batch's weekly class schedule — attendance is marked against these."
+        primary={
+          batches.length > 0
+            ? {
+                label: "Add class",
+                icon: <Plus className="mr-1 h-3.5 w-3.5" />,
+                onClick: openNewSlot,
+              }
+            : undefined
+        }
+      />
+
+      {batches.length > 0 && (
+        <div className="flex items-center gap-2">
           <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
-            <SelectTrigger className="w-full sm:w-72">
+            <SelectTrigger className="h-9 w-full border-ds-ink/15 sm:w-72">
               <SelectValue placeholder="Select a batch" />
             </SelectTrigger>
             <SelectContent>
@@ -394,87 +413,109 @@ export default function Timetable() {
               ))}
             </SelectContent>
           </Select>
-        )}
-      </div>
+          <div className="flex items-center gap-4 font-ds-sans text-[11.5px] text-ds-ink/50">
+            <div className="flex items-center gap-1.5">
+              <div className="h-2 w-2 rounded-sm bg-ds-info" />
+              Offline
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-2 w-2 rounded-sm bg-ds-positive" />
+              Online
+            </div>
+          </div>
+        </div>
+      )}
 
       {batches.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
+        <DsCard className="p-12 text-center">
+          <p className="font-ds-sans text-[12.5px] text-ds-slate">
             No batches yet — create one under Batches first.
-          </CardContent>
-        </Card>
+          </p>
+        </DsCard>
+      ) : slots.length === 0 ? (
+        <DsCard className="p-12 text-center">
+          <p className="font-ds-sans text-[12.5px] text-ds-slate">
+            No classes scheduled for this batch yet.
+          </p>
+        </DsCard>
       ) : (
-        <>
-          <div className="flex justify-end">
-            <Button size="sm" className="gap-2" onClick={openNewSlot}>
-              <Plus className="h-4 w-4" />
-              Add Class
-            </Button>
+        <DsCard className="overflow-hidden">
+          <div
+            className="grid border-b border-ds-ink/[.08] bg-ds-canvas"
+            style={{ gridTemplateColumns: `52px repeat(7,1fr)` }}
+          >
+            <div />
+            {DAY_SHORT.map((label, dow) => (
+              <div key={dow} className="border-l border-ds-ink/[.06] py-2 text-center">
+                <div className="font-ds-sans text-[12px] font-semibold text-ds-ink">{label}</div>
+              </div>
+            ))}
           </div>
-
-          {slots.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center text-sm text-muted-foreground">
-                No classes scheduled for this batch yet.
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-4">
-              {DAY_LABELS.map((label, dow) => {
-                const daySlots = slots
-                  .filter((s) => s.dayOfWeek === dow)
-                  .sort((a, b) => a.startTime.localeCompare(b.startTime));
-                if (daySlots.length === 0) return null;
-                return (
-                  <Card key={dow}>
-                    <CardContent className="pt-5">
-                      <p className="mb-3 text-sm font-semibold">{label}</p>
-                      <div className="space-y-2">
-                        {daySlots.map((slot) => (
-                          <div
-                            key={slot.id}
-                            className="flex items-center gap-3 rounded-lg border border-border/50 bg-muted/20 px-3 py-2.5"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium">{slot.subject}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {slot.startTime}–{slot.endTime} · {slot.teacherName}
-                              </p>
-                            </div>
-                            <Badge variant="outline" className="shrink-0 gap-1 text-[10px]">
-                              {slot.mode === "online" ? (
-                                <Video className="h-3 w-3" />
-                              ) : (
-                                <MapPin className="h-3 w-3" />
-                              )}
-                              {slot.mode}
-                            </Badge>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => openEditSlot(slot)}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-destructive"
-                              onClick={() => deleteSlot(slot)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
+          <div className="grid" style={{ gridTemplateColumns: `52px repeat(7,1fr)` }}>
+            <div className="border-r border-ds-ink/[.06]">
+              {hours.map((h) => (
+                <div
+                  key={h}
+                  className="pr-2 text-right font-ds-mono text-[10px] text-ds-ink/40"
+                  style={{ height: HOUR_PX }}
+                >
+                  {String(h).padStart(2, "0")}:00
+                </div>
+              ))}
             </div>
-          )}
-        </>
+            {DAY_SHORT.map((_, dow) => {
+              const daySlots = slots.filter((s) => s.dayOfWeek === dow);
+              return (
+                <div
+                  key={dow}
+                  className="relative border-l border-ds-ink/[.06]"
+                  style={{
+                    height: hours.length * HOUR_PX,
+                    background: `repeating-linear-gradient(to bottom, transparent 0 ${HOUR_PX - 1}px, hsl(var(--ds-ink) / .06) ${HOUR_PX - 1}px ${HOUR_PX}px)`,
+                  }}
+                >
+                  {daySlots.map((slot) => {
+                    const top = (toMinutes(slot.startTime) / 60 - startHour) * HOUR_PX;
+                    const height = Math.max(
+                      22,
+                      ((toMinutes(slot.endTime) - toMinutes(slot.startTime)) / 60) * HOUR_PX
+                    );
+                    const tone = slot.mode === "online" ? "positive" : "info";
+                    return (
+                      <div
+                        key={slot.id}
+                        onClick={() => openEditSlot(slot)}
+                        className={
+                          "group absolute left-1 right-1 cursor-pointer overflow-hidden rounded-md border-l-[3px] p-1.5 text-left " +
+                          (tone === "positive"
+                            ? "border-ds-positive bg-ds-positive/10"
+                            : "border-ds-info bg-ds-info/10")
+                        }
+                        style={{ top, height }}
+                      >
+                        <div className="line-clamp-2 font-ds-sans text-[10.5px] font-semibold leading-tight text-ds-ink">
+                          {slot.subject}
+                        </div>
+                        <div className="mt-0.5 truncate font-ds-sans text-[9.5px] text-ds-ink/55">
+                          {slot.teacherName}
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteSlot(slot);
+                          }}
+                          className="absolute right-1 top-1 hidden rounded bg-white/80 p-0.5 text-ds-ink/50 hover:text-red-600 group-hover:block"
+                        >
+                          <Trash2 className="h-2.5 w-2.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </DsCard>
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

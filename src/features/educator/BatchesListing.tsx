@@ -225,7 +225,16 @@ export default function BatchesListing() {
           allCourses.push({ id: c.id, branchId: branch.id, name: data.name, subjectIds });
 
           const bSnap = await getDocs(
-            collection(db, "educators", educatorId, "branches", branch.id, "courses", c.id, "batches")
+            collection(
+              db,
+              "educators",
+              educatorId,
+              "branches",
+              branch.id,
+              "courses",
+              c.id,
+              "batches"
+            )
           );
           bSnap.docs.forEach((b) =>
             allBatches.push({
@@ -574,9 +583,9 @@ export default function BatchesListing() {
               <ArrowLeft className="h-4 w-4" />
             </div>
           )}
-          <div>
-            <h1 className="text-2xl font-bold">Batches</h1>
-            <p className="hidden text-sm text-muted-foreground md:block">
+          <div className="font-ds-sans">
+            <h1 className="font-ds-serif text-[23px] font-semibold text-ds-ink">Batches</h1>
+            <p className="hidden font-ds-sans text-[12.5px] text-ds-slate md:block">
               Manage your teaching batches and invite students
             </p>
           </div>

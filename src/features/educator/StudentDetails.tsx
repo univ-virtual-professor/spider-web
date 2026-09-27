@@ -10,6 +10,7 @@ import {
   Trash2,
   PenLine,
   FileText,
+  Printer,
 } from "lucide-react";
 import {
   Area,
@@ -772,10 +773,18 @@ export default function StudentDetails() {
                 </CardTitle>
                 <CardDescription>Test scores plus any manually added grades</CardDescription>
               </div>
-              <Button size="sm" className="gap-1.5" onClick={() => setGradeDialogOpen(true)}>
-                <Plus className="h-3.5 w-3.5" />
-                Add Grade
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button asChild variant="outline" size="sm" className="gap-1.5">
+                  <Link to={`/educator/students/${studentId}/report-card`} target="_blank">
+                    <Printer className="h-3.5 w-3.5" />
+                    Report Card
+                  </Link>
+                </Button>
+                <Button size="sm" className="gap-1.5" onClick={() => setGradeDialogOpen(true)}>
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Grade
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="divide-y divide-border/50">

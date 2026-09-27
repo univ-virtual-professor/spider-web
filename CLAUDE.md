@@ -92,8 +92,9 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
 - **Auth**: employees have `role: "EDUCATOR"` in `users/{uid}` plus `isEmployee: true, orgUid, employeeDocId` — also set as Firebase custom claims on invite so backend can check status
 - **Context**: `src/shared/contexts/EmployeeContext.tsx` — loads permissions only if `status === "ACTIVE"`; shows spinner while loading; `useEmployee()` gives `hasPermission(p)` and `inBranchScope(branchId)`
 - **Sidebar**: `EducatorLayout` filters nav items using `PERMISSIONS` constants; Billing + Organization hidden for employees; Messages gated by `messages.view`; Reported Questions gated by `tests.view`; DPP Generator gated by `dpps.manage`
-- **Backend enforcement**: `auth_middleware.get_current_educator` rejects DEACTIVATED employees by reading their Firestore employee doc when `isEmployee` claim is present
+- **Backend enforcement**: `auth_middleware.get_current_educator` (monkey-king) rejects DEACTIVATED employees by reading their Firestore employee doc when `isEmployee` claim is present, and also attaches that employee's actual `permissions[]` (from their `roles/{roleId}` doc) for `require_permission`/`require_owner` to check per-endpoint (master_revamped — see monkey-king's CLAUDE.md)
 - **Invite flow**: org head fills form → `POST /api/org/invite-employee` creates Firebase Auth user + writes Firestore docs + sets custom claims → frontend calls `sendPasswordResetEmail` → employee sets password → logs in
+- **Route-level guards (master_revamped)**: `src/shared/auth/RequirePermission.tsx` wraps each permission-gated route in `educatorRoutes.tsx` (`anyOf={[PERMISSIONS.X]}` or `ownerOnly`) so navigating directly by URL respects the same rule as the sidebar's own `hasPermission()` filtering — previously sidebar visibility was the _only_ gate, so an employee could reach any `/educator/*` page by typing its URL. `Settings.tsx`'s `?builder=true` panel is gated the same way (`WEBSITE_MANAGE`) to match its profile-dropdown entry point.
 
 ## Multi-Tenant Theming
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   ArrowLeft,
+  CheckCircle2,
   ChevronDown,
   Loader2,
   Play,
@@ -24,6 +25,8 @@ import { Skeleton } from "@shared/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@shared/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@shared/ui/collapsible";
 import { useAuth } from "@app/providers/AuthProvider";
+import { useEmployee } from "@shared/contexts/EmployeeContext";
+import { PERMISSIONS } from "@shared/lib/rolesConfig";
 import { db } from "@shared/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import MultiFileDropzone from "@shared/components/MultiFileDropzone";
@@ -36,8 +39,10 @@ import {
   listQuestionPaperPages,
   listQuestions,
   listRosterStudents,
+  releaseResults,
   setQuestions,
   startGrading,
+  unreleaseResults,
   uploadAnswerKey,
   uploadAnswerSheetPages,
   uploadQuestionPaper,
@@ -63,6 +68,9 @@ function emptyQuestion(no: string): QuestionInput {
 export default function ExamGradingDetail() {
   const { examId } = useParams<{ examId: string }>();
   const { firebaseUser } = useAuth();
+  const { isEmployee, hasPermission } = useEmployee();
+  const canPublish = !isEmployee || hasPermission(PERMISSIONS.TESTS_PUBLISH);
+  const [releaseBusy, setReleaseBusy] = useState(false);
 
   const [exam, setExam] = useState<Exam | null>(null);
   const [gradingMode, setGradingMode] = useState<"instant" | "batch">("instant");
@@ -272,6 +280,25 @@ export default function ExamGradingDetail() {
     }
   }
 
+  async function handleToggleRelease() {
+    if (!exam) return;
+    setReleaseBusy(true);
+    try {
+      const token = await firebaseUser?.getIdToken();
+      const updated = exam.results_released
+        ? await unreleaseResults(token, exam.id)
+        : await releaseResults(token, exam.id);
+      setExam(updated);
+      toast.success(
+        updated.results_released ? "Results released to students" : "Results unreleased"
+      );
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setReleaseBusy(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -288,17 +315,52 @@ export default function ExamGradingDetail() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Button asChild variant="ghost" size="sm" className="-ml-1">
-          <Link to="/educator/exam-grading">
-            <ArrowLeft className="mr-1 h-4 w-4" />
-            Back
-          </Link>
-        </Button>
-        <div>
-          <h1 className="text-xl font-bold">{exam.title}</h1>
-          <p className="text-sm text-muted-foreground">{exam.subject}</p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Button asChild variant="ghost" size="sm" className="-ml-1">
+            <Link to="/educator/exam-grading">
+              <ArrowLeft className="mr-1 h-4 w-4" />
+              Back
+            </Link>
+          </Button>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold">{exam.title}</h1>
+              <Badge
+                variant={exam.results_released ? "default" : "outline"}
+                className="text-[10px]"
+              >
+                {exam.results_released ? "Released" : "Not released"}
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">{exam.subject}</p>
+          </div>
         </div>
+        {canPublish && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={exam.results_released ? "outline" : "default"}
+                size="sm"
+                className="gap-2"
+                disabled={releaseBusy}
+                onClick={handleToggleRelease}
+              >
+                {releaseBusy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4" />
+                )}
+                {exam.results_released ? "Unrelease Results" : "Release Results to Students"}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {exam.results_released
+                ? "Students currently see graded results — click to hide them again."
+                : "Nothing is visible to students yet, even fully graded sheets. Release makes the whole exam's results visible at once."}
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
 
       <Card>

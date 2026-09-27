@@ -26,6 +26,10 @@ export default {
       fontFamily: {
         sans: ["Plus Jakarta Sans", "Inter", "system-ui", "sans-serif"],
         display: ["Nunito", "Inter", "system-ui", "sans-serif"],
+        // Design-system (ds-*) fonts — see index.css for the @import.
+        "ds-sans": ["Public Sans", "system-ui", "sans-serif"],
+        "ds-serif": ['"Source Serif 4"', "Georgia", "serif"],
+        "ds-mono": ['"IBM Plex Mono"', "ui-monospace", "monospace"],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -87,6 +91,19 @@ export default {
           "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
+        },
+        // Design-system palette (Ops/Faculty screens matching the provided
+        // mockups) — additive, does not replace the app's default theme.
+        ds: {
+          ink: "hsl(var(--ds-ink))",
+          accent: "hsl(var(--ds-accent))",
+          info: "hsl(var(--ds-info))",
+          positive: "hsl(var(--ds-positive))",
+          slate: "hsl(var(--ds-slate))",
+          surface: "hsl(var(--ds-surface))",
+          canvas: "hsl(var(--ds-canvas))",
+          fill: "hsl(var(--ds-fill))",
+          border: "hsl(var(--ds-border))",
         },
       },
       borderRadius: {

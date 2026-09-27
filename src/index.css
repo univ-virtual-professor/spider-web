@@ -1,4 +1,10 @@
 @import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
+/* Design-system tokens (master_revamped) — Public Sans/Source Serif 4/IBM Plex
+   Mono + the ink/accent/info/positive/slate palette from the "Edtech Platform
+   UI Mockups" Claude Design project. Additive only: existing --primary etc.
+   (the app's default shadcn theme) are untouched, so nothing outside pages
+   that opt into the ds-* tokens below is affected. */
+@import url("https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Mono:wght@400;500&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -70,6 +76,63 @@
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 245 82% 67%;
+
+    /* Design-system palette (Ops/Faculty screens rebuilt to match the
+       provided mockups) — see Build Notes.dc.html §01 Tokens. */
+    --ds-ink: 217 17% 9%;
+    --ds-accent: 17 62% 51%;
+    --ds-info: 200 75% 40%;
+    --ds-positive: 153 39% 40%;
+    --ds-slate: 212 10% 39%;
+    --ds-surface: 0 0% 100%;
+    --ds-canvas: 210 20% 97%;
+    --ds-fill: 210 20% 96%;
+    --ds-border: 217 17% 9%; /* used at low alpha, e.g. border-ds-border/10 */
+  }
+
+  /* Design-system scope (master_revamped) — applied to the root of
+     EducatorLayout/StudentLayout so every existing shadcn component inside
+     the educator/student portals (Button, Card, Badge, Input, ...) inherits
+     the "Edtech Platform UI Mockups" look via the SAME token names shadcn
+     already reads, with no per-screen rewrites. Marketing site, admin panel,
+     and public tenant theme pages are untouched (they never get this class).
+     Screens that use the bespoke ds-* utilities (Enrolments, Attendance
+     Overview, Exam Schedule, Portal & branding) layer on top of this. */
+  .ds-scope {
+    --background: var(--ds-canvas);
+    --foreground: var(--ds-ink);
+    --card: var(--ds-surface);
+    --card-foreground: var(--ds-ink);
+    --popover: var(--ds-surface);
+    --popover-foreground: var(--ds-ink);
+    --primary: var(--ds-accent);
+    --primary-foreground: 0 0% 100%;
+    --secondary: var(--ds-fill);
+    --secondary-foreground: var(--ds-ink);
+    --muted: var(--ds-fill);
+    --muted-foreground: var(--ds-slate);
+    --accent: var(--ds-fill);
+    --accent-foreground: var(--ds-ink);
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: var(--ds-accent);
+    --radius: 0.625rem;
+    font-family: "Public Sans", system-ui, sans-serif;
+  }
+  .ds-scope h1,
+  .ds-scope h2 {
+    font-family: "Source Serif 4", Georgia, serif;
+  }
+  .ds-scope [class*="shadow-"] {
+    box-shadow: none;
+  }
+  /* .gradient-bg (used for the sidebar's active-nav-item pill) is a hardcoded
+     literal gradient in tailwind.config.ts, not driven by the --primary
+     token — override it here so the active tab reads as the mockup's flat
+     accent color instead of the app's default indigo/violet gradient. */
+  .ds-scope .gradient-bg,
+  .ds-scope .gradient-primary {
+    background: hsl(var(--ds-accent));
   }
 
   .dark {
@@ -122,6 +185,38 @@
     --shadow-soft: 0 4px 20px -4px hsl(0 0% 0% / 0.3);
     --shadow-card: 0 8px 40px -12px hsl(0 0% 0% / 0.4);
     --shadow-elevated: 0 20px 60px -15px hsl(0 0% 0% / 0.5);
+
+    /* Design-system palette, dark mode — the mockup is light-only, these are
+       reasonable inversions (light ink → light text, dark canvas/surface). */
+    --ds-ink: 210 20% 96%;
+    --ds-accent: 17 70% 60%;
+    --ds-info: 200 70% 55%;
+    --ds-positive: 153 35% 52%;
+    --ds-slate: 212 10% 65%;
+    --ds-surface: 217 17% 12%;
+    --ds-canvas: 217 17% 8%;
+    --ds-fill: 217 15% 16%;
+    --ds-border: 0 0% 100%;
+  }
+
+  .dark .ds-scope {
+    --background: var(--ds-canvas);
+    --foreground: var(--ds-ink);
+    --card: var(--ds-surface);
+    --card-foreground: var(--ds-ink);
+    --popover: var(--ds-surface);
+    --popover-foreground: var(--ds-ink);
+    --primary: var(--ds-accent);
+    --primary-foreground: 0 0% 100%;
+    --secondary: var(--ds-fill);
+    --secondary-foreground: var(--ds-ink);
+    --muted: var(--ds-fill);
+    --muted-foreground: var(--ds-slate);
+    --accent: var(--ds-fill);
+    --accent-foreground: var(--ds-ink);
+    --border: 217 15% 20%;
+    --input: 217 15% 20%;
+    --ring: var(--ds-accent);
   }
 }
 

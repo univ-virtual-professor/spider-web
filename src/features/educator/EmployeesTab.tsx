@@ -17,12 +17,9 @@ import { toast } from "sonner";
 import { Button } from "@shared/ui/button";
 import { Input } from "@shared/ui/input";
 import { Label } from "@shared/ui/label";
-import { Badge } from "@shared/ui/badge";
 import { Checkbox } from "@shared/ui/checkbox";
-import { Card, CardContent } from "@shared/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@shared/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@shared/ui/table";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,6 +29,9 @@ import {
 } from "@shared/ui/dropdown-menu";
 import { Loader2, Plus, MoreVertical, UserX, UserCheck, Trash2, Send } from "lucide-react";
 import type { Permission } from "@shared/lib/employeePermissions";
+import { DsCard, DsTableHead, DsTableRow, DsStatusPill } from "@shared/ui/ds";
+
+type PillTone = "accent" | "info" | "positive" | "slate" | "neutral";
 
 type Branch = { id: string; name: string; location: string };
 
@@ -57,11 +57,11 @@ type Employee = {
   activatedAt: any;
 };
 
-const STATUS_COLORS: Record<EmployeeStatus, "default" | "secondary" | "destructive" | "outline"> = {
-  ACTIVE: "default",
-  PENDING: "secondary",
-  DEACTIVATED: "destructive",
-  EXPIRED: "outline",
+const STATUS_TONE: Record<EmployeeStatus, PillTone> = {
+  ACTIVE: "positive",
+  PENDING: "info",
+  DEACTIVATED: "accent",
+  EXPIRED: "slate",
 };
 
 type Props = { educatorId: string; branches: Branch[] };
@@ -250,18 +250,17 @@ export default function EmployeesTab({ educatorId, branches }: Props) {
   const selectedRole = roles.find((r) => r.id === empRoleId);
 
   return (
-    <div className="space-y-4">
-      {/* Toolbar */}
+    <div className="space-y-4 font-ds-sans">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 flex-wrap gap-2">
           <Input
             placeholder="Search name or email..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="max-w-xs"
+            className="max-w-xs border-ds-ink/15"
           />
           <Select value={roleFilter} onValueChange={setRoleFilter}>
-            <SelectTrigger className="w-40">
+            <SelectTrigger className="w-40 border-ds-ink/15">
               <SelectValue placeholder="All Roles" />
             </SelectTrigger>
             <SelectContent>
@@ -274,7 +273,7 @@ export default function EmployeesTab({ educatorId, branches }: Props) {
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-36">
+            <SelectTrigger className="w-36 border-ds-ink/15">
               <SelectValue placeholder="All Status" />
             </SelectTrigger>
             <SelectContent>
@@ -286,118 +285,115 @@ export default function EmployeesTab({ educatorId, branches }: Props) {
             </SelectContent>
           </Select>
         </div>
-        <Button onClick={openInvite} disabled={roles.length === 0}>
+        <Button
+          onClick={openInvite}
+          disabled={roles.length === 0}
+          className="bg-ds-accent hover:bg-ds-accent/90"
+        >
           <Plus className="mr-2 h-4 w-4" /> Invite Employee
         </Button>
       </div>
 
       {roles.length === 0 && (
-        <p className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm text-orange-700 dark:border-orange-900 dark:bg-orange-950 dark:text-orange-300">
+        <p className="rounded-[10px] border border-ds-accent/25 bg-ds-accent/[.08] p-3 font-ds-sans text-[12px] text-ds-accent">
           No roles available. Ask the platform admin to create roles before inviting employees.
         </p>
       )}
 
-      {/* Employee Table */}
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Scope</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-12"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {empLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="py-8 text-center">
-                      <Loader2 className="mx-auto h-5 w-5 animate-spin text-muted-foreground" />
-                    </TableCell>
-                  </TableRow>
-                ) : filtered.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="py-12 text-center text-muted-foreground">
-                      {employees.length === 0
-                        ? "No employees yet. Invite your first team member."
-                        : "No employees match the current filters."}
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filtered.map((emp) => (
-                    <TableRow key={emp.id}>
-                      <TableCell>
-                        <p className="font-medium">{emp.name}</p>
-                        <p className="text-xs text-muted-foreground">{emp.email}</p>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm">
-                          {roles.find((r) => r.id === emp.roleId)?.name || (
-                            <span className="text-muted-foreground">Unknown</span>
-                          )}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm text-muted-foreground">{scopeLabel(emp)}</span>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={STATUS_COLORS[emp.status]}>{emp.status}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="ghost">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openEdit(emp)}>
-                              Edit Role &amp; Scope
-                            </DropdownMenuItem>
-                            {(emp.status === "PENDING" || emp.status === "EXPIRED") && (
-                              <DropdownMenuItem onClick={() => resendInvite(emp)}>
-                                <Send className="mr-2 h-3.5 w-3.5" />
-                                Resend Invite
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuSeparator />
-                            {emp.status === "ACTIVE" || emp.status === "PENDING" ? (
-                              <DropdownMenuItem
-                                className="text-destructive"
-                                onClick={() => deactivate(emp)}
-                              >
-                                <UserX className="mr-2 h-3.5 w-3.5" />
-                                Deactivate
-                              </DropdownMenuItem>
-                            ) : emp.status === "DEACTIVATED" ? (
-                              <>
-                                <DropdownMenuItem onClick={() => reactivate(emp)}>
-                                  <UserCheck className="mr-2 h-3.5 w-3.5" />
-                                  Reactivate
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="text-destructive"
-                                  onClick={() => removeEmployee(emp)}
-                                >
-                                  <Trash2 className="mr-2 h-3.5 w-3.5" />
-                                  Remove
-                                </DropdownMenuItem>
-                              </>
-                            ) : null}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+      <DsCard className="overflow-hidden">
+        {empLoading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-5 w-5 animate-spin text-ds-slate" />
           </div>
-        </CardContent>
-      </Card>
+        ) : filtered.length === 0 ? (
+          <p className="py-12 text-center font-ds-sans text-[12.5px] text-ds-slate">
+            {employees.length === 0
+              ? "No employees yet. Invite your first team member."
+              : "No employees match the current filters."}
+          </p>
+        ) : (
+          <>
+            <DsTableHead
+              columns={["Name", "Role", "Scope", "Status", ""]}
+              cols="1.5fr .9fr 1fr .8fr .4fr"
+            />
+            {filtered.map((emp) => (
+              <DsTableRow key={emp.id} cols="1.5fr .9fr 1fr .8fr .4fr" height={54}>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-ds-fill font-ds-sans text-[10px] font-semibold text-ds-ink/70">
+                      {emp.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold">{emp.name}</div>
+                      <div className="truncate font-ds-sans text-[11px] text-ds-ink/45">
+                        {emp.email}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  {roles.find((r) => r.id === emp.roleId)?.name ? (
+                    <span className="inline-flex rounded-md bg-ds-fill px-2 py-0.5 font-ds-mono text-[10.5px] font-semibold text-ds-ink/70">
+                      {roles.find((r) => r.id === emp.roleId)?.name}
+                    </span>
+                  ) : (
+                    <span className="text-ds-ink/40">Unknown</span>
+                  )}
+                </div>
+                <div className="truncate text-ds-ink/60">{scopeLabel(emp)}</div>
+                <div>
+                  <DsStatusPill tone={STATUS_TONE[emp.status]}>{emp.status}</DsStatusPill>
+                </div>
+                <div className="flex justify-end">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => openEdit(emp)}>
+                        Edit Role &amp; Scope
+                      </DropdownMenuItem>
+                      {(emp.status === "PENDING" || emp.status === "EXPIRED") && (
+                        <DropdownMenuItem onClick={() => resendInvite(emp)}>
+                          <Send className="mr-2 h-3.5 w-3.5" />
+                          Resend Invite
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuSeparator />
+                      {emp.status === "ACTIVE" || emp.status === "PENDING" ? (
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => deactivate(emp)}
+                        >
+                          <UserX className="mr-2 h-3.5 w-3.5" />
+                          Deactivate
+                        </DropdownMenuItem>
+                      ) : emp.status === "DEACTIVATED" ? (
+                        <>
+                          <DropdownMenuItem onClick={() => reactivate(emp)}>
+                            <UserCheck className="mr-2 h-3.5 w-3.5" />
+                            Reactivate
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => removeEmployee(emp)}
+                          >
+                            <Trash2 className="mr-2 h-3.5 w-3.5" />
+                            Remove
+                          </DropdownMenuItem>
+                        </>
+                      ) : null}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </DsTableRow>
+            ))}
+          </>
+        )}
+      </DsCard>
 
       {/* Invite / Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(o) => !o && setDialogOpen(false)}>

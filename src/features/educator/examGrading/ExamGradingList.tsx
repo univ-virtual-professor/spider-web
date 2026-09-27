@@ -4,6 +4,7 @@ import { FileCheck2, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
+import { Badge } from "@shared/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@shared/ui/dialog";
 import { Input } from "@shared/ui/input";
 import { Label } from "@shared/ui/label";
@@ -98,7 +99,10 @@ export default function ExamGradingList() {
             <Link key={exam.id} to={`/educator/exam-grading/${exam.id}`}>
               <Card className="h-full border-border/50 transition-colors hover:border-primary">
                 <CardHeader>
-                  <CardTitle className="text-base">{exam.title}</CardTitle>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-base">{exam.title}</CardTitle>
+                    {exam.results_released && <Badge className="text-[10px]">Released</Badge>}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground">{exam.subject}</p>

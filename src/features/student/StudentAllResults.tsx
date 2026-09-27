@@ -2,14 +2,15 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { toast } from "sonner";
-import { Card, CardContent } from "@shared/ui/card";
-import { Badge } from "@shared/ui/badge";
 import { Skeleton } from "@shared/ui/skeleton";
 import { cn } from "@shared/lib/utils";
 import { useAuth } from "@app/providers/AuthProvider";
 import { useTenant } from "@app/providers/TenantProvider";
 import { db } from "@shared/lib/firebase";
 import { listMyAnswerSheets, type AnswerSheet } from "./examResults/api";
+import { DsPageHeader, DsCard, DsStatusPill } from "@shared/ui/ds";
+
+type PillTone = "accent" | "info" | "positive" | "slate" | "neutral";
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -25,13 +26,13 @@ function toMillis(v: any): number {
   return 0;
 }
 
-const SHEET_STATUS_CLASS: Record<string, string> = {
-  uploaded: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-  pending: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  processing: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-  graded: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
-  approved: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
-  failed: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+const SHEET_STATUS_TONE: Record<string, PillTone> = {
+  uploaded: "slate",
+  pending: "info",
+  processing: "info",
+  graded: "positive",
+  approved: "positive",
+  failed: "accent",
 };
 
 type Tab = "online" | "paper";
@@ -122,45 +123,31 @@ export default function StudentAllResults() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">My Results</h1>
-          <p className="text-sm text-muted-foreground">All your exam results in one place</p>
-        </div>
+    <div className="space-y-5 font-ds-sans">
+      <DsPageHeader title="My Results" subtitle="All your exam results in one place." />
 
-        {/* Tab toggle */}
-        <div className="inline-flex w-fit shrink-0 rounded-lg border border-border/50 bg-muted/30 p-1">
-          <button
-            onClick={() => switchTab("online")}
-            className={cn(
-              "rounded-md px-4 py-1.5 text-xs font-medium transition-all duration-200",
-              tab === "online"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            Online Tests
-          </button>
-          <button
-            onClick={() => switchTab("paper")}
-            className={cn(
-              "rounded-md px-4 py-1.5 text-xs font-medium transition-all duration-200",
-              tab === "paper"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            Paper Exams
-          </button>
-        </div>
+      <div className="inline-flex w-fit shrink-0 rounded-md border border-ds-ink/15 bg-ds-fill p-1">
+        <button
+          onClick={() => switchTab("online")}
+          className={cn(
+            "rounded px-3.5 py-1.5 font-ds-sans text-[12px] font-medium transition-colors",
+            tab === "online" ? "bg-white text-ds-ink shadow-sm" : "text-ds-ink/55 hover:text-ds-ink"
+          )}
+        >
+          Online Tests
+        </button>
+        <button
+          onClick={() => switchTab("paper")}
+          className={cn(
+            "rounded px-3.5 py-1.5 font-ds-sans text-[12px] font-medium transition-colors",
+            tab === "paper" ? "bg-white text-ds-ink shadow-sm" : "text-ds-ink/55 hover:text-ds-ink"
+          )}
+        >
+          Paper Exams
+        </button>
       </div>
 
-      {/* Online tab */}
       {tab === "online" && <OnlineTab loading={onlineLoading} attempts={onlineAttempts} />}
-
-      {/* Paper tab */}
       {tab === "paper" && <PaperTab loading={paperLoading} sheets={sheets} />}
     </div>
   );
@@ -185,9 +172,9 @@ function OnlineTab({
 }) {
   if (loading) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-2">
         {[1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-20 w-full rounded-xl" />
+          <Skeleton key={i} className="h-14 w-full rounded-lg" />
         ))}
       </div>
     );
@@ -195,11 +182,11 @@ function OnlineTab({
 
   if (attempts.length === 0) {
     return (
-      <Card className="border-border/50">
-        <CardContent className="py-16 text-center text-muted-foreground">
+      <DsCard className="p-12 text-center">
+        <p className="font-ds-sans text-[12.5px] text-ds-slate">
           No online test attempts yet. Take a test to see your results here.
-        </CardContent>
-      </Card>
+        </p>
+      </DsCard>
     );
   }
 
@@ -210,41 +197,46 @@ function OnlineTab({
     return "in-progress";
   }
 
-  const STATUS_BADGE: Record<string, string> = {
-    completed: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
-    "in-progress": "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-    expired: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  const STATUS_TONE: Record<string, PillTone> = {
+    completed: "positive",
+    "in-progress": "info",
+    expired: "accent",
   };
 
   return (
-    <div className="space-y-3">
-      {attempts.map((a) => {
+    <DsCard className="overflow-hidden">
+      {attempts.map((a, i) => {
         const st = statusLabel(a.status);
         return (
           <Link key={a.id} to={`/student/results/${a.id}`}>
-            <Card className="border-border/50 transition-colors hover:border-primary">
-              <CardContent className="flex items-center justify-between p-4">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold">{a.testTitle}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {a.subject && <span>{a.subject} · </span>}
-                    {a.createdAtMs ? new Date(a.createdAtMs).toLocaleDateString() : ""}
-                  </p>
+            <div
+              className={
+                "flex items-center gap-3 px-4 py-3 hover:bg-ds-fill/40 " +
+                (i > 0 ? "border-t border-ds-ink/[.055]" : "")
+              }
+            >
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-ds-sans text-[12.5px] font-semibold text-ds-ink">
+                  {a.testTitle}
                 </div>
-                <div className="ml-4 flex shrink-0 items-center gap-3">
-                  {st === "completed" && (
-                    <span className="text-sm font-bold">
-                      {a.score}/{a.maxScore}
-                    </span>
-                  )}
-                  <Badge className={STATUS_BADGE[st] || STATUS_BADGE["in-progress"]}>{st}</Badge>
+                <div className="mt-0.5 font-ds-sans text-[11px] text-ds-ink/45">
+                  {a.subject && <span>{a.subject} · </span>}
+                  {a.createdAtMs ? new Date(a.createdAtMs).toLocaleDateString() : ""}
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                {st === "completed" && (
+                  <span className="font-ds-mono text-[13px] font-semibold text-ds-ink">
+                    {a.score}/{a.maxScore}
+                  </span>
+                )}
+                <DsStatusPill tone={STATUS_TONE[st] || "info"}>{st}</DsStatusPill>
+              </div>
+            </div>
           </Link>
         );
       })}
-    </div>
+    </DsCard>
   );
 }
 
@@ -253,9 +245,9 @@ function OnlineTab({
 function PaperTab({ loading, sheets }: { loading: boolean; sheets: AnswerSheet[] }) {
   if (loading) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-2">
         {[1, 2].map((i) => (
-          <Skeleton key={i} className="h-20 w-full rounded-xl" />
+          <Skeleton key={i} className="h-14 w-full rounded-lg" />
         ))}
       </div>
     );
@@ -263,40 +255,43 @@ function PaperTab({ loading, sheets }: { loading: boolean; sheets: AnswerSheet[]
 
   if (sheets.length === 0) {
     return (
-      <Card className="border-border/50">
-        <CardContent className="py-16 text-center text-muted-foreground">
+      <DsCard className="p-12 text-center">
+        <p className="font-ds-sans text-[12.5px] text-ds-slate">
           No paper exam results yet. Your teacher will upload your answer sheet after the exam.
-        </CardContent>
-      </Card>
+        </p>
+      </DsCard>
     );
   }
 
   return (
-    <div className="space-y-3">
-      {sheets.map((s) => (
+    <DsCard className="overflow-hidden">
+      {sheets.map((s, i) => (
         <Link key={s.id} to={`/student/exam-results/${s.id}`}>
-          <Card className="border-border/50 transition-colors hover:border-primary">
-            <CardContent className="flex items-center justify-between p-4">
-              <div>
-                <p className="font-semibold">{s.student_name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {new Date(s.created_at).toLocaleDateString()}
-                </p>
+          <div
+            className={
+              "flex items-center justify-between gap-3 px-4 py-3 hover:bg-ds-fill/40 " +
+              (i > 0 ? "border-t border-ds-ink/[.055]" : "")
+            }
+          >
+            <div>
+              <div className="font-ds-sans text-[12.5px] font-semibold text-ds-ink">
+                {s.student_name}
               </div>
-              <div className="flex items-center gap-3">
-                {s.total_marks_awarded != null && (
-                  <span className="text-sm font-bold">
-                    {s.total_marks_awarded}/{s.total_max_marks}
-                  </span>
-                )}
-                <Badge className={SHEET_STATUS_CLASS[s.status] || SHEET_STATUS_CLASS.uploaded}>
-                  {s.status}
-                </Badge>
+              <div className="mt-0.5 font-ds-sans text-[11px] text-ds-ink/45">
+                {new Date(s.created_at).toLocaleDateString()}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+            <div className="flex items-center gap-3">
+              {s.total_marks_awarded != null && (
+                <span className="font-ds-mono text-[13px] font-semibold text-ds-ink">
+                  {s.total_marks_awarded}/{s.total_max_marks}
+                </span>
+              )}
+              <DsStatusPill tone={SHEET_STATUS_TONE[s.status] || "slate"}>{s.status}</DsStatusPill>
+            </div>
+          </div>
         </Link>
       ))}
-    </div>
+    </DsCard>
   );
 }

@@ -70,6 +70,8 @@ import { Paginator } from "@shared/ui/Paginator";
 import { MultiSelect } from "@shared/ui/MultiSelect";
 import { useAccessibleCourses } from "@shared/hooks/useAccessibleCourses";
 import { normalizeQuestionType } from "@shared/lib/questionTypes";
+import { useEmployee } from "@shared/contexts/EmployeeContext";
+import { PERMISSIONS } from "@shared/lib/rolesConfig";
 
 type Difficulty = "easy" | "medium" | "hard";
 
@@ -683,6 +685,8 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
   }
 
   const isEducatorScope = scope === "educator";
+  const { isEmployee, hasPermission } = useEmployee();
+  const canManage = !isEducatorScope || !isEmployee || hasPermission(PERMISSIONS.QB_MANAGE);
   const questionBankLabel = isEducatorScope ? "Educator Question Bank" : "Question Bank";
   const questionBankDescription = isEducatorScope
     ? "Your educator-scoped question bank. Bulk import, attach images, and reuse across your tests."
@@ -1203,9 +1207,16 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
       }
       if (ops > 0) await batch.commit();
       setSelectedIds(new Set());
-      toast({ title: "Deleted", description: `${ids.length} question${ids.length > 1 ? "s" : ""} removed from the bank.` });
+      toast({
+        title: "Deleted",
+        description: `${ids.length} question${ids.length > 1 ? "s" : ""} removed from the bank.`,
+      });
     } catch {
-      toast({ title: "Bulk delete failed", description: "Please try again.", variant: "destructive" });
+      toast({
+        title: "Bulk delete failed",
+        description: "Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setBusy(false);
     }
@@ -1998,35 +2009,37 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              setImgUrl("");
-              setImgUploadOpen(true);
-            }}
-            disabled={busy}
-          >
-            <ImageIcon className="mr-2 h-4 w-4" />
-            Upload Image
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setCsvFile(null);
-              setCsvInfo(null);
-              setCsvOpen(true);
-            }}
-            disabled={busy}
-          >
-            <FileSpreadsheet className="mr-2 h-4 w-4" />
-            Import CSV
-          </Button>
-          <Button onClick={openCreate} disabled={busy}>
-            <Plus className="mr-2 h-4 w-4" />
-            New Question
-          </Button>
-        </div>
+        {canManage && (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setImgUrl("");
+                setImgUploadOpen(true);
+              }}
+              disabled={busy}
+            >
+              <ImageIcon className="mr-2 h-4 w-4" />
+              Upload Image
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCsvFile(null);
+                setCsvInfo(null);
+                setCsvOpen(true);
+              }}
+              disabled={busy}
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Import CSV
+            </Button>
+            <Button onClick={openCreate} disabled={busy}>
+              <Plus className="mr-2 h-4 w-4" />
+              New Question
+            </Button>
+          </div>
+        )}
       </div>
 
       <Card>
@@ -2137,9 +2150,7 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
             <div className="flex items-center gap-3">
               {selectedIds.size > 0 ? (
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium">
-                    {selectedIds.size} selected
-                  </span>
+                  <span className="text-sm font-medium">{selectedIds.size} selected</span>
                   <Button
                     variant="destructive"
                     size="sm"
@@ -2187,40 +2198,50 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
           </div>
 
           {/* Select-all across all filtered results */}
-          {filtered.length > 0 && (() => {
-            const editableInFilter = filtered.filter(
-              (q) => !(isEducatorScope && q.uploadedByRole === "admin")
-            );
-            const allSelected =
-              editableInFilter.length > 0 &&
-              editableInFilter.every((q) => selectedIds.has(q.id));
-            return (
-              <div className="flex items-center gap-2 px-1">
-                <Checkbox
-                  checked={allSelected}
-                  onCheckedChange={(v) => {
-                    setSelectedIds((prev) => {
-                      const next = new Set(prev);
-                      if (v) editableInFilter.forEach((q) => next.add(q.id));
-                      else editableInFilter.forEach((q) => next.delete(q.id));
-                      return next;
-                    });
-                  }}
-                />
-                <span className="text-xs text-muted-foreground">
-                  Select all {editableInFilter.length} filtered question{editableInFilter.length !== 1 ? "s" : ""}
-                </span>
-              </div>
-            );
-          })()}
+          {filtered.length > 0 &&
+            (() => {
+              const editableInFilter = filtered.filter(
+                (q) => canManage && !(isEducatorScope && q.uploadedByRole === "admin")
+              );
+              const allSelected =
+                editableInFilter.length > 0 && editableInFilter.every((q) => selectedIds.has(q.id));
+              return (
+                <div className="flex items-center gap-2 px-1">
+                  <Checkbox
+                    checked={allSelected}
+                    onCheckedChange={(v) => {
+                      setSelectedIds((prev) => {
+                        const next = new Set(prev);
+                        if (v) editableInFilter.forEach((q) => next.add(q.id));
+                        else editableInFilter.forEach((q) => next.delete(q.id));
+                        return next;
+                      });
+                    }}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    Select all {editableInFilter.length} filtered question
+                    {editableInFilter.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
+              );
+            })()}
 
           <div className="space-y-3">
             {qbPagedItems.map((q) => {
-              const isEditable = !(isEducatorScope && q.uploadedByRole === "admin");
+              const isEditable = canManage && !(isEducatorScope && q.uploadedByRole === "admin");
               const isChecked = selectedIds.has(q.id);
               return (
-                <motion.div key={q.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
-                  <div className={cn("rounded-xl border bg-card p-4 transition-colors", isChecked && "border-primary/50 bg-primary/5")}>
+                <motion.div
+                  key={q.id}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  <div
+                    className={cn(
+                      "rounded-xl border bg-card p-4 transition-colors",
+                      isChecked && "border-primary/50 bg-primary/5"
+                    )}
+                  >
                     <div className="flex items-start gap-3">
                       {isEditable && (
                         <Checkbox
@@ -3048,7 +3069,9 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
       {/* Delete Confirmation Dialog */}
       <Dialog
         open={!!deleteConfirmId}
-        onOpenChange={(v) => { if (!v) setDeleteConfirmId(null); }}
+        onOpenChange={(v) => {
+          if (!v) setDeleteConfirmId(null);
+        }}
       >
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -3057,15 +3080,12 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
               Delete Question
             </DialogTitle>
             <DialogDescription>
-              This will permanently remove the question from the question bank. This action cannot be undone.
+              This will permanently remove the question from the question bank. This action cannot
+              be undone.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-2">
-            <Button
-              variant="outline"
-              onClick={() => setDeleteConfirmId(null)}
-              disabled={busy}
-            >
+            <Button variant="outline" onClick={() => setDeleteConfirmId(null)} disabled={busy}>
               Cancel
             </Button>
             <Button
@@ -3081,7 +3101,12 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
       </Dialog>
 
       {/* Bulk Delete Confirmation Dialog */}
-      <Dialog open={bulkDeleteConfirm} onOpenChange={(v) => { if (!v) setBulkDeleteConfirm(false); }}>
+      <Dialog
+        open={bulkDeleteConfirm}
+        onOpenChange={(v) => {
+          if (!v) setBulkDeleteConfirm(false);
+        }}
+      >
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
@@ -3089,22 +3114,16 @@ export default function QuestionBank({ scope = "admin", educatorUid }: QuestionB
               Delete {selectedIds.size} Question{selectedIds.size !== 1 ? "s" : ""}
             </DialogTitle>
             <DialogDescription>
-              This will permanently remove {selectedIds.size} question{selectedIds.size !== 1 ? "s" : ""} from the question bank. This action cannot be undone.
+              This will permanently remove {selectedIds.size} question
+              {selectedIds.size !== 1 ? "s" : ""} from the question bank. This action cannot be
+              undone.
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2 pt-2">
-            <Button
-              variant="outline"
-              onClick={() => setBulkDeleteConfirm(false)}
-              disabled={busy}
-            >
+            <Button variant="outline" onClick={() => setBulkDeleteConfirm(false)} disabled={busy}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleBulkDelete}
-              disabled={busy}
-            >
+            <Button variant="destructive" onClick={handleBulkDelete} disabled={busy}>
               {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Delete {selectedIds.size}
             </Button>

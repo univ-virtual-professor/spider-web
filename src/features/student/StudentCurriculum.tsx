@@ -12,13 +12,11 @@ import {
 
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
-import { Card, CardContent } from "@shared/ui/card";
-import { Badge } from "@shared/ui/badge";
-import { Progress } from "@shared/ui/progress";
 import { Button } from "@shared/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@shared/ui/accordion";
 import { Link } from "react-router-dom";
-import { Layers, BookOpen, Eye, CheckCircle2, Circle, Loader2, FileText } from "lucide-react";
+import { DsPageHeader, DsCard } from "@shared/ui/ds";
+import { BookOpen, Eye, CheckCircle2, Circle, Loader2, FileText } from "lucide-react";
 import ContentViewer from "./ContentViewer";
 
 type ModuleDoc = { id: string; title: string; description?: string; order: number };
@@ -162,14 +160,14 @@ export default function StudentCurriculum() {
   if (loading) {
     return (
       <div className="flex justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-6 w-6 animate-spin text-ds-slate" />
       </div>
     );
   }
 
   if (!ready) {
     return (
-      <div className="py-12 text-center text-sm text-muted-foreground">
+      <div className="py-12 text-center font-ds-sans text-sm text-ds-slate">
         Your course isn't set up yet — check back once you're enrolled.
       </div>
     );
@@ -183,147 +181,135 @@ export default function StudentCurriculum() {
   const sortedModules = [...modules].sort((a, b) => a.order - b.order);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-bold">
-          <Layers className="h-6 w-6" />
-          Curriculum
-        </h1>
-        <p className="text-sm text-muted-foreground">Work through your course, module by module.</p>
-      </div>
-
-      {totalLessons > 0 && (
-        <Card>
-          <CardContent className="py-4">
-            <div className="mb-2 flex items-center justify-between text-sm">
-              <span className="font-medium">Overall progress</span>
-              <span className="text-muted-foreground">
-                {completedCount}/{totalLessons} lessons · {overallPct}%
-              </span>
-            </div>
-            <Progress value={overallPct} />
-          </CardContent>
-        </Card>
-      )}
+    <div className="space-y-5 font-ds-sans">
+      <DsPageHeader
+        title="Curriculum"
+        subtitle={
+          totalLessons > 0
+            ? `${overallPct}% complete · ${completedCount}/${totalLessons} lessons`
+            : "Work through your course, module by module."
+        }
+      />
 
       {sortedModules.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
+        <DsCard className="p-12 text-center">
+          <p className="font-ds-sans text-[12.5px] text-ds-slate">
             Your educator hasn't published a curriculum for this course yet.
-          </CardContent>
-        </Card>
+          </p>
+        </DsCard>
       ) : (
-        <Accordion type="multiple" defaultValue={[sortedModules[0]?.id]} className="space-y-3">
-          {sortedModules.map((mod) => {
-            const lessons = [...(lessonsByModule[mod.id] || [])].sort((a, b) => a.order - b.order);
-            const modCompleted = lessons.filter((l) => completedIds.has(l.id)).length;
-            const modPct =
-              lessons.length > 0 ? Math.round((modCompleted / lessons.length) * 100) : 0;
+        <DsCard className="overflow-hidden">
+          <Accordion type="multiple" defaultValue={[sortedModules[0]?.id]}>
+            {sortedModules.map((mod) => {
+              const lessons = [...(lessonsByModule[mod.id] || [])].sort(
+                (a, b) => a.order - b.order
+              );
+              const modCompleted = lessons.filter((l) => completedIds.has(l.id)).length;
 
-            return (
-              <AccordionItem
-                key={mod.id}
-                value={mod.id}
-                className="rounded-xl border border-border/60 px-4"
-              >
-                <AccordionTrigger className="py-3 hover:no-underline">
-                  <div className="flex w-full items-center gap-3 text-left">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold">{mod.title}</p>
-                      {mod.description && (
-                        <p className="text-xs font-normal text-muted-foreground">
-                          {mod.description}
+              return (
+                <AccordionItem
+                  key={mod.id}
+                  value={mod.id}
+                  className="border-b border-ds-ink/[.08] px-4 last:border-0"
+                >
+                  <AccordionTrigger className="py-3 hover:no-underline">
+                    <div className="flex w-full items-center gap-3 text-left">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-ds-sans text-[13.5px] font-semibold text-ds-ink">
+                          {mod.title}
+                        </p>
+                        {mod.description && (
+                          <p className="font-ds-sans text-[11.5px] font-normal text-ds-ink/45">
+                            {mod.description}
+                          </p>
+                        )}
+                      </div>
+                      <span className="shrink-0 rounded-md bg-ds-fill px-2 py-0.5 font-ds-mono text-[10.5px] font-medium text-ds-ink/60">
+                        {modCompleted}/{lessons.length}
+                      </span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="pb-3">
+                    <div className="border-t border-ds-ink/[.06] pt-2">
+                      {lessons.map((lesson) => {
+                        const done = completedIds.has(lesson.id);
+                        return (
+                          <div
+                            key={lesson.id}
+                            className="border-b border-ds-ink/[.05] py-2.5 last:border-0"
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <button
+                                onClick={() => toggleComplete(lesson.id)}
+                                className="mt-0.5 shrink-0 text-ds-ink/30 hover:text-ds-accent"
+                                title={done ? "Mark incomplete" : "Mark complete"}
+                              >
+                                {done ? (
+                                  <CheckCircle2 className="h-4 w-4 text-ds-positive" />
+                                ) : (
+                                  <Circle className="h-4 w-4" />
+                                )}
+                              </button>
+                              <div className="min-w-0 flex-1">
+                                <p
+                                  className={`font-ds-sans text-[12.5px] font-medium ${done ? "text-ds-ink/40 line-through" : "text-ds-ink"}`}
+                                >
+                                  {lesson.title}
+                                </p>
+                                {lesson.description && (
+                                  <p className="font-ds-sans text-[11px] text-ds-ink/45">
+                                    {lesson.description}
+                                  </p>
+                                )}
+                                {((lesson.contentIds || []).length > 0 || lesson.linkedTestId) && (
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {lesson.contentIds.map((cid) => {
+                                      const item = content[cid];
+                                      if (!item) return null;
+                                      return (
+                                        <button
+                                          key={cid}
+                                          onClick={() => setSelectedItem(item)}
+                                          className="flex h-7 items-center gap-1.5 rounded-md border border-ds-ink/15 px-2.5 font-ds-sans text-[11px] font-medium text-ds-ink hover:bg-ds-fill"
+                                        >
+                                          <BookOpen className="h-3 w-3" />
+                                          {item.title}
+                                          <Eye className="h-3 w-3" />
+                                        </button>
+                                      );
+                                    })}
+                                    {lesson.linkedTestId && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 gap-1.5 border-ds-ink/15 font-ds-sans text-[11px]"
+                                        asChild
+                                      >
+                                        <Link to={`/student/tests/${lesson.linkedTestId}`}>
+                                          <FileText className="h-3 w-3" />
+                                          Take Test: {lesson.linkedTestTitle || "Test"}
+                                        </Link>
+                                      </Button>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {lessons.length === 0 && (
+                        <p className="font-ds-sans text-[11.5px] text-ds-ink/40">
+                          No lessons in this module yet.
                         </p>
                       )}
                     </div>
-                    <Badge variant="outline" className="shrink-0 text-xs">
-                      {modCompleted}/{lessons.length}
-                    </Badge>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="pb-4">
-                  <Progress value={modPct} className="mb-3 h-1.5" />
-                  <div className="space-y-2">
-                    {lessons.map((lesson) => {
-                      const done = completedIds.has(lesson.id);
-                      return (
-                        <div
-                          key={lesson.id}
-                          className="rounded-lg border border-border/50 bg-muted/20 px-3 py-2.5"
-                        >
-                          <div className="flex items-start gap-2">
-                            <button
-                              onClick={() => toggleComplete(lesson.id)}
-                              className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary"
-                              title={done ? "Mark incomplete" : "Mark complete"}
-                            >
-                              {done ? (
-                                <CheckCircle2 className="h-5 w-5 text-green-500" />
-                              ) : (
-                                <Circle className="h-5 w-5" />
-                              )}
-                            </button>
-                            <div className="min-w-0 flex-1">
-                              <p
-                                className={`text-sm font-medium ${done ? "text-muted-foreground line-through" : ""}`}
-                              >
-                                {lesson.title}
-                              </p>
-                              {lesson.description && (
-                                <p className="text-xs text-muted-foreground">
-                                  {lesson.description}
-                                </p>
-                              )}
-                              {((lesson.contentIds || []).length > 0 || lesson.linkedTestId) && (
-                                <div className="mt-2 flex flex-wrap gap-1.5">
-                                  {lesson.contentIds.map((cid) => {
-                                    const item = content[cid];
-                                    if (!item) return null;
-                                    return (
-                                      <Button
-                                        key={cid}
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-7 gap-1.5 text-xs"
-                                        onClick={() => setSelectedItem(item)}
-                                      >
-                                        <BookOpen className="h-3 w-3" />
-                                        {item.title}
-                                        <Eye className="h-3 w-3" />
-                                      </Button>
-                                    );
-                                  })}
-                                  {lesson.linkedTestId && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-7 gap-1.5 text-xs"
-                                      asChild
-                                    >
-                                      <Link to={`/student/tests/${lesson.linkedTestId}`}>
-                                        <FileText className="h-3 w-3" />
-                                        Take Test: {lesson.linkedTestTitle || "Test"}
-                                      </Link>
-                                    </Button>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {lessons.length === 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        No lessons in this module yet.
-                      </p>
-                    )}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            );
-          })}
-        </Accordion>
+                  </AccordionContent>
+                </AccordionItem>
+              );
+            })}
+          </Accordion>
+        </DsCard>
       )}
 
       <ContentViewer

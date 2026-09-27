@@ -1063,9 +1063,9 @@ export default function Analytics() {
                 <ArrowLeft className="h-5 w-5" />
               </Button>
             )}
-            <div className="space-y-1">
-              <h2 className="text-2xl font-semibold tracking-tight">Students Overview</h2>
-              <p className="hidden text-sm text-muted-foreground md:block">
+            <div className="space-y-1 font-ds-sans">
+              <h2 className="font-ds-serif text-[23px] font-semibold text-ds-ink">Analysis</h2>
+              <p className="hidden font-ds-sans text-[12.5px] text-ds-slate md:block">
                 Monitor performance trends, activity levels, and overall academic health across your
                 programs.
               </p>

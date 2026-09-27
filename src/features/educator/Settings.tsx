@@ -30,6 +30,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
 import { Separator } from "@shared/ui/separator";
 import { toast } from "@shared/hooks/use-toast";
 import { stringToColor } from "@shared/lib/utils";
+import { useEmployee } from "@shared/contexts/EmployeeContext";
+import { PERMISSIONS } from "@shared/lib/rolesConfig";
 
 import {
   signOut,
@@ -109,7 +111,11 @@ function AiTutorSettings({ uid }: { uid: string }) {
   if (loading) return null;
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.35 }}
+    >
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
@@ -120,7 +126,9 @@ function AiTutorSettings({ uid }: { uid: string }) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium">Enable AI Tutor for students</p>
-              <p className="text-xs text-muted-foreground">Students can use the AI chatbot when enabled</p>
+              <p className="text-xs text-muted-foreground">
+                Students can use the AI chatbot when enabled
+              </p>
             </div>
             <Switch checked={chatbotEnabled} onCheckedChange={setChatbotEnabled} />
           </div>
@@ -143,14 +151,16 @@ export default function Settings() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const { firebaseUser, profile, loading: authLoading, refreshProfile } = useAuth();
   const [showBuilder, setShowBuilder] = useState(false);
+  const { isEmployee, hasPermission } = useEmployee();
+  const canManageWebsite = !isEmployee || hasPermission(PERMISSIONS.WEBSITE_MANAGE);
 
   useEffect(() => {
-    if (searchParams.get("builder") === "true") {
+    if (searchParams.get("builder") === "true" && canManageWebsite) {
       setShowBuilder(true);
     } else {
       setShowBuilder(false);
     }
-  }, [searchParams]);
+  }, [searchParams, canManageWebsite]);
 
   // Profile fields. Initialize from profile.
   const [fullName, setFullName] = useState(profile?.fullName || "");

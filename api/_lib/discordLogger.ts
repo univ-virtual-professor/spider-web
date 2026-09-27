@@ -11,8 +11,10 @@ const COLORS = {
 
 type EmbedField = { name: string; value: string; inline?: boolean };
 
+const DISABLED = true; // discord logging off for master_revamped, remove to re-enable
+
 async function postEmbed(payload: object): Promise<void> {
-  if (!WEBHOOK_URL) return;
+  if (DISABLED || !WEBHOOK_URL) return;
   try {
     await fetch(WEBHOOK_URL, {
       method: "POST",

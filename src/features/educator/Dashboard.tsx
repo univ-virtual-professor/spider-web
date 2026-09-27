@@ -4,7 +4,6 @@ import {
   Check,
   CreditCard,
   Users,
-  UserCheck,
   Layers,
   CalendarCheck,
   CalendarClock,
@@ -14,11 +13,17 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { collection, doc, onSnapshot, getDocs, query, where } from "firebase/firestore";
 
-import { Button } from "@shared/ui/button";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { buildTenantUrl } from "@shared/lib/tenant";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import {
+  DsPageHeader,
+  DsCard,
+  DsCardHeader,
+  DsKpiRow,
+  DsTableHead,
+  DsTableRow,
+} from "@shared/ui/ds";
 
 type EducatorProfileDoc = {
   displayName?: string;
@@ -259,246 +264,175 @@ export default function EducatorDashboard() {
     return <div className="py-12 text-center text-muted-foreground">Please login as Educator</div>;
   }
 
+  const kpis = [
+    {
+      label: "Batches",
+      value: String(batchesCount),
+      tone: "accent" as const,
+      pct: Math.min(100, batchesCount * 10),
+    },
+    {
+      label: "Students",
+      value: String(studentsCount),
+      tone: "info" as const,
+      pct: Math.min(100, studentsCount),
+    },
+    {
+      label: "Seats vacant",
+      value: String(vacantSeats),
+      sub: `of ${seatLimit} total`,
+      tone: vacantSeats === 0 ? ("accent" as const) : ("positive" as const),
+      pct: seatLimit ? (vacantSeats / seatLimit) * 100 : 0,
+    },
+    {
+      label: "Sessions today",
+      value: String(allClassesToday.length),
+      sub: `${myClassesToday.length} are yours`,
+      tone: "slate" as const,
+      pct: Math.min(100, allClassesToday.length * 12),
+    },
+  ];
+
   return (
-    <div className="space-y-6">
-      {/* Welcome Banner */}
-      <div className="gradient-bg rounded-2xl p-5 text-white md:p-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-lg font-bold md:text-2xl">Welcome back, {coachingName}!</h2>
-            <p className="mt-1 text-sm text-white/80">Here's your institute at a glance.</p>
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            className="w-full shrink-0 border border-white/30 bg-white/15 text-white hover:bg-white/25 md:w-auto"
-            onClick={handleCopyUrl}
-            disabled={!coachingUrl}
-          >
-            {copiedUrl ? (
-              <>
-                <Check className="mr-2 h-4 w-4" />
-                Copied
-              </>
-            ) : (
-              <>
-                <Copy className="mr-2 h-4 w-4" />
-                Copy Coaching URL
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
+    <div className="space-y-5 font-ds-sans">
+      <DsPageHeader
+        title="Today"
+        subtitle={`${coachingName} · ${planName || "No plan"}`}
+        secondary={
+          coachingUrl
+            ? {
+                label: copiedUrl ? "Copied" : "Copy site link",
+                icon: copiedUrl ? (
+                  <Check className="mr-1 h-3.5 w-3.5" />
+                ) : (
+                  <Copy className="mr-1 h-3.5 w-3.5" />
+                ),
+                onClick: handleCopyUrl,
+              }
+            : undefined
+        }
+      />
+
+      <DsKpiRow items={kpis} />
 
       {myClassesToday.length > 0 && (
-        <Card className="border-primary/30 bg-primary/5">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CalendarClock className="h-4 w-4" />
-              My Classes Today
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
+        <DsCard>
+          <DsCardHeader title="My classes today" />
+          <div>
             {myClassesToday.map((c) => (
-              <div
-                key={c.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card px-3 py-2.5"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{c.subject}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {c.startTime}–{c.endTime} · {c.batchName}
-                  </p>
+              <DsTableRow key={c.id} cols="1fr auto" height={56}>
+                <div className="flex items-center gap-2.5">
+                  <div className="h-6 w-[3px] shrink-0 rounded-sm bg-ds-accent" />
+                  <div className="min-w-0">
+                    <div className="truncate font-semibold">{c.subject}</div>
+                    <div className="mt-0.5 truncate font-ds-sans text-[11px] text-ds-ink/45">
+                      {c.startTime}–{c.endTime} · {c.batchName}
+                    </div>
+                  </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="shrink-0"
+                <button
                   onClick={() =>
                     navigate("/educator/attendance", {
                       state: { batchId: c.batchId, date: todayStr },
                     })
                   }
+                  className="h-7 rounded-md border border-ds-ink/15 px-2.5 font-ds-sans text-[11.5px] font-semibold text-ds-ink hover:bg-ds-fill"
                 >
-                  Mark Attendance
-                </Button>
-              </div>
+                  Mark attendance
+                </button>
+              </DsTableRow>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </DsCard>
       )}
-
-      {/* LMS snapshot cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Link to="/educator/batches" className="group block">
-          <Card className="border-border/50 transition-all hover:border-primary/40 hover:shadow-sm">
-            <CardContent className="flex items-center gap-3 py-5">
-              <div className="rounded-full bg-primary/10 p-2 text-primary">
-                <Users className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold leading-none">{batchesCount}</p>
-                <p className="mt-1 text-xs text-muted-foreground">Batches</p>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link to="/educator/learners" className="group block">
-          <Card className="border-border/50 transition-all hover:border-primary/40 hover:shadow-sm">
-            <CardContent className="flex items-center gap-3 py-5">
-              <div className="rounded-full bg-primary/10 p-2 text-primary">
-                <UserCheck className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold leading-none">{studentsCount}</p>
-                <p className="mt-1 text-xs text-muted-foreground">Students</p>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link to="/educator/curriculum" className="group block">
-          <Card className="border-border/50 transition-all hover:border-primary/40 hover:shadow-sm">
-            <CardContent className="flex items-center gap-3 py-5">
-              <div className="rounded-full bg-primary/10 p-2 text-primary">
-                <Layers className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold leading-none">Curriculum</p>
-                <p className="mt-1 text-xs text-muted-foreground">Build syllabus</p>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link to="/educator/attendance" className="group block">
-          <Card className="border-border/50 transition-all hover:border-primary/40 hover:shadow-sm">
-            <CardContent className="flex items-center gap-3 py-5">
-              <div className="rounded-full bg-primary/10 p-2 text-primary">
-                <CalendarCheck className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold leading-none">Attendance</p>
-                <p className="mt-1 text-xs text-muted-foreground">Mark today</p>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
 
       {allClassesToday.length > 0 && (
-        <Card className="border-border/50">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CalendarClock className="h-4 w-4 text-muted-foreground" />
-              Today Across All Batches
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="divide-y divide-border/50">
-              {allClassesToday.map((c) => (
-                <div key={c.id} className="flex items-center justify-between gap-3 py-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">
-                      {c.subject} <span className="text-muted-foreground">· {c.batchName}</span>
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {c.startTime}–{c.endTime} · {c.teacherName}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <DsCard className="overflow-hidden">
+          <DsCardHeader
+            title="Today across all batches"
+            meta={`${allClassesToday.length} sessions`}
+          />
+          <DsTableHead
+            columns={["Subject", "Batch", "Time", "Teacher"]}
+            cols="1.2fr 1fr .9fr 1fr"
+          />
+          {allClassesToday.map((c) => (
+            <DsTableRow key={c.id} cols="1.2fr 1fr .9fr 1fr">
+              <div className="font-semibold">{c.subject}</div>
+              <div className="text-ds-ink/70">{c.batchName}</div>
+              <div className="font-ds-mono text-[11.5px] text-ds-ink/60">
+                {c.startTime}–{c.endTime}
+              </div>
+              <div className="text-ds-ink/60">{c.teacherName}</div>
+            </DsTableRow>
+          ))}
+        </DsCard>
       )}
 
-      <Card className="border-border/50">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <CreditCard className="h-4 w-4 text-muted-foreground" />
-            Seats &amp; Plan
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
-            <div>
-              <p className="text-xs text-muted-foreground">Active Plan</p>
-              <p className="mt-0.5 font-semibold">{planName || "No plan"}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total Seats</p>
-              <p className="mt-0.5 font-semibold">{seatLimit}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Enrolled</p>
-              <p className="mt-0.5 font-semibold">{usedSeats}</p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Vacant</p>
-              <p
-                className={`mt-0.5 font-semibold ${vacantSeats === 0 ? "text-destructive" : "text-green-500"}`}
-              >
-                {vacantSeats}
-              </p>
+      <div className="grid items-start gap-3.5 lg:grid-cols-2">
+        <DsCard className="p-4">
+          <div className="mb-2.5 flex items-center gap-2">
+            <CreditCard className="h-4 w-4 text-ds-slate" />
+            <div className="font-ds-sans text-[13.5px] font-semibold text-ds-ink">
+              Seats &amp; plan
             </div>
           </div>
-          {allowedCourseNames.length > 0 && (
-            <div className="mt-5 border-t border-border/50 pt-4">
-              <p className="mb-2 text-xs text-muted-foreground">Allowed Courses</p>
-              <div className="flex flex-wrap gap-1.5">
-                {allowedCourseNames.map((name) => (
-                  <span
-                    key={name}
-                    className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium"
-                  >
-                    {name}
-                  </span>
-                ))}
+          {[
+            ["Active plan", planName || "No plan"],
+            ["Total seats", String(seatLimit)],
+            ["Enrolled", String(usedSeats)],
+            ["Vacant", String(vacantSeats)],
+          ].map(([k, v]) => (
+            <div
+              key={k}
+              className="flex justify-between gap-3 border-b border-ds-ink/[.055] py-2 font-ds-sans text-[12px] last:border-0"
+            >
+              <div className="text-ds-ink/50">{k}</div>
+              <div
+                className={`text-right font-medium ${k === "Vacant" && vacantSeats === 0 ? "text-ds-accent" : "text-ds-ink"}`}
+              >
+                {v}
               </div>
             </div>
+          ))}
+          {allowedCourseNames.length > 0 && (
+            <div className="mt-3.5 flex flex-wrap gap-1.5 border-t border-ds-ink/[.08] pt-3.5">
+              {allowedCourseNames.map((name) => (
+                <span
+                  key={name}
+                  className="rounded-md bg-ds-fill px-2 py-0.5 font-ds-sans text-[11px] font-medium text-ds-ink/70"
+                >
+                  {name}
+                </span>
+              ))}
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </DsCard>
 
-      {/* Quick Actions */}
-      <Card className="border-border/50">
-        <CardHeader>
-          <CardTitle className="text-base">Quick Actions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-3">
-            <Button asChild className="gap-2">
-              <Link to="/educator/curriculum">
-                <Layers className="h-4 w-4" />
-                Build Curriculum
-              </Link>
-            </Button>
-            <Button variant="outline" asChild className="gap-2">
-              <Link to="/educator/attendance">
-                <CalendarCheck className="h-4 w-4" />
-                Mark Attendance
-              </Link>
-            </Button>
-            <Button variant="outline" asChild className="gap-2">
-              <Link to="/educator/timetable">
-                <CalendarClock className="h-4 w-4" />
-                View Timetable
-              </Link>
-            </Button>
-            <Button variant="outline" asChild className="gap-2">
-              <Link to="/educator/content">
-                <BookOpen className="h-4 w-4" />
-                Manage Content
-              </Link>
-            </Button>
-            <Button variant="outline" asChild className="gap-2">
-              <Link to="/educator/learners">
-                <Users className="h-4 w-4" />
-                View Students
-              </Link>
-            </Button>
+        <DsCard className="p-4">
+          <div className="mb-2.5 font-ds-sans text-[13.5px] font-semibold text-ds-ink">
+            Quick actions
           </div>
-        </CardContent>
-      </Card>
+          <div className="flex flex-col gap-1.5">
+            {[
+              { icon: Layers, label: "Build curriculum", href: "/educator/curriculum" },
+              { icon: CalendarCheck, label: "Mark attendance", href: "/educator/attendance" },
+              { icon: CalendarClock, label: "View timetable", href: "/educator/timetable" },
+              { icon: BookOpen, label: "Manage content", href: "/educator/content" },
+              { icon: Users, label: "View students", href: "/educator/learners" },
+            ].map((a) => (
+              <Link
+                key={a.href}
+                to={a.href}
+                className="flex items-center gap-2.5 rounded-md border border-ds-ink/[.09] px-3 py-2 font-ds-sans text-[12.5px] font-medium text-ds-ink hover:bg-ds-fill"
+              >
+                <a.icon className="h-3.5 w-3.5 text-ds-slate" />
+                {a.label}
+              </Link>
+            ))}
+          </div>
+        </DsCard>
+      </div>
     </div>
   );
 }

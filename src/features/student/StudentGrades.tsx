@@ -9,12 +9,14 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { format } from "date-fns";
+import { Link } from "react-router-dom";
 
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { Card, CardContent } from "@shared/ui/card";
 import { Badge } from "@shared/ui/badge";
-import { GraduationCap, Loader2, FileText, PenLine } from "lucide-react";
+import { Button } from "@shared/ui/button";
+import { GraduationCap, Loader2, FileText, PenLine, Printer } from "lucide-react";
 
 type Row = {
   id: string;
@@ -118,14 +120,22 @@ export default function StudentGrades() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-bold">
-          <GraduationCap className="h-6 w-6" />
-          Grades
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Your report card — tests and educator-added grades.
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
+            <GraduationCap className="h-6 w-6" />
+            Grades
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Your report card — tests and educator-added grades.
+          </p>
+        </div>
+        <Button asChild variant="outline" className="gap-2">
+          <Link to="/student/report-card" target="_blank">
+            <Printer className="h-4 w-4" />
+            Printable Report Card
+          </Link>
+        </Button>
       </div>
 
       <Card>

@@ -22,12 +22,15 @@ import {
   Building2,
   UserCheck,
   Palette,
+  Files,
   AlertTriangle,
   ClipboardCheck,
   FileCheck2,
   CalendarCheck,
   CalendarClock,
+  CalendarDays,
   Layers,
+  Database,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
@@ -91,6 +94,17 @@ function EducatorLayoutInner() {
   const navigate = useNavigate();
 
   const { workspace, setWorkspace: setWorkspaceAndPersist } = useEducatorWorkspace();
+
+  // Radix Dialog/Select/Popover/DropdownMenu content portals to document.body,
+  // outside this component's own DOM subtree — a CSS-variable scope on the
+  // layout root alone never reaches it (custom properties cascade through the
+  // real DOM tree, not the React tree). Toggling the same class on <body>
+  // while this layout is mounted makes portaled content a descendant of an
+  // element that carries it too, so it picks up the design-system tokens.
+  useEffect(() => {
+    document.body.classList.add("ds-scope");
+    return () => document.body.classList.remove("ds-scope");
+  }, []);
 
   const isApp =
     new URLSearchParams(window.location.search).get("_app") === "1" ||
@@ -198,6 +212,18 @@ function EducatorLayoutInner() {
       { icon: LayoutDashboard, label: "Dashboard", href: "/educator/dashboard", workspace: "lms" },
     ];
 
+    if (
+      !isEmployee ||
+      hasPermission(PERMISSIONS.ENROLMENTS_VIEW) ||
+      hasPermission(PERMISSIONS.ENROLMENTS_MANAGE)
+    ) {
+      items.push({
+        icon: Users,
+        label: "Enrolments",
+        href: "/educator/enrolments",
+        workspace: "lms",
+      });
+    }
     if (!isEmployee || hasPermission(PERMISSIONS.STUDENTS_VIEW)) {
       items.push({ icon: Users, label: "Batches", href: "/educator/batches", workspace: "lms" });
       items.push({
@@ -216,6 +242,12 @@ function EducatorLayoutInner() {
         icon: CalendarClock,
         label: "Timetable",
         href: "/educator/timetable",
+        workspace: "lms",
+      });
+      items.push({
+        icon: CalendarCheck,
+        label: "Attendance Overview",
+        href: "/educator/attendance-overview",
         workspace: "lms",
       });
     }
@@ -242,13 +274,13 @@ function EducatorLayoutInner() {
 
     // Build Test Series children based on permissions
     const testChildren: SubItem[] = [];
-    // if (!isEmployee || hasPermission(PERMISSIONS.QB_VIEW)) {
-    //   testChildren.push({
-    //     icon: Database,
-    //     label: "Question Bank",
-    //     href: "/educator/question-bank",
-    //   });
-    // }
+    if (!isEmployee || hasPermission(PERMISSIONS.QB_VIEW)) {
+      testChildren.push({
+        icon: Database,
+        label: "Question Bank",
+        href: "/educator/question-bank",
+      });
+    }
     if (!isEmployee || hasPermission(PERMISSIONS.TESTS_CREATE)) {
       testChildren.push({
         icon: ClipboardList,
@@ -258,6 +290,18 @@ function EducatorLayoutInner() {
     }
     if (!isEmployee || hasPermission(PERMISSIONS.DPPS_MANAGE)) {
       testChildren.push({ icon: Zap, label: "DPP Generator", href: "/educator/dpp" });
+    }
+    if (
+      !isEmployee ||
+      hasPermission(PERMISSIONS.TESTS_VIEW) ||
+      hasPermission(PERMISSIONS.TESTS_CREATE) ||
+      hasPermission(PERMISSIONS.TESTS_PUBLISH)
+    ) {
+      testChildren.push({
+        icon: CalendarDays,
+        label: "Exam Schedule",
+        href: "/educator/exam-schedule",
+      });
     }
     if (!isEmployee || hasPermission(PERMISSIONS.TESTS_VIEW)) {
       testChildren.push({
@@ -278,6 +322,7 @@ function EducatorLayoutInner() {
       (!isEmployee ||
         hasPermission(PERMISSIONS.TESTS_VIEW) ||
         hasPermission(PERMISSIONS.TESTS_CREATE) ||
+        hasPermission(PERMISSIONS.TESTS_PUBLISH) ||
         hasPermission(PERMISSIONS.QB_VIEW) ||
         hasPermission(PERMISSIONS.DPPS_MANAGE));
     if (showTests) {
@@ -379,9 +424,11 @@ function EducatorLayoutInner() {
   }
 
   return (
-    <div className="flex h-[100dvh] min-h-screen flex-col overflow-hidden bg-background">
-      <ImpersonationBanner />
-      <div className="flex flex-1 overflow-hidden">
+    <div className="ds-scope flex h-[100dvh] min-h-screen flex-col overflow-hidden bg-background text-foreground print:h-auto print:min-h-0 print:overflow-visible">
+      <div className="print:hidden">
+        <ImpersonationBanner />
+      </div>
+      <div className="flex flex-1 overflow-hidden print:block print:overflow-visible">
         <AnimatePresence>
           {sidebarOpen && (
             <motion.div
@@ -396,7 +443,7 @@ function EducatorLayoutInner() {
 
         <aside
           className={cn(
-            "fixed left-0 top-0 z-50 h-[100dvh] w-64 border-r border-border bg-card transition-all duration-300 lg:static lg:top-0 lg:translate-x-0",
+            "fixed left-0 top-0 z-50 h-[100dvh] w-64 border-r border-border bg-card transition-all duration-300 lg:static lg:top-0 lg:translate-x-0 print:hidden",
             sidebarCollapsed ? "lg:w-20" : "lg:w-64",
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           )}
@@ -687,7 +734,7 @@ function EducatorLayoutInner() {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card px-4 lg:px-6">
+          <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card px-4 lg:px-6 print:hidden">
             <div className="flex items-center gap-4">
               <Button
                 variant="ghost"
@@ -747,10 +794,16 @@ function EducatorLayoutInner() {
                     </>
                   )}
                   {(!isEmployee || hasPermission(PERMISSIONS.WEBSITE_MANAGE)) && (
-                    <DropdownMenuItem onClick={() => navigate("/educator/settings?builder=true")}>
-                      <Palette className="mr-2 h-4 w-4" />
-                      Customize Website
-                    </DropdownMenuItem>
+                    <>
+                      <DropdownMenuItem onClick={() => navigate("/educator/settings?builder=true")}>
+                        <Palette className="mr-2 h-4 w-4" />
+                        Customize Website
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => navigate("/educator/website-pages")}>
+                        <Files className="mr-2 h-4 w-4" />
+                        Website Pages
+                      </DropdownMenuItem>
+                    </>
                   )}
                   <DropdownMenuItem onClick={() => navigate("/educator/settings")}>
                     <Settings className="mr-2 h-4 w-4" />
@@ -770,7 +823,7 @@ function EducatorLayoutInner() {
             </div>
           </header>
 
-          <main className="flex-1 overflow-auto p-4 lg:p-6">
+          <main className="flex-1 overflow-auto p-4 lg:p-6 print:overflow-visible print:p-0">
             <motion.div
               key={location.pathname}
               initial={{ opacity: 0, y: 10 }}

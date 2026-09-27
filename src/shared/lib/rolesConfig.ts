@@ -16,6 +16,8 @@ export const PERMISSIONS = {
   MESSAGES_VIEW: "messages.view",
   MESSAGES_SEND: "messages.send",
   WEBSITE_MANAGE: "website.manage",
+  ENROLMENTS_VIEW: "enrolments.view",
+  ENROLMENTS_MANAGE: "enrolments.manage",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -53,6 +55,14 @@ export const PERMISSION_LABELS: Record<Permission, { label: string; description:
     label: "Manage Website",
     description: "Customize and configure the landing page and theme",
   },
+  "enrolments.view": {
+    label: "View Enrolments",
+    description: "See the enquiry-to-enrolled pipeline",
+  },
+  "enrolments.manage": {
+    label: "Manage Enrolments",
+    description: "Move leads through stages, assign owners, mark enrolled",
+  },
 };
 
 export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] = [
@@ -65,6 +75,7 @@ export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] =
   { label: "Access Codes", permissions: ["access_codes.view", "access_codes.manage"] },
   { label: "Messages", permissions: ["messages.view", "messages.send"] },
   { label: "Website", permissions: ["website.manage"] },
+  { label: "Enrolments", permissions: ["enrolments.view", "enrolments.manage"] },
 ];
 
 export type RoleTemplate = {
@@ -130,6 +141,22 @@ export const DEFAULT_ROLES: RoleTemplate[] = [
       "analytics.view",
       "access_codes.view",
       "messages.view",
+    ],
+  },
+  {
+    id: "front_desk",
+    name: "Front Desk / Ops",
+    description:
+      "Manages enrolments, students, attendance requests, and access codes — no test/content/grading access",
+    permissions: [
+      "students.view",
+      "students.manage",
+      "enrolments.view",
+      "enrolments.manage",
+      "access_codes.view",
+      "access_codes.manage",
+      "messages.view",
+      "messages.send",
     ],
   },
 ];

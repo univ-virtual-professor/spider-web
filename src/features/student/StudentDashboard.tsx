@@ -1,15 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import {
-  Target,
-  Trophy,
-  TrendingUp,
-  Play,
-  ArrowRight,
-  Clock,
-  CheckCircle2,
-  Zap,
-} from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Trophy, Play, ArrowRight, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
 import { Button } from "@shared/ui/button";
 import { Badge } from "@shared/ui/badge";
@@ -24,8 +15,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { StudentMetricCard } from "@features/student/components/StudentMetricCard";
 import { DailyQuoteCard } from "@features/student/components/DailyQuoteCard";
+import { DsPageHeader, DsKpiRow } from "@shared/ui/ds";
 
 import { useAuth } from "@app/providers/AuthProvider";
 import { useTenant } from "@app/providers/TenantProvider";
@@ -43,16 +34,7 @@ import {
   where,
 } from "firebase/firestore";
 import { useQuery } from "@tanstack/react-query";
-import {
-  BookOpen,
-  GraduationCap,
-  Users2,
-  Zap as DppIcon,
-  BookOpenCheck,
-  CalendarClock,
-  Video,
-  MapPin,
-} from "lucide-react";
+import { Zap as DppIcon, BookOpenCheck, CalendarClock, Video, MapPin } from "lucide-react";
 
 type AttemptStatus = "in-progress" | "completed" | "expired";
 
@@ -177,6 +159,7 @@ function mapAttemptRow(id: string, a: any): AttemptRow {
 }
 
 export default function StudentDashboard() {
+  const navigate = useNavigate();
   const { firebaseUser, profile, loading: authLoading } = useAuth();
   const { tenant, loading: tenantLoading } = useTenant();
 
@@ -629,46 +612,20 @@ export default function StudentDashboard() {
   }
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Welcome back, {firstName}!</h1>
-          {(enrollment?.courseName ||
-            enrollment?.batchName ||
-            (enrollment?.subjectNames?.length ?? 0) > 0) && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              {enrollment?.courseName && (
-                <span className="flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
-                  <GraduationCap className="h-3 w-3" />
-                  {enrollment.courseName}
-                </span>
-              )}
-              {enrollment?.batchName && (
-                <span className="flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
-                  <Users2 className="h-3 w-3" />
-                  {enrollment.batchName}
-                </span>
-              )}
-              {enrollment?.subjectNames?.map((s) => (
-                <span
-                  key={s}
-                  className="flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground"
-                >
-                  <BookOpen className="h-3 w-3" />
-                  {s}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        <Button size="sm" className="gradient-bg shrink-0 rounded-lg" asChild>
-          <Link to="/student/tests">
-            <Play className="mr-1.5 h-3.5 w-3.5" />
-            Browse Tests
-          </Link>
-        </Button>
-      </div>
+    <div className="space-y-5 font-ds-sans">
+      <DsPageHeader
+        title={`Welcome back, ${firstName}!`}
+        subtitle={
+          [enrollment?.courseName, enrollment?.batchName, ...(enrollment?.subjectNames || [])]
+            .filter(Boolean)
+            .join(" · ") || undefined
+        }
+        primary={{
+          label: "Browse tests",
+          icon: <Play className="mr-1 h-3.5 w-3.5" />,
+          onClick: () => navigate("/student/tests"),
+        }}
+      />
 
       {/* Today's Classes */}
       {todayClassesFetched && todayClasses.length > 0 && (
@@ -762,34 +719,32 @@ export default function StudentDashboard() {
           </div>
         )}
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StudentMetricCard
-          title="Rank"
-          value={rank ? `#${rank}` : "—"}
-          subtitle={totalParticipants ? `of ${totalParticipants}` : undefined}
-          icon={TrendingUp}
-          color="peach"
-        />
-        <StudentMetricCard
-          title="Avg Accuracy"
-          value={`${avgScore}%`}
-          icon={Target}
-          color="yellow"
-        />
-        <StudentMetricCard
-          title="Tests Done"
-          value={completedAttempts.length}
-          icon={CheckCircle2}
-          color="mint"
-        />
-        <StudentMetricCard
-          title="Best Score"
-          value={bestAccuracy > 0 ? `${bestAccuracy}%` : "—"}
-          icon={Zap}
-          color="lavender"
-        />
-      </div>
+      <DsKpiRow
+        items={[
+          {
+            label: "Rank",
+            value: rank ? `#${rank}` : "—",
+            sub: totalParticipants ? `of ${totalParticipants}` : undefined,
+            tone: "accent",
+            pct: totalParticipants
+              ? Math.max(0, 100 - ((rank || totalParticipants) / totalParticipants) * 100)
+              : 0,
+          },
+          { label: "Avg accuracy", value: `${avgScore}%`, tone: "info", pct: avgScore },
+          {
+            label: "Tests done",
+            value: String(completedAttempts.length),
+            tone: "slate",
+            pct: Math.min(100, completedAttempts.length * 5),
+          },
+          {
+            label: "Best score",
+            value: bestAccuracy > 0 ? `${bestAccuracy}%` : "—",
+            tone: "positive",
+            pct: bestAccuracy,
+          },
+        ]}
+      />
 
       {/* Daily Practice (DPPs) */}
       {dashboardTests.dpps && dashboardTests.dpps.length > 0 && (

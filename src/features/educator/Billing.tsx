@@ -4,8 +4,14 @@ import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@shared/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@shared/ui/table";
+import {
+  DsPageHeader,
+  DsCard,
+  DsCardHeader,
+  DsKpiRow,
+  DsTableHead,
+  DsTableRow,
+} from "@shared/ui/ds";
 
 type SeatPool = {
   planId: string;
@@ -87,91 +93,100 @@ export default function Billing() {
   const totalAvailable = pools.reduce((s, p) => s + p.availableSeats, 0);
   const totalInUse = pools.reduce((s, p) => s + p.allocatedSeats, 0);
   const totalSeats = pools.reduce((s, p) => s + p.totalSeats, 0);
+  const totalSeatsSafe = totalSeats || 1;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Billing</h1>
-        <p className="text-sm text-muted-foreground">
-          Your seat allocation and payment history. To add more seats, contact your admin.
-        </p>
-      </div>
+    <div className="space-y-5 font-ds-sans">
+      <DsPageHeader
+        title="Billing"
+        subtitle="Your seat allocation and payment history. To add more seats, contact your admin."
+      />
 
-      {/* Seat Balance */}
-      <Card className="border-primary/20 bg-primary/5">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Seat Balance</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-8">
-            <div>
-              <p className="text-3xl font-bold text-primary">{totalAvailable}</p>
-              <p className="text-xs text-muted-foreground">Available</p>
-            </div>
-            <div>
-              <p className="text-3xl font-bold">{totalInUse}</p>
-              <p className="text-xs text-muted-foreground">In Use</p>
-            </div>
-            <div>
-              <p className="text-3xl font-bold text-muted-foreground">{totalSeats}</p>
-              <p className="text-xs text-muted-foreground">Total Assigned</p>
-            </div>
+      <DsKpiRow
+        items={[
+          {
+            label: "Available",
+            value: String(totalAvailable),
+            tone: "positive",
+            pct: (totalAvailable / totalSeatsSafe) * 100,
+          },
+          {
+            label: "In use",
+            value: String(totalInUse),
+            tone: "accent",
+            pct: (totalInUse / totalSeatsSafe) * 100,
+          },
+          { label: "Total assigned", value: String(totalSeats), tone: "slate", pct: 100 },
+        ]}
+      />
+
+      {pools.length > 0 && (
+        <DsCard className="p-4">
+          <div className="mb-3 font-ds-sans text-[13.5px] font-semibold text-ds-ink">
+            Usage by plan
           </div>
-          {pools.length === 0 && (
-            <p className="mt-2 text-sm text-muted-foreground">
-              No seats assigned yet. Contact your admin.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+          {pools.map((p) => {
+            const pct = p.totalSeats ? (p.allocatedSeats / p.totalSeats) * 100 : 0;
+            return (
+              <div key={p.planId} className="mb-3 last:mb-0">
+                <div className="flex items-baseline">
+                  <div className="font-ds-sans text-[12.5px] font-medium text-ds-ink">
+                    {p.planName}
+                  </div>
+                  <div className="flex-1" />
+                  <div className="font-ds-mono text-[11.5px] text-ds-ink/50">
+                    {p.allocatedSeats} / {p.totalSeats}
+                  </div>
+                </div>
+                <div className="mt-1.5 h-[5px] overflow-hidden rounded-full bg-ds-fill">
+                  <div
+                    className="h-full rounded-full bg-ds-info"
+                    style={{ width: `${Math.min(100, pct)}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </DsCard>
+      )}
+      {pools.length === 0 && (
+        <DsCard className="p-8 text-center">
+          <p className="font-ds-sans text-[12.5px] text-ds-slate">
+            No seats assigned yet. Contact your admin.
+          </p>
+        </DsCard>
+      )}
 
-      {/* Payment History */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Payment History</CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto p-0">
-          {loadingRecords ? (
-            <div className="flex justify-center p-6">
-              <Loader2 className="h-5 w-5 animate-spin" />
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Seats</TableHead>
-                  <TableHead>Access Until</TableHead>
-                  <TableHead>Note</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paymentRecords.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="text-sm">{fmtDate(r.date)}</TableCell>
-                    <TableCell className="text-right font-semibold">
-                      {fmtAmount(r.amount)}
-                    </TableCell>
-                    <TableCell className="text-right">{r.seatsGranted ?? "—"}</TableCell>
-                    <TableCell className="text-sm">{fmtDate(r.accessExpiresAt)}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {r.note || "—"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {paymentRecords.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
-                      No payment history yet.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      <DsCard className="overflow-hidden">
+        <DsCardHeader title="Payment history" />
+        {loadingRecords ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-5 w-5 animate-spin text-ds-slate" />
+          </div>
+        ) : paymentRecords.length === 0 ? (
+          <p className="py-8 text-center font-ds-sans text-[12.5px] text-ds-slate">
+            No payment history yet.
+          </p>
+        ) : (
+          <>
+            <DsTableHead
+              columns={["Date", "Amount", "Seats", "Access until", "Note"]}
+              cols="1fr 1fr .7fr 1fr 1.3fr"
+            />
+            {paymentRecords.map((r) => (
+              <DsTableRow key={r.id} cols="1fr 1fr .7fr 1fr 1.3fr">
+                <div className="font-ds-mono text-[11.5px] text-ds-ink/60">{fmtDate(r.date)}</div>
+                <div className="font-semibold">{fmtAmount(r.amount)}</div>
+                <div className="font-ds-mono text-[12px]">{r.seatsGranted ?? "—"}</div>
+                <div className="font-ds-mono text-[11.5px] text-ds-ink/60">
+                  {fmtDate(r.accessExpiresAt)}
+                </div>
+                <div className="truncate text-ds-ink/50">{r.note || "—"}</div>
+              </DsTableRow>
+            ))}
+          </>
+        )}
+      </DsCard>
     </div>
   );
 }

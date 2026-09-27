@@ -16,7 +16,6 @@ import { toast } from "sonner";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { Button } from "@shared/ui/button";
-import { Card, CardContent } from "@shared/ui/card";
 import { Input } from "@shared/ui/input";
 import { Textarea } from "@shared/ui/textarea";
 import { Badge } from "@shared/ui/badge";
@@ -24,16 +23,8 @@ import { Checkbox } from "@shared/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@shared/ui/accordion";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@shared/ui/dialog";
-import {
-  Layers,
-  Plus,
-  Pencil,
-  Trash2,
-  ChevronUp,
-  ChevronDown,
-  BookOpen,
-  Loader2,
-} from "lucide-react";
+import { DsPageHeader, DsCard } from "@shared/ui/ds";
+import { Plus, Pencil, Trash2, ChevronUp, ChevronDown, BookOpen, Loader2 } from "lucide-react";
 
 type Branch = { id: string; name: string };
 type Course = { id: string; branchId: string; name: string };
@@ -47,6 +38,10 @@ type LessonDoc = {
   contentIds: string[];
   linkedTestId?: string;
   linkedTestTitle?: string;
+  /** Term-plan date this lesson is expected to be taught by (YYYY-MM-DD). Optional —
+   * only set for courses using the Exam Schedule's "syllabus covered" picker, which
+   * warns when an exam links a lesson planned after the exam date. */
+  plannedDate?: string;
 };
 type TestOption = { id: string; title: string };
 
@@ -76,6 +71,7 @@ export default function Curriculum() {
   const [lessonContentIds, setLessonContentIds] = useState<string[]>([]);
   const [myTests, setMyTests] = useState<TestOption[]>([]);
   const [linkedTestId, setLinkedTestId] = useState<string>("none");
+  const [lessonPlannedDate, setLessonPlannedDate] = useState<string>("");
 
   const selectedCourse = courses.find((c) => c.id === selectedCourseId) || null;
 
@@ -340,6 +336,7 @@ export default function Curriculum() {
     setLessonDesc("");
     setLessonContentIds([]);
     setLinkedTestId("none");
+    setLessonPlannedDate("");
     setLessonDialogOpen(true);
     loadMyTests();
   }
@@ -351,6 +348,7 @@ export default function Curriculum() {
     setLessonDesc(lesson.description || "");
     setLessonContentIds(lesson.contentIds || []);
     setLinkedTestId(lesson.linkedTestId || "none");
+    setLessonPlannedDate(lesson.plannedDate || "");
     setLessonDialogOpen(true);
     loadMyTests();
   }
@@ -367,6 +365,7 @@ export default function Curriculum() {
           contentIds: lessonContentIds,
           linkedTestId: linkedTest?.id || null,
           linkedTestTitle: linkedTest?.title || null,
+          plannedDate: lessonPlannedDate || null,
           updatedAt: Timestamp.now(),
         });
       } else {
@@ -377,6 +376,7 @@ export default function Curriculum() {
           contentIds: lessonContentIds,
           linkedTestId: linkedTest?.id || null,
           linkedTestTitle: linkedTest?.title || null,
+          plannedDate: lessonPlannedDate || null,
           order: existing.length,
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
@@ -424,183 +424,182 @@ export default function Curriculum() {
   if (loading) {
     return (
       <div className="flex justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-6 w-6 animate-spin text-ds-slate" />
       </div>
     );
   }
 
   const sortedModules = [...modules].sort((a, b) => a.order - b.order);
+  const totalLessons = Object.values(lessonsByModule).reduce((sum, l) => sum + l.length, 0);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold">
-            <Layers className="h-6 w-6" />
-            Curriculum
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Organize your course content into modules and lessons students can follow in order.
-          </p>
-        </div>
-        {courses.length > 0 && (
-          <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
-            <SelectTrigger className="w-full sm:w-64">
-              <SelectValue placeholder="Select a course" />
-            </SelectTrigger>
-            <SelectContent>
-              {courses.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {branches.find((b) => b.id === c.branchId)?.name} · {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      </div>
+    <div className="space-y-5 font-ds-sans">
+      <DsPageHeader
+        title="Curriculum"
+        subtitle={
+          selectedCourse
+            ? `${sortedModules.length} modules · ${totalLessons} lessons`
+            : "Organize your course content into modules and lessons."
+        }
+        primary={
+          courses.length > 0
+            ? {
+                label: "Add module",
+                icon: <Plus className="mr-1 h-3.5 w-3.5" />,
+                onClick: openNewModule,
+              }
+            : undefined
+        }
+      />
 
       {courses.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
+        <DsCard className="p-12 text-center">
+          <p className="font-ds-sans text-[12.5px] text-ds-slate">
             Create a branch and course first (Organization) to build a curriculum.
-          </CardContent>
-        </Card>
+          </p>
+        </DsCard>
       ) : (
         <>
-          <div className="flex justify-end">
-            <Button size="sm" className="gap-2" onClick={openNewModule}>
-              <Plus className="h-4 w-4" />
-              Add Module
-            </Button>
-          </div>
+          {courses.length > 1 && (
+            <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
+              <SelectTrigger className="h-9 w-full border-ds-ink/15 sm:w-64">
+                <SelectValue placeholder="Select a course" />
+              </SelectTrigger>
+              <SelectContent>
+                {courses.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {branches.find((b) => b.id === c.branchId)?.name} · {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
           {sortedModules.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center text-sm text-muted-foreground">
+            <DsCard className="p-12 text-center">
+              <p className="font-ds-sans text-[12.5px] text-ds-slate">
                 No modules yet. Add your first module to start building the syllabus.
-              </CardContent>
-            </Card>
+              </p>
+            </DsCard>
           ) : (
-            <Accordion type="multiple" className="space-y-3">
-              {sortedModules.map((mod, idx) => {
-                const lessons = [...(lessonsByModule[mod.id] || [])].sort(
-                  (a, b) => a.order - b.order
-                );
-                return (
-                  <AccordionItem
-                    key={mod.id}
-                    value={mod.id}
-                    className="rounded-xl border border-border/60 px-0"
-                  >
-                    <div className="flex items-center gap-2 px-4">
-                      <div className="flex flex-col">
-                        <button
-                          className="text-muted-foreground hover:text-foreground disabled:opacity-30"
-                          onClick={() => moveModule(mod, -1)}
-                          disabled={idx === 0}
-                        >
-                          <ChevronUp className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          className="text-muted-foreground hover:text-foreground disabled:opacity-30"
-                          onClick={() => moveModule(mod, 1)}
-                          disabled={idx === sortedModules.length - 1}
-                        >
-                          <ChevronDown className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                      <AccordionTrigger className="flex-1 py-3 hover:no-underline">
-                        <div className="text-left">
-                          <p className="font-semibold">{mod.title}</p>
-                          {mod.description && (
-                            <p className="text-xs font-normal text-muted-foreground">
-                              {mod.description}
-                            </p>
-                          )}
-                        </div>
-                      </AccordionTrigger>
-                      <Badge variant="outline" className="shrink-0 text-xs">
-                        {lessons.length} lesson{lessons.length === 1 ? "" : "s"}
-                      </Badge>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 shrink-0"
-                        onClick={() => openEditModule(mod)}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 shrink-0 text-destructive"
-                        onClick={() => deleteModule(mod)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                    <AccordionContent className="px-4 pb-4">
-                      <div className="space-y-2 border-t border-border/40 pt-3">
-                        {lessons.map((lesson, lIdx) => (
-                          <div
-                            key={lesson.id}
-                            className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2"
+            <DsCard className="overflow-hidden">
+              <Accordion type="multiple">
+                {sortedModules.map((mod, idx) => {
+                  const lessons = [...(lessonsByModule[mod.id] || [])].sort(
+                    (a, b) => a.order - b.order
+                  );
+                  return (
+                    <AccordionItem
+                      key={mod.id}
+                      value={mod.id}
+                      className="border-b border-ds-ink/[.08] px-0 last:border-0"
+                    >
+                      <div className="flex items-center gap-2 px-4">
+                        <div className="flex flex-col">
+                          <button
+                            className="text-ds-ink/35 hover:text-ds-ink disabled:opacity-30"
+                            onClick={() => moveModule(mod, -1)}
+                            disabled={idx === 0}
                           >
-                            <BookOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium">{lesson.title}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {(lesson.contentIds || []).length} content item
-                                {(lesson.contentIds || []).length === 1 ? "" : "s"}
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            className="text-ds-ink/35 hover:text-ds-ink disabled:opacity-30"
+                            onClick={() => moveModule(mod, 1)}
+                            disabled={idx === sortedModules.length - 1}
+                          >
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <AccordionTrigger className="flex-1 py-3 hover:no-underline">
+                          <div className="text-left">
+                            <p className="font-ds-sans text-[13.5px] font-semibold text-ds-ink">
+                              {mod.title}
+                            </p>
+                            {mod.description && (
+                              <p className="font-ds-sans text-[11.5px] font-normal text-ds-ink/45">
+                                {mod.description}
                               </p>
-                            </div>
-                            <button
-                              className="text-muted-foreground hover:text-foreground disabled:opacity-30"
-                              onClick={() => moveLesson(mod.id, lesson, -1)}
-                              disabled={lIdx === 0}
-                            >
-                              <ChevronUp className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              className="text-muted-foreground hover:text-foreground disabled:opacity-30"
-                              onClick={() => moveLesson(mod.id, lesson, 1)}
-                              disabled={lIdx === lessons.length - 1}
-                            >
-                              <ChevronDown className="h-3.5 w-3.5" />
-                            </button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => openEditLesson(mod.id, lesson)}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-destructive"
-                              onClick={() => deleteLesson(mod.id, lesson)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            )}
                           </div>
-                        ))}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="mt-1 gap-2"
-                          onClick={() => openNewLesson(mod.id)}
+                        </AccordionTrigger>
+                        <span className="shrink-0 rounded-md bg-ds-fill px-2 py-0.5 font-ds-mono text-[10.5px] font-medium text-ds-ink/60">
+                          {lessons.length} lesson{lessons.length === 1 ? "" : "s"}
+                        </span>
+                        <button
+                          className="shrink-0 rounded p-1.5 text-ds-slate hover:bg-ds-fill"
+                          onClick={() => openEditModule(mod)}
                         >
-                          <Plus className="h-3.5 w-3.5" />
-                          Add Lesson
-                        </Button>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          className="shrink-0 rounded p-1.5 text-ds-slate hover:bg-ds-fill hover:text-red-600"
+                          onClick={() => deleteModule(mod)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
                       </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                );
-              })}
-            </Accordion>
+                      <AccordionContent className="px-4 pb-3">
+                        <div className="border-t border-ds-ink/[.06] pt-2">
+                          {lessons.map((lesson, lIdx) => (
+                            <div
+                              key={lesson.id}
+                              className="flex items-center gap-2.5 border-b border-ds-ink/[.05] py-2 last:border-0"
+                            >
+                              <div className="h-2 w-2 shrink-0 rounded-sm bg-ds-info" />
+                              <BookOpen className="h-3.5 w-3.5 shrink-0 text-ds-ink/35" />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate font-ds-sans text-[12.5px] font-medium text-ds-ink">
+                                  {lesson.title}
+                                </p>
+                                <p className="font-ds-sans text-[11px] text-ds-ink/45">
+                                  {(lesson.contentIds || []).length} content item
+                                  {(lesson.contentIds || []).length === 1 ? "" : "s"}
+                                  {lesson.plannedDate && ` · plan ${lesson.plannedDate}`}
+                                </p>
+                              </div>
+                              <button
+                                className="text-ds-ink/30 hover:text-ds-ink disabled:opacity-30"
+                                onClick={() => moveLesson(mod.id, lesson, -1)}
+                                disabled={lIdx === 0}
+                              >
+                                <ChevronUp className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                className="text-ds-ink/30 hover:text-ds-ink disabled:opacity-30"
+                                onClick={() => moveLesson(mod.id, lesson, 1)}
+                                disabled={lIdx === lessons.length - 1}
+                              >
+                                <ChevronDown className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                className="rounded p-1 text-ds-slate hover:bg-ds-fill"
+                                onClick={() => openEditLesson(mod.id, lesson)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                className="rounded p-1 text-ds-slate hover:bg-ds-fill hover:text-red-600"
+                                onClick={() => deleteLesson(mod.id, lesson)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            onClick={() => openNewLesson(mod.id)}
+                            className="mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-ds-ink/20 font-ds-sans text-[12px] font-medium text-ds-ink/50 hover:border-ds-ink/35"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Add lesson
+                          </button>
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  );
+                })}
+              </Accordion>
+            </DsCard>
           )}
         </>
       )}
@@ -698,6 +697,19 @@ export default function Curriculum() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <p className="mb-2 text-xs font-medium text-muted-foreground">
+                Planned teach-by date (optional)
+              </p>
+              <Input
+                type="date"
+                value={lessonPlannedDate}
+                onChange={(e) => setLessonPlannedDate(e.target.value)}
+              />
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Used by Exam Schedule to warn if an exam covers this lesson before it's taught.
+              </p>
             </div>
           </div>
           <DialogFooter>

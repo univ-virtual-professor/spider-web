@@ -1,6 +1,8 @@
+const DISABLED = true; // discord logging off for master_revamped, remove to re-enable
+
 export function logError(error: unknown, context: string): void {
   const url = import.meta.env.VITE_DISCORD_ERROR_WEBHOOK_URL;
-  if (!url) return;
+  if (DISABLED || !url) return;
 
   const err = error instanceof Error ? error : new Error(String(error));
   const stack = (err.stack || err.message).slice(0, 980);

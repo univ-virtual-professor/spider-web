@@ -16,6 +16,7 @@ import Refund from "@/pages/Refund";
 import Signup from "@/pages/Signup";
 import Terms from "@/pages/Terms";
 import PayCallback from "@features/pay/PayCallback";
+import TenantCustomPage from "@/pages/TenantCustomPage";
 
 export function getSharedPublicRoutes() {
   return (
@@ -53,6 +54,7 @@ export function getTenantDomainPublicRoutes(
     <>
       <Route path="/" element={tenantHome} />
       <Route path="/courses" element={tenantCourses} />
+      <Route path="/p/:slug" element={<TenantCustomPage />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
       <Route path="/complete-profile" element={<CompleteProfile />} />

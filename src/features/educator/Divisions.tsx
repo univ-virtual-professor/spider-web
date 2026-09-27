@@ -269,10 +269,12 @@ export default function Divisions() {
     );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-ds-sans">
       <div>
-        <h1 className="text-2xl font-bold">Organization</h1>
-        <p className="text-sm text-muted-foreground">Manage your branches and programs</p>
+        <h1 className="font-ds-serif text-[23px] font-semibold text-ds-ink">Staff &amp; access</h1>
+        <p className="font-ds-sans text-[12.5px] text-ds-slate">
+          Manage your branches, programs, and staff.
+        </p>
       </div>
 
       <Tabs defaultValue="branches">
