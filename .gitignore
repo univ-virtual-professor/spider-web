@@ -35,3 +35,8 @@ yarn.lock
 .turbo
 
 .vercel
+
+# Agent docs (local only)
+/project.md
+/design.md
+/docs/agents/
