@@ -90,11 +90,16 @@ export function SectionBadge({ label, dark = false }: { label: string; dark?: bo
   );
 }
 
-// Plus Jakarta Sans at weight 800 renders a visible gap before a full stop ("."), because
-// the glyph carries wide left-side-bearing at that weight. `TightStop` nudges just the
-// period left so headlines that use sentence punctuation don't show that gap.
+// Plus Jakarta Sans at weight 800 renders a visible gap before narrow punctuation marks
+// ("." and ","), because the glyph carries wide left-side-bearing at that weight. `Tight`
+// nudges just the mark left so headlines using sentence punctuation don't show that gap.
+export function Tight({ mark = "." }: { mark?: "." | "," }) {
+  return <span style={{ marginLeft: "-0.07em" }}>{mark}</span>;
+}
+
+// Kept for existing call sites that only need the period case.
 export function TightStop() {
-  return <span style={{ marginLeft: "-0.07em" }}>.</span>;
+  return <Tight mark="." />;
 }
 
 // ─── SECTION HEADING ──────────────────────────────────────────────────────────

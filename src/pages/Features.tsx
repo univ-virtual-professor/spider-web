@@ -24,6 +24,7 @@ import {
   ACCENT_50,
   Reveal,
   SectionHeading,
+  Tight,
 } from "@shared/components/landing/LandingPrimitives";
 
 // Each card owns its own search intent and links to its dedicated feature page — see
@@ -221,8 +222,8 @@ export default function Features() {
                 lineHeight: 1.15,
               }}
             >
-              Everything your institute needs,{" "}
-              <span style={{ color: ACCENT_500 }}>in one platform</span>
+              Everything your institute needs
+              <Tight mark="," /> <span style={{ color: ACCENT_500 }}>in one platform</span>
             </h1>
             <p style={{ fontSize: 17, color: `${NAVY}8c`, marginTop: 18, lineHeight: 1.7 }}>
               PrepareKaro isn't just AI answer-sheet checking — it's a full test and academics

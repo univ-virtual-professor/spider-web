@@ -5,6 +5,7 @@ import {
   FeatureBulletList,
   FeaturePageCTA,
 } from "@shared/components/landing/FeaturePageLayout";
+import { Tight } from "@shared/components/landing/LandingPrimitives";
 
 const BULLETS = [
   {
@@ -50,8 +51,8 @@ export default function AiAnswerSheetEvaluation() {
         badge="AI Answer Sheet Evaluation"
         h1={
           <>
-            AI-graded answer sheets,{" "}
-            <span style={{ color: "#0066FF" }}>reviewed by your faculty</span>
+            AI-graded answer sheets
+            <Tight mark="," /> <span style={{ color: "#0066FF" }}>reviewed by your faculty</span>
           </>
         }
         lede="Scan handwritten copies and let AI mark every answer against your own answer key and rubric — with duplicate and plagiarism checks, and faculty always in control before a result goes out."

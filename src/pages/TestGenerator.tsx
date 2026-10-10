@@ -12,6 +12,7 @@ import {
   FeatureBulletList,
   FeaturePageCTA,
 } from "@shared/components/landing/FeaturePageLayout";
+import { Tight } from "@shared/components/landing/LandingPrimitives";
 
 const BULLETS = [
   {
@@ -57,7 +58,8 @@ export default function TestGenerator() {
         badge="Test Generator"
         h1={
           <>
-            Build a test by choosing chapters,{" "}
+            Build a test by choosing chapters
+            <Tight mark="," />{" "}
             <span style={{ color: "#0066FF" }}>not by hand-picking questions</span>
           </>
         }

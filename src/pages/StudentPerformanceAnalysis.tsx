@@ -5,6 +5,7 @@ import {
   FeatureBulletList,
   FeaturePageCTA,
 } from "@shared/components/landing/FeaturePageLayout";
+import { Tight } from "@shared/components/landing/LandingPrimitives";
 
 const BULLETS = [
   {
@@ -50,8 +51,8 @@ export default function StudentPerformanceAnalysis() {
         badge="Student Performance Analysis"
         h1={
           <>
-            Find every student's weak topic,{" "}
-            <span style={{ color: "#0066FF" }}>not just their score</span>
+            Find every student's weak topic
+            <Tight mark="," /> <span style={{ color: "#0066FF" }}>not just their score</span>
           </>
         }
         lede="PrepareKaro analyses every test a student takes and breaks their accuracy down by subject, chapter and topic — so weak spots are visible, ranked and backed by a readiness score."
