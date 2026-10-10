@@ -1,0 +1,33 @@
+src/shared/components/landing/LandingPrimitives.tsx
+  5199e446b1d14be0 93-100,102
+src/pages/Features.tsx
+  5199e446b1d14be0 27,226
+src/pages/Index.tsx
+  5199e446b1d14be0 1738,1741-1743,1746-1748,1751-1753,1756-1758,1761-1763,1788
+src/pages/TestGenerator.tsx
+  5199e446b1d14be0 15,62
+src/pages/StudentPerformanceAnalysis.tsx
+  5199e446b1d14be0 8,54-55
+src/pages/AiAnswerSheetEvaluation.tsx
+  5199e446b1d14be0 8,55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "79a76400701ef23ed51a92d01a0ee854c8a93b4b",
+  "prompts": {
+    "5199e446b1d14be0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8a3802b4-d7ac-4146-9b59-a828bc4f41fd",
+        "model": "unknown"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 42,
+      "total_deletions": 189,
+      "accepted_lines": 37,
+      "overriden_lines": 0
+    }
+  }
+}
