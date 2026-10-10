@@ -5,10 +5,11 @@ const PRIMARY = "#0066FF";
 const DARK = "#050F26";
 
 const FEATURE_LINKS = [
-  "Bulk Scanning",
-  "AI Evaluation",
-  "Result Portal",
-  "Multi-Channel Publishing",
+  { label: "AI Answer Sheet Evaluation", href: "/features/ai-answer-sheet-evaluation" },
+  { label: "Student Performance Analysis", href: "/features/student-performance-analysis" },
+  { label: "Personalised Practice Papers", href: "/features/personalised-practice-papers" },
+  { label: "Test Generator", href: "/features/test-generator" },
+  { label: "All Features", href: "/features" },
 ];
 const LEGAL_LINKS = [
   { label: "Privacy Policy", href: "/privacy" },
@@ -101,8 +102,8 @@ export default function LandingFooter({ topContent }: { topContent?: ReactNode }
             <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
               {FEATURE_LINKS.map((l) => (
                 <a
-                  key={l}
-                  href="/#features"
+                  key={l.label}
+                  href={l.href}
                   style={{
                     fontSize: 13.5,
                     color: "#8b93ab",
@@ -112,7 +113,7 @@ export default function LandingFooter({ topContent }: { topContent?: ReactNode }
                   onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
                   onMouseLeave={(e) => (e.currentTarget.style.color = "#8b93ab")}
                 >
-                  {l}
+                  {l.label}
                 </a>
               ))}
             </div>

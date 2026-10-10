@@ -1,48 +1,58 @@
-import { motion } from "framer-motion";
+import { Link } from "react-router-dom";
+import { FileText, Camera, Layers, Sparkles, ArrowRight, type LucideIcon } from "lucide-react";
 import LandingLayout from "@widgets/layout/LandingLayout";
 import SEO from "@shared/components/SEO";
-import { FileText, ScanLine, Brain, Eye, Send, ArrowRight } from "lucide-react";
-import { Button } from "@shared/ui/button";
-import { Link } from "react-router-dom";
-import type { LucideIcon } from "lucide-react";
+import {
+  NAVY,
+  ACCENT_500,
+  ACCENT_50,
+  Reveal,
+  SectionHeading,
+} from "@shared/components/landing/LandingPrimitives";
 
-type Step = { icon: LucideIcon; title: string; description: string; duration: string };
+type LoopStep = {
+  icon: LucideIcon;
+  num: string;
+  title: string;
+  description: string;
+  href?: string;
+};
 
-const steps: Step[] = [
+// The full loop the ticket asks for: test -> AI evaluation -> topic analysis -> personalised
+// practice. This replaces the previous version of this page, which only covered the AI
+// evaluation step.
+const LOOP_STEPS: LoopStep[] = [
   {
     icon: FileText,
-    title: "Upload Question Paper & Answer Key",
+    num: "01",
+    title: "Run a test",
     description:
-      "Upload the question paper and marking scheme, or let AI extract the questions straight from photos of the paper.",
-    duration: "5 min",
+      "Schedule an objective or subjective test series, or generate one instantly by choosing subject, chapters and topics — the paper fills itself from your question bank, then ours.",
+    href: "/features/test-generator",
   },
   {
-    icon: ScanLine,
-    title: "Scan & Upload Answer Sheets",
+    icon: Camera,
+    num: "02",
+    title: "AI evaluates every answer",
     description:
-      "Snap photos or upload PDFs of handwritten answer sheets in bulk — page by page, straight from your phone.",
-    duration: "Per batch",
+      "For subjective papers, scan the handwritten copies and AI grades every answer step by step against your rubric. Faculty review and release results, usually within 72 hours.",
+    href: "/features/ai-answer-sheet-evaluation",
   },
   {
-    icon: Brain,
-    title: "AI Grades Every Answer",
+    icon: Layers,
+    num: "03",
+    title: "Topic analysis pinpoints weak spots",
     description:
-      "AI evaluates each response against your rubric — objective and subjective — with a step-by-step marks breakdown.",
-    duration: "Automatic",
+      "Every result feeds the student's report: accuracy by subject, chapter and topic, weighted toward recent tests, with a readiness score and the exact topics dragging it down.",
+    href: "/features/student-performance-analysis",
   },
   {
-    icon: Eye,
-    title: "Teachers Review & Moderate",
+    icon: Sparkles,
+    num: "04",
+    title: "Personalised practice closes the gap",
     description:
-      "Spot-check the AI's grading, override any question, add feedback, and approve each sheet before it's final.",
-    duration: "~10 days",
-  },
-  {
-    icon: Send,
-    title: "Results Publish Instantly",
-    description:
-      "Once approved, students see their graded, annotated answer sheet with step-by-step feedback in their portal.",
-    duration: "Instant",
+      "A practice paper is generated from that student's own weak topics — more questions where they struggle, an easier start, nothing repeated from recent tests.",
+    href: "/features/personalised-practice-papers",
   },
 ];
 
@@ -50,82 +60,187 @@ export default function HowItWorks() {
   return (
     <LandingLayout>
       <SEO
-        title="How It Works — AI-Powered Exam Evaluation | PrepareKaro"
-        description="See how PrepareKaro grades exams: upload the question paper, scan handwritten answer sheets, let AI grade every answer, moderate, and publish results — all in about 10 days."
+        title="How PrepareKaro Works: Test, Evaluate, Analyse, Practice"
+        description="The PrepareKaro loop for coaching institutes: run a test, AI evaluates every answer, topic-level analysis finds each student's weak spots, and a personalised practice paper closes the gap."
         canonical="https://preparekaro.in/how-it-works"
       />
-      <div className="pb-20">
-        {/* Hero */}
-        <section className="container mx-auto px-4 py-16 text-center lg:px-8">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <span className="mb-4 inline-block rounded-full bg-brand-start/10 px-4 py-1.5 text-sm font-medium text-brand-blue">
-              How It Works
-            </span>
-            <h1 className="mb-6 font-display text-4xl font-bold sm:text-5xl lg:text-6xl">
-              From Scan to <span className="gradient-text">Graded Result</span>
-              <br />
-              in About 10 Days
-            </h1>
-            <p className="mx-auto max-w-2xl text-xl text-muted-foreground">
-              A simple, guided process to digitize and AI-grade your institute's answer sheets —
-              objective and subjective alike.
-            </p>
-          </motion.div>
+      <div style={{ paddingBottom: 96 }}>
+        <section style={{ padding: "64px 24px 24px", background: "#fff" }}>
+          <div style={{ maxWidth: 900, margin: "0 auto", textAlign: "center" }}>
+            <Reveal>
+              <div style={{ display: "flex", justifyContent: "center" }}>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    background: "#fff",
+                    border: `1px solid ${ACCENT_50}`,
+                    borderRadius: 100,
+                    padding: "8px 14px",
+                    boxShadow: "0 2px 12px -2px rgba(8,24,58,0.08)",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "#0052CC",
+                    letterSpacing: "0.05em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  How It Works
+                </span>
+              </div>
+              <h1
+                style={{
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 800,
+                  fontSize: "clamp(32px, 4vw, 48px)",
+                  color: NAVY,
+                  letterSpacing: "-0.5px",
+                  lineHeight: 1.15,
+                  marginTop: 20,
+                }}
+              >
+                One test in, a personalised plan <span style={{ color: ACCENT_500 }}>out</span>
+              </h1>
+              <p
+                style={{
+                  fontSize: 17,
+                  color: `${NAVY}8c`,
+                  marginTop: 18,
+                  lineHeight: 1.7,
+                  maxWidth: 640,
+                  marginLeft: "auto",
+                  marginRight: "auto",
+                }}
+              >
+                PrepareKaro connects four steps into one loop, so every test a student takes makes
+                their next practice paper better.
+              </p>
+            </Reveal>
+          </div>
         </section>
 
-        {/* Timeline */}
-        <section className="container mx-auto px-4 py-16 lg:px-8">
-          <div className="mx-auto max-w-4xl">
-            {steps.map((step, index) => (
-              <motion.div
-                key={step.title}
-                initial={{ opacity: 0, x: -30 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                className="relative pb-12 pl-12 last:pb-0 lg:pl-16"
-              >
-                {index < steps.length - 1 && (
-                  <div className="absolute bottom-0 left-[18px] top-12 w-0.5 bg-gradient-to-b from-brand-start to-brand-end lg:left-[22px]" />
-                )}
-                <div className="gradient-bg absolute left-0 flex h-10 w-10 items-center justify-center rounded-xl shadow-glow lg:h-12 lg:w-12">
-                  <step.icon className="h-5 w-5 text-white lg:h-6 lg:w-6" />
-                </div>
-                <div className="rounded-2xl border border-border/50 bg-card p-6 shadow-card transition-all hover:shadow-card-hover lg:p-8">
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="font-display text-xl font-bold">{step.title}</h3>
-                    <span className="rounded-full bg-secondary px-3 py-1 text-sm font-medium text-muted-foreground">
-                      {step.duration}
-                    </span>
+        <section style={{ padding: "48px 24px", background: "#fff" }}>
+          <div style={{ maxWidth: 900, margin: "0 auto" }}>
+            {LOOP_STEPS.map((step, index) => (
+              <Reveal key={step.title} delay={index * 80}>
+                <div
+                  style={{
+                    position: "relative",
+                    paddingLeft: 64,
+                    paddingBottom: index < LOOP_STEPS.length - 1 ? 40 : 0,
+                  }}
+                >
+                  {index < LOOP_STEPS.length - 1 && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: 23,
+                        top: 48,
+                        bottom: 0,
+                        width: 2,
+                        background: ACCENT_50,
+                      }}
+                    />
+                  )}
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: 0,
+                      width: 48,
+                      height: 48,
+                      borderRadius: 14,
+                      background: `linear-gradient(135deg, ${ACCENT_500}, #0041A3)`,
+                      color: "#fff",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                      fontWeight: 800,
+                      fontSize: 14,
+                      boxShadow: "0 4px 24px -4px rgba(8,24,58,0.25)",
+                    }}
+                  >
+                    {step.num}
                   </div>
-                  <p className="text-muted-foreground">{step.description}</p>
+                  <div
+                    className="hover-lift-card"
+                    style={{
+                      background: "#fff",
+                      border: `1px solid ${NAVY}0d`,
+                      borderRadius: 18,
+                      padding: 24,
+                      boxShadow: "0 2px 12px -2px rgba(8,24,58,0.04)",
+                    }}
+                  >
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}
+                    >
+                      <step.icon size={18} color={ACCENT_500} />
+                      <h3
+                        style={{
+                          fontFamily: "'Plus Jakarta Sans', sans-serif",
+                          fontWeight: 700,
+                          fontSize: 19,
+                          color: NAVY,
+                        }}
+                      >
+                        {step.title}
+                      </h3>
+                    </div>
+                    <p style={{ fontSize: 15, color: `${NAVY}8c`, lineHeight: 1.7 }}>
+                      {step.description}
+                    </p>
+                    {step.href && (
+                      <Link
+                        to={step.href}
+                        style={{
+                          marginTop: 12,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          fontSize: 13.5,
+                          fontWeight: 700,
+                          color: ACCENT_500,
+                          textDecoration: "none",
+                        }}
+                      >
+                        See how it works <ArrowRight size={13} />
+                      </Link>
+                    )}
+                  </div>
                 </div>
-              </motion.div>
+              </Reveal>
             ))}
           </div>
         </section>
 
-        {/* CTA */}
-        <section className="container mx-auto px-4 py-16 lg:px-8">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center"
+        <SectionHeading
+          badge="Ready When You Are"
+          title="See the full loop on your own courses"
+          description="Book a demo and we'll walk through evaluation, topic analysis and personalised practice with your own batches."
+        />
+        <div style={{ textAlign: "center", marginTop: 32 }}>
+          <Link
+            to="/#interest-form"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "14px 26px",
+              background: NAVY,
+              color: "#fff",
+              borderRadius: 12,
+              fontFamily: "'Inter', sans-serif",
+              fontWeight: 600,
+              fontSize: 14.5,
+              textDecoration: "none",
+            }}
           >
-            <h2 className="mb-6 font-display text-3xl font-bold">Ready to Get Started?</h2>
-            <Button variant="hero" size="xl" asChild className="group">
-              <Link to="/#interest-widget">
-                Book a Demo
-                <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
-              </Link>
-            </Button>
-          </motion.div>
-        </section>
+            Book a Demo <ArrowRight size={14} />
+          </Link>
+        </div>
       </div>
     </LandingLayout>
   );
