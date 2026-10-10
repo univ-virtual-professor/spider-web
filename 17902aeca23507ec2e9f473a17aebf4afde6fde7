@@ -1,0 +1,27 @@
+src/features/educator/examGrading/ExamGradingList.tsx
+  28def1481053587f 1,3,10-30,33-80,84-86,88,90-91,98-102,110,113-134,136,142-204,214,226-230,232-233,235-262,265-305,307-317,319-389,391-397,399-419
+src/features/educator/examGrading/ExamGradingReview.tsx
+  28def1481053587f 1-2,6-11,17-23,25-27,29-32,35-38,40-41,44-51,54,56,58-59,62,65-68,70-72,76-78,81,83,86-97,105-108,110-120,123-129,132,134,140,144-146,149-173,176-177,181-185,189-191,196,198-200,202,208-209,211,214,220-221,223-224,227,230-244,246-251,254-260,263-265,269,271-311,313-338,340-371,373-490,492
+src/features/educator/examGrading/dsLocalStates.tsx
+  28def1481053587f 1-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "17902aeca23507ec2e9f473a17aebf4afde6fde7",
+  "prompts": {
+    "28def1481053587f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e90cf844-3897-41e6-acbd-6e75ec6da262",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 853,
+      "total_deletions": 323,
+      "accepted_lines": 835,
+      "overriden_lines": 0
+    }
+  }
+}
