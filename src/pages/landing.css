@@ -177,6 +177,23 @@ button:hover .play-ring {
     transform 0.3s ease;
 }
 
+/* ─── Hero platform-tour card progress bar (auto-cycle tabs) ───────────────── */
+.tour-progress-bar {
+  width: 0;
+  animation: tourProgress 5s linear forwards;
+}
+@keyframes tourProgress {
+  to {
+    width: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-progress-bar {
+    animation: none;
+    width: 100%;
+  }
+}
+
 @media (max-width: 900px) {
   .hero-grid {
     grid-template-columns: 1fr !important;
@@ -207,6 +224,12 @@ button:hover .play-ring {
     grid-template-columns: 1fr !important;
   }
   .process-track {
+    grid-template-columns: 1fr !important;
+  }
+  .tools-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .tour-eval-grid {
     grid-template-columns: 1fr !important;
   }
 }

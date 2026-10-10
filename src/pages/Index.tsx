@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import {
   ArrowRight,
   ChevronDown,
@@ -13,10 +14,6 @@ import {
   Star,
   CalendarDays,
   Bot,
-  ClipboardCheck,
-  Monitor,
-  Puzzle,
-  Cpu,
   Clock,
   MessageCircle,
   Mail,
@@ -26,17 +23,26 @@ import {
   Play,
   Volume2,
   Maximize2,
+  ListChecks,
+  Smartphone,
+  Globe,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import SEO from "@shared/components/SEO";
 import LandingNavbar from "@widgets/layout/LandingNavbar";
 import LandingFooter from "@widgets/layout/LandingFooter";
+import {
+  NAVY,
+  ACCENT_500,
+  ACCENT_50,
+  Reveal,
+  SectionBadge,
+  SectionHeading,
+  TightStop,
+} from "@shared/components/landing/LandingPrimitives";
 import "./landing.css";
 
-const ACCENT_500 = "#0066FF";
-const ACCENT_50 = "#EEF4FF";
-const ACCENT_100 = "#DCE9FF";
-const NAVY = "#08183A";
 const NAVY_900 = "#08183A";
 const GREEN_TEXT = "#4ADE80";
 const GREEN_BG = "rgba(34,197,94,0.2)";
@@ -47,46 +53,6 @@ const YOUTUBE_VIDEO_ID = "QpPB4zU6Vuk";
 const WHATSAPP_NUMBER = "919625394589";
 const CONTACT_EMAIL = "info.univlive@gmail.com";
 const CONTACT_PHONE = "+91 96253 94589";
-
-// ─── SCROLL-REVEAL WRAPPER ────────────────────────────────────────────────────
-function Reveal({
-  children,
-  delay = 0,
-  className = "",
-  style,
-  id,
-}: {
-  children: ReactNode;
-  delay?: number;
-  className?: string;
-  style?: React.CSSProperties;
-  id?: string;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          el.style.transitionDelay = `${delay}ms`;
-          el.classList.add("is-visible");
-          observer.unobserve(el);
-        }
-      },
-      { threshold: 0.15, rootMargin: "0px 0px -40px 0px" }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [delay]);
-
-  return (
-    <div ref={ref} id={id} className={`reveal ${className}`} style={style}>
-      {children}
-    </div>
-  );
-}
 
 // ─── STATS ────────────────────────────────────────────────────────────────────
 type StatItem = { icon: LucideIcon; value: string; label: string };
@@ -175,77 +141,475 @@ const AI_EVAL_STEPS = [
   },
 ];
 
-// ─── PROCESS STEPS ────────────────────────────────────────────────────────────
-const PROCESS_STEPS: { num: string; icon: LucideIcon; title: string; sub: string }[] = [
-  {
-    num: "01",
-    icon: Camera,
-    title: "Scanning of Copies",
-    sub: "High-speed bulk digitization of every answer sheet.",
-  },
-  {
-    num: "02",
-    icon: Bot,
-    title: "Evaluation of Copies",
-    sub: "AI grading mapped to your answer keys and rubrics.",
-  },
-  {
-    num: "03",
-    icon: ClipboardCheck,
-    title: "Result Preparation Portal",
-    sub: "Moderation and analytics that flag anomalies early.",
-  },
-  {
-    num: "04",
-    icon: Monitor,
-    title: "Final Display of Result",
-    sub: "Branded portals published across web, SMS & email.",
-  },
-  {
-    num: "05",
-    icon: Puzzle,
-    title: "Fulfill Custom Requirement",
-    sub: "Tailored rubrics and workflows built around your team.",
-  },
+// ─── HERO: PLATFORM TOUR CARD ─────────────────────────────────────────────────
+// Auto-cycles Evaluate / Analyse / Personalise / Build every 5s; stops permanently once the
+// visitor clicks a tab; never auto-cycles under prefers-reduced-motion.
+type TourTabId = "evaluate" | "analyse" | "personalise" | "build";
+const TOUR_TABS: { id: TourTabId; label: string; sub: string }[] = [
+  { id: "evaluate", label: "Evaluate", sub: "AI checking" },
+  { id: "analyse", label: "Analyse", sub: "Weak topics" },
+  { id: "personalise", label: "Personalise", sub: "Own paper" },
+  { id: "build", label: "Build", sub: "Topic tests" },
 ];
 
-// ─── SHARED PILL / BADGE ──────────────────────────────────────────────────────
-function SectionBadge({ label, dark = false }: { label: string; dark?: boolean }) {
+function TrackBar({ pct, color }: { pct: number; color: string }) {
   return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        background: dark ? "rgba(255,255,255,0.06)" : "#fff",
-        border: `1px solid ${dark ? "rgba(255,255,255,0.15)" : ACCENT_100}`,
-        borderRadius: 100,
-        padding: "8px 14px",
-        boxShadow: dark ? "none" : "0 2px 12px -2px rgba(8,24,58,0.08)",
-      }}
+    <div style={{ height: 7, background: "#F8FAFC", borderRadius: 100, overflow: "hidden" }}>
+      <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 100 }} />
+    </div>
+  );
+}
+
+function TourEvaluateView() {
+  const steps = [
+    {
+      label: "Capital recorded",
+      score: "1/1",
+      note: "Initial capital and cash recorded correctly.",
+      ok: true,
+    },
+    {
+      label: "Credit purchase",
+      score: "1/1",
+      note: "Goods bought on credit recorded correctly.",
+      ok: true,
+    },
+    {
+      label: "Goods sold",
+      score: "0/1",
+      note: "Equation does not balance after the sale.",
+      ok: false,
+    },
+    { label: "Received from debtor", score: "0/1", note: "Calculation is incorrect.", ok: false },
+  ];
+  return (
+    <div
+      style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}
+      className="tour-eval-grid"
     >
-      <span
-        className="pulse-dot"
+      <div
+        className="scan-line-wrap"
+        style={{ borderRadius: 12, overflow: "hidden", border: `1px solid ${NAVY}0d`, height: 290 }}
+      >
+        <img
+          src="/ai-eval-demo-sheet.png"
+          alt="Scanned handwritten answer sheet"
+          style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }}
+        />
+      </div>
+      <div style={{ display: "grid", gap: 8, alignContent: "start" }}>
+        {steps.map((s) => (
+          <div
+            key={s.label}
+            style={{
+              border: `1px solid ${NAVY}0d`,
+              borderLeft: `3px solid ${s.ok ? "#16A34A" : "#E11D48"}`,
+              borderRadius: 10,
+              padding: "9px 11px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontWeight: 600,
+                fontSize: 13,
+              }}
+            >
+              <span>{s.label}</span>
+              <span>{s.score}</span>
+            </div>
+            <p style={{ fontSize: 12, color: `${NAVY}8c`, marginTop: 2 }}>{s.note}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TourAnalyseView() {
+  const topics = [
+    { label: "Rotational motion", sub: "Physics, Mechanics", pct: 34, color: "#E11D48" },
+    { label: "Chemical equilibrium", sub: "Chemistry, Physical", pct: 41, color: "#E11D48" },
+    { label: "Definite integrals", sub: "Maths, Calculus", pct: 58, color: "#F59E0B" },
+    { label: "Electrostatics", sub: "Physics, Electricity", pct: 79, color: "#16A34A" },
+    { label: "Organic reactions", sub: "Chemistry, Organic", pct: 86, color: "#16A34A" },
+  ];
+  return (
+    <div>
+      <div
         style={{
-          width: 6,
-          height: 6,
-          borderRadius: "50%",
-          background: ACCENT_500,
-        }}
-      />
-      <span
-        style={{
-          fontSize: 12,
-          fontWeight: 700,
-          color: dark ? "#7FAEFF" : "#0052CC",
-          letterSpacing: "0.05em",
-          textTransform: "uppercase",
-          fontFamily: "'Inter', sans-serif",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          paddingBottom: 14,
+          borderBottom: `1px solid ${NAVY}0d`,
+          marginBottom: 6,
         }}
       >
-        {label}
-      </span>
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: "50%",
+            background: ACCENT_50,
+            color: ACCENT_500,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 800,
+            fontSize: 14,
+          }}
+        >
+          AS
+        </div>
+        <div>
+          <b style={{ display: "block", fontSize: 15, fontWeight: 700, color: NAVY }}>
+            Aarav Sharma
+          </b>
+          <small style={{ color: `${NAVY}8c`, fontSize: 12.5 }}>JEE 2027, Batch B2, 14 tests</small>
+        </div>
+        <div style={{ marginLeft: "auto", textAlign: "right" }}>
+          <b style={{ display: "block", fontSize: 26, fontWeight: 800, color: ACCENT_500 }}>62</b>
+          <small style={{ color: `${NAVY}8c` }}>Readiness</small>
+        </div>
+      </div>
+      {topics.map((t, i) => (
+        <div
+          key={t.label}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 110px 40px",
+            gap: 12,
+            alignItems: "center",
+            padding: "8px 0",
+            fontSize: 13.5,
+            borderBottom: i < topics.length - 1 ? `1px dashed ${NAVY}1a` : "none",
+          }}
+        >
+          <span>
+            {t.label}
+            <small style={{ display: "block", fontSize: 11.5, color: `${NAVY}8c` }}>{t.sub}</small>
+          </span>
+          <TrackBar pct={t.pct} color={t.color} />
+          <span style={{ textAlign: "right", fontWeight: 700, fontSize: 13.5 }}>{t.pct}%</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TourPersonaliseView() {
+  const rows: { label: string; sub: string; count: number; color: string }[] = [
+    { label: "Rotational motion", sub: "11 questions, easier start", count: 11, color: "#FB7185" },
+    { label: "Chemical equilibrium", sub: "9 questions, easier start", count: 9, color: "#FB7185" },
+    { label: "Definite integrals", sub: "7 questions, mixed", count: 7, color: "#FBBF24" },
+    { label: "Electrostatics", sub: "3 questions, harder", count: 3, color: "#4ADE80" },
+  ];
+  return (
+    <div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 14,
+        }}
+      >
+        <b style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>Practice paper for Aarav</b>
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            padding: "5px 10px",
+            borderRadius: 100,
+            background: "#EEFCF3",
+            color: "#15803D",
+          }}
+        >
+          Ready, 30 questions
+        </span>
+      </div>
+      {rows.map((r, i) => (
+        <div
+          key={r.label}
+          style={{
+            padding: "10px 0",
+            borderBottom: i < rows.length - 1 ? `1px solid ${NAVY}0d` : "none",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              fontSize: 13.5,
+              marginBottom: 6,
+            }}
+          >
+            <span>{r.label}</span>
+            <small style={{ color: `${NAVY}8c`, fontSize: 12 }}>{r.sub}</small>
+          </div>
+          <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+            {Array.from({ length: r.count }).map((_, k) => (
+              <i key={k} style={{ width: 15, height: 19, borderRadius: 4, background: r.color }} />
+            ))}
+          </div>
+        </div>
+      ))}
+      <div
+        style={{
+          marginTop: 12,
+          fontSize: 12.5,
+          color: `${NAVY}8c`,
+          display: "flex",
+          gap: 14,
+          flexWrap: "wrap",
+        }}
+      >
+        <span>✓ From his weak topics</span>
+        <span>✓ No repeats from recent tests</span>
+      </div>
+    </div>
+  );
+}
+
+function TourBuildView() {
+  const Opt = ({ label, on = false }: { label: string; on?: boolean }) => (
+    <span
+      style={{
+        fontSize: 13,
+        padding: "6px 11px",
+        borderRadius: 100,
+        border: `1.5px solid ${on ? ACCENT_500 : `${NAVY}1a`}`,
+        background: on ? ACCENT_50 : "transparent",
+        color: on ? "#0052CC" : NAVY,
+        fontWeight: on ? 600 : 400,
+      }}
+    >
+      {label}
     </span>
+  );
+  return (
+    <div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 14,
+        }}
+      >
+        <b style={{ fontSize: 15, fontWeight: 700, color: NAVY }}>New test, Batch J2</b>
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            padding: "5px 10px",
+            borderRadius: 100,
+            background: ACCENT_50,
+            color: "#0052CC",
+          }}
+        >
+          Auto-fill
+        </span>
+      </div>
+      <div style={{ marginBottom: 14 }}>
+        <label
+          style={{
+            display: "block",
+            fontSize: 12,
+            fontWeight: 600,
+            color: `${NAVY}8c`,
+            marginBottom: 7,
+          }}
+        >
+          Subject
+        </label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+          <Opt label="Physics" />
+          <Opt label="Chemistry" on />
+          <Opt label="Maths" />
+        </div>
+      </div>
+      <div style={{ marginBottom: 14 }}>
+        <label
+          style={{
+            display: "block",
+            fontSize: 12,
+            fontWeight: 600,
+            color: `${NAVY}8c`,
+            marginBottom: 7,
+          }}
+        >
+          Chapters
+        </label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+          <Opt label="Chemical equilibrium" on />
+          <Opt label="Ionic equilibrium" on />
+          <Opt label="Thermodynamics" />
+        </div>
+      </div>
+      <div style={{ marginBottom: 14 }}>
+        <label
+          style={{
+            display: "block",
+            fontSize: 12,
+            fontWeight: 600,
+            color: `${NAVY}8c`,
+            marginBottom: 7,
+          }}
+        >
+          Difficulty and length
+        </label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+          <Opt label="Easy" />
+          <Opt label="Medium" on />
+          <Opt label="30 questions" on />
+        </div>
+      </div>
+      <div
+        style={{
+          marginTop: 6,
+          paddingTop: 14,
+          borderTop: `1px solid ${NAVY}0d`,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          fontSize: 13.5,
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <span>
+          <b>30 questions</b> filled from your bank and ours
+        </span>
+        <span
+          style={{
+            padding: "9px 16px",
+            fontSize: 13.5,
+            borderRadius: 10,
+            background: ACCENT_500,
+            color: "#fff",
+            fontWeight: 600,
+          }}
+        >
+          Create test
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PlatformTourCard() {
+  const [active, setActive] = useState(0);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduce || paused) return;
+    const timer = setInterval(() => setActive((i) => (i + 1) % TOUR_TABS.length), 5000);
+    return () => clearInterval(timer);
+  }, [paused]);
+
+  const views: Record<TourTabId, ReactNode> = {
+    evaluate: <TourEvaluateView />,
+    analyse: <TourAnalyseView />,
+    personalise: <TourPersonaliseView />,
+    build: <TourBuildView />,
+  };
+  const reduce =
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        borderRadius: 24,
+        border: `1px solid ${NAVY}0d`,
+        background: "#fff",
+        boxShadow: "0 30px 70px -30px rgba(8,24,58,0.35)",
+        overflow: "hidden",
+      }}
+      aria-label="PrepareKaro platform tour"
+    >
+      <div
+        role="tablist"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(4, 1fr)",
+          borderBottom: `1px solid ${NAVY}0d`,
+          background: "#F8FAFC",
+        }}
+      >
+        {TOUR_TABS.map((tab, i) => (
+          <button
+            key={tab.id}
+            role="tab"
+            aria-selected={active === i}
+            onClick={() => {
+              setPaused(true);
+              setActive(i);
+            }}
+            style={{
+              border: 0,
+              background: active === i ? "#fff" : "transparent",
+              padding: "14px 8px 12px",
+              cursor: "pointer",
+              textAlign: "center",
+              fontFamily: "'Plus Jakarta Sans', sans-serif",
+              fontWeight: 600,
+              fontSize: 13.5,
+              color: active === i ? NAVY : `${NAVY}8c`,
+              position: "relative",
+            }}
+          >
+            {tab.label}
+            <small
+              style={{
+                display: "block",
+                fontWeight: 500,
+                fontSize: 11.5,
+                color: `${NAVY}8c`,
+                marginTop: 1,
+              }}
+            >
+              {tab.sub}
+            </small>
+            {active === i && (
+              <span
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: -1,
+                  height: 3,
+                  background: ACCENT_50,
+                  overflow: "hidden",
+                }}
+              >
+                {!reduce && !paused ? (
+                  <i
+                    key={active}
+                    className="tour-progress-bar"
+                    style={{ display: "block", height: "100%", background: ACCENT_500 }}
+                  />
+                ) : (
+                  <i
+                    style={{
+                      display: "block",
+                      height: "100%",
+                      width: "100%",
+                      background: ACCENT_500,
+                    }}
+                  />
+                )}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+      <div style={{ padding: 20, minHeight: 360 }}>{views[TOUR_TABS[active].id]}</div>
+    </div>
   );
 }
 
@@ -317,7 +681,7 @@ function HeroSection() {
         }}
       >
         <Reveal>
-          <SectionBadge label="AI-Powered Exam Automation" />
+          <SectionBadge label="AI-Powered Learning and Test Platform" />
           <h1
             style={{
               fontFamily: "'Plus Jakarta Sans', sans-serif",
@@ -330,8 +694,13 @@ function HeroSection() {
               letterSpacing: "-0.5px",
             }}
           >
-            From Scanning, Evaluation to Published Results{" "}
-            <span style={{ color: ACCENT_500 }}>-Fully Automated</span>
+            Check every test
+            <TightStop /> Find every weak topic
+            <TightStop />{" "}
+            <span style={{ color: ACCENT_500 }}>
+              Give every student their own practice
+              <TightStop />
+            </span>
           </h1>
           <p
             style={{
@@ -341,11 +710,13 @@ function HeroSection() {
               marginTop: 24,
               marginBottom: 0,
               fontFamily: "'Inter', sans-serif",
-              maxWidth: 500,
+              maxWidth: 520,
             }}
           >
-            Transform your evaluation process from physical copy Checking to instant AI-powered
-            grading and automated result publishing — no manual bottlenecks, no delays.
+            PrepareKaro evaluates answer sheets with AI, analyses every student by subject, chapter
+            and topic, generates personalised practice papers from their weak spots, and builds
+            tests from any chapters you choose — plus everything else you need to run your
+            institute.
           </p>
           <div
             className="hero-cta"
@@ -377,10 +748,10 @@ function HeroSection() {
               onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-2px)")}
               onMouseLeave={(e) => (e.currentTarget.style.transform = "")}
             >
-              Schedule Demo <ArrowRight size={13} />
+              Book a Demo <ArrowRight size={13} />
             </a>
             <a
-              href="#process"
+              href="#tools"
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -396,88 +767,40 @@ function HeroSection() {
               See how it works <ChevronDown size={13} />
             </a>
           </div>
-        </Reveal>
-
-        {/* Live scan & evaluate widget */}
-        <Reveal delay={150}>
           <div
             style={{
-              position: "relative",
-              borderRadius: 24,
-              border: "1px solid rgba(255,255,255,0.4)",
-              background: "rgba(255,255,255,0.6)",
-              backdropFilter: "blur(24px)",
-              boxShadow: "0 4px 24px -4px rgba(8,24,58,0.06)",
-              padding: 26,
-              overflow: "hidden",
+              marginTop: 30,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              alignItems: "center",
+              fontSize: 13.5,
+              color: `${NAVY}8c`,
             }}
           >
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                zIndex: -1,
-                background: `linear-gradient(135deg, rgba(255,255,255,0.7), ${ACCENT_50}66)`,
-              }}
-            />
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 20,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span
-                  className="pulse-dot"
-                  style={{ width: 10, height: 10, borderRadius: "50%", background: ACCENT_500 }}
-                />
-                <span
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: `${NAVY}b3`,
-                    fontFamily: "'Inter', sans-serif",
-                  }}
-                >
-                  Live Scan &amp; Evaluate
-                </span>
-              </div>
+            Built for
+            {["JEE", "NEET", "CUET", "CBSE", "State boards"].map((tag) => (
               <span
+                key={tag}
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  background: "rgba(8,24,58,0.9)",
-                  color: "#fff",
-                  fontSize: 10.5,
-                  fontWeight: 700,
-                  padding: "6px 12px",
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 600,
+                  fontSize: 12.5,
+                  color: NAVY,
+                  background: "#fff",
+                  border: `1px solid ${NAVY}1a`,
                   borderRadius: 100,
+                  padding: "5px 11px",
                 }}
               >
-                <Cpu size={11} /> AI Active
+                {tag}
               </span>
-            </div>
-
-            <div
-              className="scan-line-wrap"
-              style={{
-                position: "relative",
-                borderRadius: 16,
-                overflow: "hidden",
-                border: `1px solid ${NAVY}0d`,
-                height: 320,
-              }}
-            >
-              <img
-                src="/ai-eval-demo-full.jpeg"
-                alt="AI evaluation of a student answer sheet, showing step-by-step scoring"
-                style={{ width: "100%", height: "100%", objectFit: "cover", objectPosition: "top" }}
-              />
-            </div>
+            ))}
           </div>
+        </Reveal>
+
+        <Reveal delay={150}>
+          <PlatformTourCard />
         </Reveal>
       </div>
     </section>
@@ -635,6 +958,213 @@ function StatsSection() {
                   {c.desc}
                 </p>
               </div>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── ONE PLATFORM, FOUR TOOLS ─────────────────────────────────────────────────
+type ToolCardDef = {
+  key: string;
+  title: string;
+  desc: string;
+  bullets: string[];
+  href: string;
+  icon: LucideIcon;
+  variant: "navy" | "mint" | "lavender" | "peach";
+};
+const TOOL_CARDS: ToolCardDef[] = [
+  {
+    key: "analysis",
+    title: "Detailed analysis for every student",
+    desc: "Accuracy by subject, chapter and topic across all of a student's tests, with recent tests weighted more. Weak spots surface on their own.",
+    bullets: [
+      "Weak and strong topics, ranked",
+      "Readiness score and weekly trend",
+      "Next steps written for the student",
+      "Batch view for teachers",
+    ],
+    href: "/features/student-performance-analysis",
+    icon: Layers,
+    variant: "navy",
+  },
+  {
+    key: "personalise",
+    title: "Personalised paper for each student",
+    desc: "Generated from the student's own weaknesses and strengths. More questions where they struggle, an easier start, and a few from strong topics to stay sharp.",
+    bullets: [
+      "Automatic, or the student picks topics",
+      "No question repeated from recent tests",
+      "Results flow back into their report",
+    ],
+    href: "/features/personalised-practice-papers",
+    icon: FileText,
+    variant: "mint",
+  },
+  {
+    key: "build",
+    title: "Tests from chosen chapters and topics",
+    desc: "Pick subject, chapters and topics, set the difficulty and length, and the paper fills itself from your question bank first, then ours.",
+    bullets: [
+      "Objective and subjective papers",
+      "Fill a whole test or just the gaps",
+      "Daily practice papers on a schedule",
+    ],
+    href: "/features/test-generator",
+    icon: ListChecks,
+    variant: "lavender",
+  },
+  {
+    key: "evaluate",
+    title: "AI evaluation of handwritten answer sheets",
+    desc: "Scan the copies and every answer is marked step by step against your answer key and rubric. Faculty review, override and release results when they're ready.",
+    bullets: [
+      "Duplicate copy detection",
+      "Plagiarism detection",
+      "Rubric-based grading",
+      "Release when ready",
+    ],
+    href: "/features/ai-answer-sheet-evaluation",
+    icon: Camera,
+    variant: "peach",
+  },
+];
+const TOOL_VARIANT_STYLE: Record<
+  ToolCardDef["variant"],
+  {
+    background: string;
+    border: string;
+    titleColor: string;
+    descColor: string;
+    iconBg: string;
+    iconColor: string;
+  }
+> = {
+  navy: {
+    background: NAVY,
+    border: NAVY,
+    titleColor: "#fff",
+    descColor: "#B8C2DE",
+    iconBg: "rgba(255,255,255,0.1)",
+    iconColor: "#7FAEFF",
+  },
+  mint: {
+    background: "#EEFCF3",
+    border: "#D7F3E2",
+    titleColor: NAVY,
+    descColor: `${NAVY}8c`,
+    iconBg: "#fff",
+    iconColor: "#16A34A",
+  },
+  lavender: {
+    background: "#F3EEFF",
+    border: "#E6DCFF",
+    titleColor: NAVY,
+    descColor: `${NAVY}8c`,
+    iconBg: "#fff",
+    iconColor: "#7C3AED",
+  },
+  peach: {
+    background: "#FFF7E6",
+    border: "#FBE7C2",
+    titleColor: NAVY,
+    descColor: `${NAVY}8c`,
+    iconBg: "#fff",
+    iconColor: "#D97706",
+  },
+};
+
+function ToolCard({ tool }: { tool: ToolCardDef }) {
+  const v = TOOL_VARIANT_STYLE[tool.variant];
+  return (
+    <Link
+      to={tool.href}
+      className="hover-lift-card"
+      style={{
+        display: "block",
+        borderRadius: 24,
+        padding: 28,
+        border: `1px solid ${v.border}`,
+        background: v.background,
+        textDecoration: "none",
+      }}
+    >
+      <span
+        style={{
+          width: 46,
+          height: 46,
+          borderRadius: 14,
+          background: v.iconBg,
+          color: v.iconColor,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <tool.icon size={22} />
+      </span>
+      <h3
+        style={{
+          marginTop: 18,
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+          fontSize: 20,
+          fontWeight: 700,
+          lineHeight: 1.3,
+          color: v.titleColor,
+        }}
+      >
+        {tool.title}
+      </h3>
+      <p style={{ marginTop: 8, fontSize: 15, color: v.descColor, maxWidth: "46ch" }}>
+        {tool.desc}
+      </p>
+      <ul
+        style={{
+          marginTop: 16,
+          listStyle: "none",
+          display: "grid",
+          gap: 8,
+          fontSize: 14,
+          padding: 0,
+        }}
+      >
+        {tool.bullets.map((b) => (
+          <li
+            key={b}
+            style={{ display: "flex", alignItems: "flex-start", gap: 8, color: v.titleColor }}
+          >
+            <Check
+              size={14}
+              color={tool.variant === "navy" ? "#7FAEFF" : ACCENT_500}
+              style={{ marginTop: 3, flexShrink: 0 }}
+            />
+            <span style={{ color: v.descColor }}>{b}</span>
+          </li>
+        ))}
+      </ul>
+    </Link>
+  );
+}
+
+function ToolsSection() {
+  return (
+    <section id="tools" style={{ padding: "80px 24px", background: "#fff" }}>
+      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+        <SectionHeading
+          badge="One Platform, Four Tools"
+          title="From the exam hall to each student's next practice paper"
+          description="Every test feeds the next step automatically, so teachers know who needs what, and students practise exactly what they're weak at."
+        />
+        <div
+          className="tools-grid"
+          style={{ marginTop: 52, display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 20 }}
+        >
+          {TOOL_CARDS.map((t) => (
+            <Reveal key={t.key}>
+              <ToolCard tool={t} />
             </Reveal>
           ))}
         </div>
@@ -1000,33 +1530,237 @@ function AIEvaluationSection() {
   );
 }
 
-// ─── MANUAL VS AI COMPARISON ──────────────────────────────────────────────────
-const COMPARISON_ROWS: { label: string; manual: string; ai: string }[] = [
-  { label: "Time per answer sheet", manual: "15–20 minutes", ai: "Seconds" },
+// ─── PLATFORM: ACADEMICS VS TEST PLATFORM ─────────────────────────────────────
+type WorkspaceCardDef = { title: string; desc: string };
+const TEST_PLATFORM_CARDS: WorkspaceCardDef[] = [
   {
-    label: "Delayed Result",
-    manual: "2–3 weeks before results reach students",
-    ai: "Published within 72 hours, guaranteed",
+    title: "Objective exams",
+    desc: "Test series, scheduled tests and daily practice papers for each batch.",
   },
   {
-    label: "Inconsistent Marking",
+    title: "Subjective exams",
+    desc: "AI evaluation of scanned copies with faculty review before release.",
+  },
+  {
+    title: "Proctored exams",
+    desc: "A desktop app that locks the computer for the length of the exam.",
+  },
+  { title: "Student reports", desc: "Subject, chapter and topic analysis with a readiness score." },
+  { title: "Practice for me", desc: "Personalised practice papers students generate themselves." },
+  { title: "Rankings", desc: "Leaderboards by test and by batch to keep students motivated." },
+];
+const ACADEMICS_CARDS: WorkspaceCardDef[] = [
+  {
+    title: "Batches and students",
+    desc: "Enrol students into courses and batches across branches.",
+  },
+  { title: "Curriculum", desc: "Modules and lessons with notes, books and linked tests." },
+  { title: "Timetable", desc: "Weekly classes per batch with the teacher, subject and mode." },
+  {
+    title: "Attendance",
+    desc: "Marked for each class from the timetable, with correction requests.",
+  },
+  { title: "Grades", desc: "Test scores and manual grades together on each student's record." },
+  { title: "AI tutor", desc: "Students ask questions about their own study material." },
+];
+const EVERYWHERE_ITEMS: { icon: LucideIcon; title: string; desc: string }[] = [
+  {
+    icon: Globe,
+    title: "Your own branded website",
+    desc: "Your institute's white-label site from ready themes, no developer needed.",
+  },
+  {
+    icon: Smartphone,
+    title: "Mobile app",
+    desc: "Tests, reports, attendance and notifications on Android and iOS.",
+  },
+  {
+    icon: Users,
+    title: "Staff roles and branches",
+    desc: "Each staff member sees only what their role and branch scope allows.",
+  },
+];
+
+function WorkspaceCard({ card }: { card: WorkspaceCardDef }) {
+  return (
+    <div
+      style={{
+        background: "#fff",
+        border: `1px solid ${NAVY}0d`,
+        borderRadius: 16,
+        padding: 20,
+      }}
+    >
+      <h4
+        style={{
+          fontSize: 17,
+          fontWeight: 700,
+          color: NAVY,
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+        }}
+      >
+        {card.title}
+      </h4>
+      <p style={{ marginTop: 6, color: `${NAVY}8c`, fontSize: 14.5 }}>{card.desc}</p>
+    </div>
+  );
+}
+
+function PlatformSection() {
+  const [workspace, setWorkspace] = useState<"test" | "academics">("test");
+  const cards = workspace === "test" ? TEST_PLATFORM_CARDS : ACADEMICS_CARDS;
+
+  return (
+    <section id="platform" style={{ padding: "80px 24px", background: "#fff" }}>
+      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+        <SectionHeading
+          badge="Everything Else You Need"
+          title="Run your whole institute on PrepareKaro"
+          description="Two workspaces in one login: Academics for running classes every day, and the Test Platform for exams, results and practice."
+        />
+
+        <Reveal
+          style={{
+            marginTop: 48,
+            background: "#F8FAFC",
+            border: `1px solid ${NAVY}0d`,
+            borderRadius: 24,
+            padding: 10,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "center", padding: "14px 0 6px" }}>
+            <div
+              role="tablist"
+              aria-label="Workspace"
+              style={{
+                display: "inline-flex",
+                background: "#fff",
+                border: `1px solid ${NAVY}0d`,
+                borderRadius: 100,
+                padding: 4,
+                boxShadow: "0 2px 12px -2px rgba(8,24,58,0.08)",
+              }}
+            >
+              <button
+                role="tab"
+                aria-selected={workspace === "academics"}
+                onClick={() => setWorkspace("academics")}
+                style={{
+                  border: 0,
+                  background: workspace === "academics" ? NAVY : "transparent",
+                  color: workspace === "academics" ? "#fff" : `${NAVY}8c`,
+                  padding: "9px 20px",
+                  borderRadius: 100,
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 600,
+                  fontSize: 14.5,
+                  cursor: "pointer",
+                }}
+              >
+                Academics
+              </button>
+              <button
+                role="tab"
+                aria-selected={workspace === "test"}
+                onClick={() => setWorkspace("test")}
+                style={{
+                  border: 0,
+                  background: workspace === "test" ? NAVY : "transparent",
+                  color: workspace === "test" ? "#fff" : `${NAVY}8c`,
+                  padding: "9px 20px",
+                  borderRadius: 100,
+                  fontFamily: "'Plus Jakarta Sans', sans-serif",
+                  fontWeight: 600,
+                  fontSize: 14.5,
+                  cursor: "pointer",
+                }}
+              >
+                Test Platform
+              </button>
+            </div>
+          </div>
+          <div
+            className="tools-grid"
+            style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, padding: 14 }}
+          >
+            {cards.map((c) => (
+              <WorkspaceCard key={c.title} card={c} />
+            ))}
+          </div>
+        </Reveal>
+
+        <div
+          className="tools-grid"
+          style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}
+        >
+          {EVERYWHERE_ITEMS.map((ev, i) => (
+            <Reveal key={ev.title} delay={i * 60}>
+              <div
+                style={{ display: "flex", gap: 14, alignItems: "flex-start", padding: "6px 4px" }}
+              >
+                <span
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 12,
+                    background: ACCENT_50,
+                    color: ACCENT_500,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                  }}
+                >
+                  <ev.icon size={20} />
+                </span>
+                <div>
+                  <h4
+                    style={{
+                      fontSize: 16.5,
+                      fontWeight: 700,
+                      color: NAVY,
+                      fontFamily: "'Plus Jakarta Sans', sans-serif",
+                    }}
+                  >
+                    {ev.title}
+                  </h4>
+                  <p style={{ fontSize: 14.5, color: `${NAVY}8c`, marginTop: 3 }}>{ev.desc}</p>
+                </div>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── MANUAL VS PREPAREKARO COMPARISON ─────────────────────────────────────────
+const COMPARISON_ROWS: { label: string; manual: string; ai: string }[] = [
+  {
+    label: "Checking copies",
+    manual: "15–20 minutes per answer sheet, by hand",
+    ai: "AI grades every answer sheet in seconds, published within 72 hours",
+  },
+  {
+    label: "Finding weak spots",
+    manual: "No visibility below a total score",
+    ai: "Automatic subject, chapter and topic breakdown for every student",
+  },
+  {
+    label: "Practice",
+    manual: "Same worksheet for the whole batch",
+    ai: "Personalised paper built from each student's own weak spots",
+  },
+  {
+    label: "Making tests",
+    manual: "Hand-picking every question for a new test",
+    ai: "Generated by choosing chapters and topics, from your own question bank first",
+  },
+  {
+    label: "Consistency",
     manual: "Scores vary by evaluator mood, bias & fatigue",
     ai: "Same rubric applied to every paper, every time",
-  },
-  {
-    label: "More Pressure on Teachers",
-    manual: "Buried under grading deadlines every exam cycle",
-    ai: "AI does the first pass — teachers only review flagged cases",
-  },
-  {
-    label: "Heavy Manual Workload",
-    manual: "Hundreds of hours spent checking copies by hand",
-    ai: "Bulk scanning + automated grading at scale",
-  },
-  {
-    label: "Lack of Digitization",
-    manual: "Paper trails, spreadsheets & physical record-keeping",
-    ai: "Fully digital pipeline — scan to portal, nothing on paper",
   },
 ];
 
@@ -1050,7 +1784,8 @@ function ComparisonSection() {
               marginBottom: 0,
             }}
           >
-            Manual Grading vs. <span style={{ color: ACCENT_500 }}>PrepareKaro AI</span>
+            Manual vs
+            <TightStop /> <span style={{ color: ACCENT_500 }}>PrepareKaro</span>
           </h2>
           <p style={{ fontSize: 16, color: `${NAVY}8c`, marginTop: 16, lineHeight: 1.7 }}>
             The same evaluation work, without the bottleneck.
@@ -1089,7 +1824,7 @@ function ComparisonSection() {
                 color: `${NAVY}8c`,
               }}
             >
-              Manual Grading
+              Manual
             </div>
             <div
               className="comparison-cell"
@@ -1102,7 +1837,7 @@ function ComparisonSection() {
                 background: ACCENT_50,
               }}
             >
-              PrepareKaro AI
+              PrepareKaro
             </div>
           </div>
 
@@ -1577,129 +2312,6 @@ function FAQSection() {
               </Reveal>
             );
           })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ─── PROCESS / WORKFLOW ───────────────────────────────────────────────────────
-function ProcessSection() {
-  return (
-    <section id="features" style={{ padding: "80px 24px", background: "#fff" }}>
-      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
-        <Reveal style={{ maxWidth: 640, margin: "0 auto", textAlign: "center" }}>
-          <div style={{ display: "flex", justifyContent: "center" }}>
-            <SectionBadge label="The PrepareKaro Workflow" />
-          </div>
-          <h2
-            style={{
-              fontFamily: "'Plus Jakarta Sans', sans-serif",
-              fontWeight: 800,
-              fontSize: "clamp(26px,3.5vw,40px)",
-              color: NAVY,
-              letterSpacing: "-0.5px",
-              lineHeight: 1.25,
-              marginTop: 16,
-              marginBottom: 0,
-            }}
-          >
-            From Scanned Copy to Published Result —{" "}
-            <span style={{ color: ACCENT_500 }}>Fully Automated</span>
-          </h2>
-          <p style={{ fontSize: 16, color: `${NAVY}8c`, marginTop: 16, lineHeight: 1.7 }}>
-            One connected pipeline replaces spreadsheets, manual moderation, and disconnected tools
-            — built for institutions running exams at scale.
-          </p>
-        </Reveal>
-
-        <div id="process" style={{ position: "relative", marginTop: 64 }}>
-          <div
-            className="process-line"
-            style={{
-              position: "absolute",
-              top: 38,
-              left: "10%",
-              right: "10%",
-              height: 2,
-              background: `linear-gradient(90deg, ${ACCENT_500}14, ${ACCENT_500} 15%, ${ACCENT_500} 85%, ${ACCENT_500}14)`,
-            }}
-          />
-          <div
-            className="process-track"
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(5, 1fr)",
-              gap: 16,
-              position: "relative",
-            }}
-          >
-            {PROCESS_STEPS.map((s, i) => (
-              <Reveal key={s.num} delay={i * 100} className="group">
-                <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-                  <div
-                    style={{
-                      width: 76,
-                      height: 76,
-                      borderRadius: 16,
-                      background: `linear-gradient(135deg, ${ACCENT_500}, #0041A3)`,
-                      color: "#fff",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                      fontWeight: 800,
-                      fontSize: 20,
-                      position: "relative",
-                      zIndex: 1,
-                      boxShadow: "0 4px 24px -4px rgba(8,24,58,0.15)",
-                    }}
-                  >
-                    {s.num}
-                  </div>
-                </div>
-                <div
-                  className="hover-lift-card"
-                  style={{
-                    background: "#fff",
-                    border: `1px solid ${NAVY}0d`,
-                    borderRadius: 16,
-                    padding: 20,
-                    textAlign: "center",
-                    boxShadow: "0 2px 12px -2px rgba(8,24,58,0.04)",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 12,
-                      background: ACCENT_50,
-                      color: ACCENT_500,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      margin: "0 auto 12px",
-                    }}
-                  >
-                    <s.icon size={17} />
-                  </div>
-                  <h3
-                    style={{
-                      fontFamily: "'Plus Jakarta Sans', sans-serif",
-                      fontWeight: 700,
-                      fontSize: 14,
-                      color: NAVY,
-                      marginBottom: 6,
-                    }}
-                  >
-                    {s.title}
-                  </h3>
-                  <p style={{ fontSize: 12, color: `${NAVY}80`, lineHeight: 1.6 }}>{s.sub}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
         </div>
       </div>
     </section>
@@ -2256,17 +2868,18 @@ export default function Index() {
   return (
     <>
       <SEO
-        title="PrepareKaro | AI Exam Evaluation Platform"
-        description="AI-powered exam automation for institutions — bulk scanning, AI grading mapped to your rubrics, moderation, and automated result publishing. From scanned copy to published result."
+        title="PrepareKaro | AI Test, Analysis & Practice Platform for Coaching Institutes"
+        description="PrepareKaro is the full platform for coaching institutes: AI answer-sheet evaluation, per-topic student analysis, personalised practice papers, test generation from any chapter, plus curriculum, attendance, timetable, proctored exams and a branded app."
         canonical="https://preparekaro.in/"
       />
       <div id="top" />
       <LandingNavbar />
       <HeroSection />
       <StatsSection />
+      <ToolsSection />
       <AIEvaluationSection />
+      <PlatformSection />
       <ComparisonSection />
-      <ProcessSection />
       <VideoTutorialSection />
       <FAQSection />
       <CTASection />
