@@ -132,7 +132,10 @@ export default function ScheduledDpps() {
     if (!educatorUid) return;
     (async () => {
       const branchSnap = await getDocs(collection(db, "educators", educatorUid, "branches"));
-      const branchesData = branchSnap.docs.map((d) => ({ id: d.id, name: d.data().name })) as BranchDoc[];
+      const branchesData = branchSnap.docs.map((d) => ({
+        id: d.id,
+        name: d.data().name,
+      })) as BranchDoc[];
       const coursesData: CourseDoc[] = [];
       const batchesData: BatchDoc[] = [];
       for (const b of branchesData) {
@@ -178,7 +181,12 @@ export default function ScheduledDpps() {
     [schedules]
   );
 
-  // Submission rate: real attempts for the latest generated set per batch, over its roster.
+  // Submission rate: attempts don't carry a batchId — they carry batchAssignmentId, a
+  // reference to the batchAssignments doc for (testId, batchId) (see StudentCBTAttempt.tsx,
+  // which resolves that doc the same way before writing an attempt). So for each batch we
+  // first resolve its batchAssignments doc for the latest generated set, then count attempts
+  // against that doc's id. If no assignment doc exists, there is nothing to count honestly —
+  // leave it unset rather than report a fake 0%.
   useEffect(() => {
     if (!educatorUid || activeBatchIds.length === 0 || dpps.length === 0) return;
     let cancelled = false;
@@ -188,12 +196,20 @@ export default function ScheduledDpps() {
         const latest = dpps.find((d) => d.targetBatches?.includes(bid));
         if (!latest) continue;
         try {
+          const assignSnap = await getDocs(
+            query(
+              collection(db, "educators", educatorUid, "batchAssignments"),
+              where("testId", "==", latest.id),
+              where("batchId", "==", bid)
+            )
+          );
+          if (assignSnap.empty) continue;
+          const assignmentId = assignSnap.docs[0].id;
           const snap = await getCountFromServer(
             query(
               collection(db, "attempts"),
               where("educatorId", "==", educatorUid),
-              where("testId", "==", latest.id),
-              where("batchId", "==", bid)
+              where("batchAssignmentId", "==", assignmentId)
             )
           );
           result[bid] = snap.data().count;
@@ -335,8 +351,8 @@ export default function ScheduledDpps() {
               <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Regenerate
             </Button>
             <p className="mt-2 font-ds-sans text-[11px] text-ds-ink/45">
-              Sets publish to students as soon as they are generated — there is no separate
-              approval step.
+              Sets publish to students as soon as they are generated — there is no separate approval
+              step.
             </p>
           </DsCard>
 
@@ -356,9 +372,7 @@ export default function ScheduledDpps() {
                 return (
                   <div key={bid} className="mb-3 last:mb-0">
                     <div className="flex items-baseline">
-                      <div className="font-ds-sans text-[12.5px] font-medium">
-                        {batchName(bid)}
-                      </div>
+                      <div className="font-ds-sans text-[12.5px] font-medium">{batchName(bid)}</div>
                       <div className="flex-1" />
                       <div className="font-ds-mono text-[11.5px] text-ds-info">
                         {pct != null ? `${pct}%` : "—"}

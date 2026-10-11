@@ -73,9 +73,7 @@ export default function ManageQuestionsPage() {
   const [testMeta, setTestMeta] = useState<TestMeta | null>(null);
   const [testLoading, setTestLoading] = useState(true);
   const [scheduleOpen, setScheduleOpen] = useState(false);
-  const [questionStats, setQuestionStats] = useState<{ count: number; marks: number } | null>(
-    null
-  );
+  const [questionStats, setQuestionStats] = useState<{ count: number; marks: number } | null>(null);
 
   // Must be before early returns — hooks cannot be called conditionally
   const testSections = useMemo(() => {
@@ -174,7 +172,11 @@ export default function ManageQuestionsPage() {
               : null,
             useSections: data?.useSections !== false,
             questionFormat: String(data?.questionFormat || ""),
-            chapters: Array.isArray(data?.chapters) ? data.chapters.map(String) : (data?.chapter ? [String(data.chapter)] : []),
+            chapters: Array.isArray(data?.chapters)
+              ? data.chapters.map(String)
+              : data?.chapter
+                ? [String(data.chapter)]
+                : [],
             topics: Array.isArray(data?.topics) ? data.topics.map(String) : [],
             tags: Array.isArray(data?.tags) ? data.tags.map(String) : [],
             markingScheme: data?.markingScheme
@@ -196,9 +198,7 @@ export default function ManageQuestionsPage() {
             durationMinutes: Number.isFinite(Number(data?.durationMinutes))
               ? Number(data.durationMinutes)
               : null,
-            targetBatches: Array.isArray(data?.targetBatches)
-              ? data.targetBatches.map(String)
-              : [],
+            targetBatches: Array.isArray(data?.targetBatches) ? data.targetBatches.map(String) : [],
             recurrence: data?.recurrence ?? null,
           });
         }
@@ -373,7 +373,7 @@ export default function ManageQuestionsPage() {
               className="h-[34px] rounded-[7px] border-ds-ink/15 font-ds-sans text-[12.5px] font-semibold"
               onClick={() => navigate("/educator/test-series")}
             >
-              Save draft
+              Back to tests
             </Button>
           </div>
         </DsCard>
