@@ -1,6 +1,8 @@
 import { useState, type Dispatch, type MouseEvent, type SetStateAction } from "react";
-import { Plus, Trash2, Loader2, CheckCircle2, ImagePlus } from "lucide-react";
+import { Plus, Trash2, Loader2, CheckCircle2, ImagePlus, Sigma } from "lucide-react";
 import { toast } from "sonner";
+import katex from "katex";
+import "katex/dist/katex.min.css";
 
 import { Input } from "@shared/ui/input";
 import { Button } from "@shared/ui/button";
@@ -9,17 +11,158 @@ import { Label } from "@shared/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { Switch } from "@shared/ui/switch";
 import { Textarea } from "@shared/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@shared/ui/popover";
+import { cn } from "@shared/lib/utils";
 
 import ImageTextarea from "@features/educator/components/ImageTextarea";
 import { HtmlView } from "@shared/lib/safeHtml";
 import { uploadToImageKit } from "@shared/lib/imagekitUpload";
 import {
   type QuestionType,
-  QUESTION_TYPES,
-  QUESTION_TYPE_CONFIG,
   getQuestionTypeConfig,
   getQuestionTypeShortLabel,
 } from "@shared/lib/questionTypes";
+
+// Order the type-switch pills to match the design spec (BUILD-NOTES "Question editor":
+// MCQ, multi-select, numeric, subjective, case) rather than QUESTION_TYPES' declaration order.
+const TYPE_SWITCH_ORDER: QuestionType[] = [
+  "MCQ_SINGLE",
+  "MCQ_MULTI",
+  "FILL_UP",
+  "SUBJECTIVE_LONG",
+  "MCQ_CASE_STUDY",
+];
+
+// Renders a stem/option value — plain text with optional inline/display LaTeX
+// ($...$ / $$...$$) and the same <img> tags ImageTextarea appends — as a single
+// preview. LaTeX is additive on top of the existing HTML-ish stored value: text
+// with no "$" renders exactly as HtmlView already rendered it.
+function MathPreview({ html, className }: { html: string; className?: string }) {
+  if (!html) return null;
+  const segments = html.split(/(\$\$[\s\S]*?\$\$|\$[^$\n]*?\$)/g);
+  return (
+    <div className={className}>
+      {segments.map((seg, i) => {
+        if (seg.startsWith("$$") && seg.endsWith("$$") && seg.length > 4) {
+          try {
+            return (
+              <span
+                key={i}
+                className="my-1 block text-center"
+                dangerouslySetInnerHTML={{
+                  __html: katex.renderToString(seg.slice(2, -2), {
+                    displayMode: true,
+                    throwOnError: false,
+                  }),
+                }}
+              />
+            );
+          } catch {
+            return <span key={i}>{seg}</span>;
+          }
+        }
+        if (seg.startsWith("$") && seg.endsWith("$") && seg.length > 2) {
+          try {
+            return (
+              <span
+                key={i}
+                dangerouslySetInnerHTML={{
+                  __html: katex.renderToString(seg.slice(1, -1), {
+                    displayMode: false,
+                    throwOnError: false,
+                  }),
+                }}
+              />
+            );
+          } catch {
+            return <span key={i}>{seg}</span>;
+          }
+        }
+        if (!seg) return null;
+        return <HtmlView key={i} html={seg} className="inline break-words" />;
+      })}
+    </div>
+  );
+}
+
+function InsertEquationButton({ onInsert }: { onInsert: (latex: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [latex, setLatex] = useState("");
+  const rendered = (() => {
+    if (!latex.trim()) return "";
+    try {
+      return katex.renderToString(latex, { displayMode: false, throwOnError: false });
+    } catch {
+      return "";
+    }
+  })();
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setLatex("");
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 gap-1.5 rounded-xl text-xs"
+        >
+          <Sigma className="h-3 w-3" /> Insert equation
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-80 space-y-2.5">
+        <Label className="text-xs">LaTeX</Label>
+        <Input
+          autoFocus
+          value={latex}
+          onChange={(e) => setLatex(e.target.value)}
+          placeholder="e.g. \frac{2}{3} g \sin\theta"
+          className="rounded-lg font-mono text-xs"
+        />
+        <div className="min-h-[32px] rounded-lg border border-dashed border-border bg-muted/20 p-2 text-sm">
+          {rendered ? (
+            <span dangerouslySetInnerHTML={{ __html: rendered }} />
+          ) : (
+            <span className="text-xs text-muted-foreground">Preview appears here</span>
+          )}
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          className="w-full rounded-lg"
+          disabled={!latex.trim()}
+          onClick={() => {
+            onInsert(latex.trim());
+            setOpen(false);
+            setLatex("");
+          }}
+        >
+          Insert
+        </Button>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+const IMG_TAG_REGEX = /<img[^>]+src\s*=\s*["']([^"']+)["'][^>]*\/?>/gi;
+
+// Insert the equation into the text portion, ahead of any <img> tags
+// ImageTextarea appends at the end (keeps its text/image split intact).
+function insertEquationIntoValue(value: string, latex: string): string {
+  const snippet = `$${latex}$`;
+  const match = value.match(new RegExp(IMG_TAG_REGEX.source, "i"));
+  if (!match || match.index == null) {
+    return value ? `${value} ${snippet}` : snippet;
+  }
+  const before = value.slice(0, match.index).trimEnd();
+  const after = value.slice(match.index);
+  return before ? `${before} ${snippet}\n${after}` : `${snippet}\n${after}`;
+}
 
 type QuestionEditorSection = {
   id: string;
@@ -415,6 +558,11 @@ const QuestionEditor = (props: QuestionEditorProps) => {
       <div className="space-y-5">
         <div className="space-y-2">
           <Label>Question Content</Label>
+          <div className="mb-1.5 flex items-center gap-2">
+            <InsertEquationButton
+              onInsert={(latex) => setFormQuestion(insertEquationIntoValue(formQuestion, latex))}
+            />
+          </div>
           <ImageTextarea
             value={formQuestion}
             onChange={setFormQuestion}
@@ -422,7 +570,16 @@ const QuestionEditor = (props: QuestionEditorProps) => {
             placeholder="Type your question here..."
             minHeight="140px"
             className="rounded-xl"
+            addImageLabel="Attach diagram"
           />
+          {hasPreviewContent(formQuestion) && (
+            <div className="rounded-xl border border-dashed border-border bg-muted/15 p-3">
+              <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                Preview
+              </p>
+              <MathPreview html={formQuestion} className="text-sm leading-relaxed" />
+            </div>
+          )}
         </div>
 
         {/* MCQ: Options */}
@@ -790,23 +947,27 @@ const QuestionEditor = (props: QuestionEditorProps) => {
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Question Type Selector */}
+              {/* Question type switch — changes only the answer area below; the
+                  stem, marks and tags (formQuestion/formMarks/formSectionId etc.)
+                  are untouched by this control. */}
               {!readOnly && editorOpen && (
-                <Select
-                  value={formQuestionType}
-                  onValueChange={(v) => setFormQuestionType(v as QuestionType)}
-                >
-                  <SelectTrigger className="h-9 w-[180px] rounded-xl text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {QUESTION_TYPES.map((qt) => (
-                      <SelectItem key={qt} value={qt}>
-                        <span className="text-xs">{QUESTION_TYPE_CONFIG[qt].label}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-0.5 rounded-lg bg-muted/60 p-0.5">
+                  {TYPE_SWITCH_ORDER.map((qt) => (
+                    <button
+                      key={qt}
+                      type="button"
+                      onClick={() => setFormQuestionType(qt)}
+                      className={cn(
+                        "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                        formQuestionType === qt
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {getQuestionTypeShortLabel(qt)}
+                    </button>
+                  ))}
+                </div>
               )}
 
               {readOnly && editorOpen && (

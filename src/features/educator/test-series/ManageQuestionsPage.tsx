@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
-import { doc, onSnapshot } from "firebase/firestore";
+import { collection, doc, onSnapshot, Timestamp } from "firebase/firestore";
 
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { useAccessibleCourses } from "@shared/hooks/useAccessibleCourses";
 import { Button } from "@shared/ui/button";
 import { Card, CardContent } from "@shared/ui/card";
+import { DsPageHeader, DsCard } from "@shared/ui/ds";
 
 import QuestionsManager from "./QuestionManager/QuestionsManager";
+import ScheduleTest from "./ScheduleTest";
 
 type TestMeta = {
   title?: string;
@@ -41,7 +43,23 @@ type TestMeta = {
   originalTestId?: string;
   isQuestionSourceShared?: boolean;
   questionsTarget?: number | null;
+  // Scheduling fields (ScheduleTest.tsx writes these back to the same doc)
+  startTime?: Timestamp | null;
+  endTime?: Timestamp | null;
+  isScheduleActive?: boolean;
+  durationMinutes?: number | null;
+  targetBatches?: string[];
+  recurrence?: any;
 };
+
+function formatScheduleSubtitle(meta: TestMeta): string {
+  if (meta.isScheduleActive && meta.startTime) {
+    const d = meta.startTime.toDate();
+    const when = d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    return `scheduled ${when}`;
+  }
+  return "draft, not scheduled";
+}
 
 export default function ManageQuestionsPage() {
   const navigate = useNavigate();
@@ -54,6 +72,8 @@ export default function ManageQuestionsPage() {
 
   const [testMeta, setTestMeta] = useState<TestMeta | null>(null);
   const [testLoading, setTestLoading] = useState(true);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [questionStats, setQuestionStats] = useState<{ count: number; marks: number } | null>(null);
 
   // Must be before early returns — hooks cannot be called conditionally
   const testSections = useMemo(() => {
@@ -152,7 +172,11 @@ export default function ManageQuestionsPage() {
               : null,
             useSections: data?.useSections !== false,
             questionFormat: String(data?.questionFormat || ""),
-            chapters: Array.isArray(data?.chapters) ? data.chapters.map(String) : (data?.chapter ? [String(data.chapter)] : []),
+            chapters: Array.isArray(data?.chapters)
+              ? data.chapters.map(String)
+              : data?.chapter
+                ? [String(data.chapter)]
+                : [],
             topics: Array.isArray(data?.topics) ? data.topics.map(String) : [],
             tags: Array.isArray(data?.tags) ? data.tags.map(String) : [],
             markingScheme: data?.markingScheme
@@ -168,6 +192,14 @@ export default function ManageQuestionsPage() {
             questionsTarget: Number.isFinite(Number(data?.questionsTarget))
               ? Number(data.questionsTarget)
               : null,
+            startTime: data?.startTime ?? null,
+            endTime: data?.endTime ?? null,
+            isScheduleActive: data?.isScheduleActive === true,
+            durationMinutes: Number.isFinite(Number(data?.durationMinutes))
+              ? Number(data.durationMinutes)
+              : null,
+            targetBatches: Array.isArray(data?.targetBatches) ? data.targetBatches.map(String) : [],
+            recurrence: data?.recurrence ?? null,
           });
         }
         setTestLoading(false);
@@ -180,6 +212,28 @@ export default function ManageQuestionsPage() {
 
     return () => unsub();
   }, [authLoading, firebaseUser, testId]);
+
+  // Read-only aggregate of the test's own questions — doesn't duplicate any of
+  // QuestionsManager's editing state, just totals for the settings rail.
+  useEffect(() => {
+    if (!firebaseUser || !testId) {
+      setQuestionStats(null);
+      return;
+    }
+    const unsub = onSnapshot(
+      collection(db, "educators", firebaseUser.uid, "my_tests", testId, "questions"),
+      (snap) => {
+        let marks = 0;
+        snap.docs.forEach((d) => {
+          const m = Number((d.data() as any)?.marks);
+          if (Number.isFinite(m)) marks += m;
+        });
+        setQuestionStats({ count: snap.size, marks });
+      },
+      () => setQuestionStats(null)
+    );
+    return () => unsub();
+  }, [firebaseUser, testId]);
 
   if (authLoading || testLoading) {
     return (
@@ -225,20 +279,112 @@ export default function ManageQuestionsPage() {
 
   const adminSourceTestId = testMeta.linkedAdminTestId || testMeta.originalTestId || testId;
 
+  const scheduleTestDoc = {
+    id: testId,
+    title: testMeta.title,
+    startTime: testMeta.startTime,
+    endTime: testMeta.endTime,
+    isScheduleActive: testMeta.isScheduleActive,
+    durationMinutes: testMeta.durationMinutes,
+    targetBatches: testMeta.targetBatches,
+    recurrence: testMeta.recurrence,
+  };
+
   return (
-    <QuestionsManager
-      mode="page"
-      testId={testId}
-      testTitle={testMeta.title}
-      testSubject={testMeta.subject}
-      useSections={testMeta.useSections}
-      testSections={testSections}
-      educatorUid={firebaseUser.uid}
-      allowedSubjectIds={allowedSubjectIds}
-      readOnly={isAdminLinked}
-      questionSource={isAdminLinked ? "admin" : "educator"}
-      questionSourceTestId={isAdminLinked ? adminSourceTestId : undefined}
-      onClose={() => navigate("/educator/test-series")}
-    />
+    <div className="ds-scope space-y-4 p-4 md:p-6">
+      <DsPageHeader
+        title={testMeta.title || "Untitled test"}
+        subtitle={`${testMeta.subject || "General"} · ${formatScheduleSubtitle(testMeta)}`}
+        primary={{ label: "Schedule test", onClick: () => setScheduleOpen(true) }}
+      />
+
+      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:items-start">
+        <div className="min-h-0 flex-1 overflow-hidden rounded-[10px] border border-ds-ink/[.09]">
+          <QuestionsManager
+            mode="page"
+            testId={testId}
+            testTitle={testMeta.title}
+            testSubject={testMeta.subject}
+            useSections={testMeta.useSections}
+            testSections={testSections}
+            educatorUid={firebaseUser.uid}
+            allowedSubjectIds={allowedSubjectIds}
+            readOnly={isAdminLinked}
+            questionSource={isAdminLinked ? "admin" : "educator"}
+            questionSourceTestId={isAdminLinked ? adminSourceTestId : undefined}
+            onClose={() => navigate("/educator/test-series")}
+          />
+        </div>
+
+        <DsCard className="w-full shrink-0 p-4 lg:w-[288px]">
+          <div className="font-ds-sans text-[13.5px] font-semibold text-ds-ink">Test settings</div>
+          <div className="mt-3 divide-y divide-ds-ink/[.055]">
+            {[
+              { k: "Name", v: testMeta.title || "Untitled test" },
+              { k: "Subject", v: testMeta.subject || "General" },
+              {
+                k: "Questions",
+                v: questionStats ? String(questionStats.count) : "—",
+              },
+              {
+                k: "Total marks",
+                v: questionStats ? String(questionStats.marks) : "—",
+              },
+              {
+                k: "Batches",
+                v: testMeta.targetBatches?.length
+                  ? `${testMeta.targetBatches.length} assigned`
+                  : "Not assigned",
+              },
+              {
+                k: "Schedule",
+                v:
+                  testMeta.isScheduleActive && testMeta.startTime
+                    ? testMeta.startTime.toDate().toLocaleString(undefined, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })
+                    : "Not scheduled",
+              },
+              {
+                k: "Duration",
+                v: testMeta.durationMinutes ? `${testMeta.durationMinutes} minutes` : "—",
+              },
+              { k: "Results", v: "After faculty sign-off" },
+            ].map((row) => (
+              <div
+                key={row.k}
+                className="flex items-center justify-between gap-3 py-2 font-ds-sans text-[12px]"
+              >
+                <span className="text-ds-ink/50">{row.k}</span>
+                <span className="text-right font-medium text-ds-ink">{row.v}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3.5 flex flex-col gap-1.5">
+            <Button
+              className="h-[34px] rounded-[7px] bg-ds-accent font-ds-sans text-[12.5px] font-semibold text-white hover:bg-ds-accent/90"
+              onClick={() => setScheduleOpen(true)}
+            >
+              Schedule test
+            </Button>
+            <Button
+              variant="outline"
+              className="h-[34px] rounded-[7px] border-ds-ink/15 font-ds-sans text-[12.5px] font-semibold"
+              onClick={() => navigate("/educator/test-series")}
+            >
+              Back to tests
+            </Button>
+          </div>
+        </DsCard>
+      </div>
+
+      <ScheduleTest
+        open={scheduleOpen}
+        onOpenChange={setScheduleOpen}
+        test={scheduleTestDoc}
+        userId={firebaseUser.uid}
+      />
+    </div>
   );
 }

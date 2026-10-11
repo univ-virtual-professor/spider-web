@@ -39,6 +39,8 @@ interface ImageTextareaProps {
   disabled?: boolean;
   /** Hide the bottom "Add Image" button + hint row */
   hideControls?: boolean;
+  /** Label for the upload button — same upload flow, just a caller-chosen label */
+  addImageLabel?: string;
 }
 
 // ─── Helpers to split / combine text and images ────────────────────────
@@ -79,6 +81,7 @@ export default function ImageTextarea({
   folder = "/test-questions",
   disabled = false,
   hideControls = false,
+  addImageLabel = "Add Image",
 }: ImageTextareaProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -449,7 +452,7 @@ export default function ImageTextarea({
             ) : (
               <ImageIcon className="h-3 w-3" />
             )}
-            Add Image
+            {addImageLabel}
           </Button>
           <span className="text-[11px] text-muted-foreground">
             or drag &amp; drop · paste from clipboard
