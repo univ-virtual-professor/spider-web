@@ -541,12 +541,22 @@ export default function ExamSchedule() {
     const snap = await getDocs(query(collection(db, "examResults"), where("examId", "==", examId)));
     const docs = snap.docs.map((d) => ({ ref: d.ref, marks: (d.data() as any).marks as number }));
     const totalStudents = docs.length;
-    const batch = writeBatch(db);
+    // A mock test can span every batch in the institute — stay under Firestore's 500-write
+    // batch limit by committing every 450 ops and starting a new batch (same pattern as
+    // TestBank.tsx's deleteTest).
+    let batch = writeBatch(db);
+    let ops = 0;
     for (const d of docs) {
       const higher = docs.filter((o) => o.marks > d.marks).length;
       batch.update(d.ref, { rank: higher + 1, totalStudents });
+      ops++;
+      if (ops >= 450) {
+        await batch.commit();
+        batch = writeBatch(db);
+        ops = 0;
+      }
     }
-    if (docs.length > 0) await batch.commit();
+    if (ops > 0) await batch.commit();
   }
 
   async function toggleResultsReleased(exam: ExamDoc, released: boolean) {
