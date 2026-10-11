@@ -20,8 +20,16 @@ import { Input } from "@shared/ui/input";
 import { Label } from "@shared/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@shared/ui/dialog";
-import { DsPageHeader, DsCard } from "@shared/ui/ds";
-import { Plus, Trash2, Loader2 } from "lucide-react";
+import { DsPageHeader, DsCard, DsEmpty, DsSkeletonRows } from "@shared/ui/ds";
+import { Plus, Trash2 } from "lucide-react";
+
+// BUILD-NOTES' op_timetable gap list (rooms filter, room-conflict detection, room
+// utilisation, unscheduled-this-week) is intentionally not built here: this schema has no
+// "room" concept at all — a timetable Slot only carries subject/teacher/day/time/mode, and
+// there's no rooms collection anywhere in the app to filter or measure utilisation against.
+// Adding one would mean inventing a new piece of data model, not filling a UI gap against an
+// existing source — out of scope for this ticket (see the Sheet review ticket's rule about
+// omitting gaps with no real data source).
 
 type Branch = { id: string; name: string };
 type Course = { id: string; branchId: string; name: string };
@@ -368,8 +376,9 @@ export default function Timetable() {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-ds-slate" />
+      <div className="space-y-3.5 font-ds-sans">
+        <DsSkeletonRows rows={1} rowHeight={36} />
+        <DsSkeletonRows rows={6} rowHeight={74} />
       </div>
     );
   }
@@ -427,17 +436,13 @@ export default function Timetable() {
       )}
 
       {batches.length === 0 ? (
-        <DsCard className="p-12 text-center">
-          <p className="font-ds-sans text-[12.5px] text-ds-slate">
-            No batches yet — create one under Batches first.
-          </p>
-        </DsCard>
+        <DsEmpty title="No batches yet" body="Create one under Batches first." />
       ) : slots.length === 0 ? (
-        <DsCard className="p-12 text-center">
-          <p className="font-ds-sans text-[12.5px] text-ds-slate">
-            No classes scheduled for this batch yet.
-          </p>
-        </DsCard>
+        <DsEmpty
+          title="No classes scheduled"
+          body="Add a class to this batch's weekly schedule — attendance is marked against these."
+          action={{ label: "Add class", onClick: openNewSlot }}
+        />
       ) : (
         <DsCard className="overflow-hidden">
           <div
