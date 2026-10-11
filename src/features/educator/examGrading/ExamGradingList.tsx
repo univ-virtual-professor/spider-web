@@ -9,8 +9,16 @@ import { Label } from "@shared/ui/label";
 import { useAuth } from "@app/providers/AuthProvider";
 import { useEmployee } from "@shared/contexts/EmployeeContext";
 import { PERMISSIONS } from "@shared/lib/rolesConfig";
-import { DsPageHeader, DsCard, DsStatusPill, DsMeter, DsDetailRail } from "@shared/ui/ds";
-import { DsEmpty, DsSkeletonRows, DsInlineError } from "./dsLocalStates";
+import {
+  DsPageHeader,
+  DsCard,
+  DsStatusPill,
+  DsMeter,
+  DsDetailRail,
+  DsEmpty,
+  DsSkeletonRows,
+  DsInlineError,
+} from "@shared/ui/ds";
 import { FLAGGED_CONFIDENCE } from "./constants";
 import {
   approveGrading,
@@ -49,7 +57,9 @@ type FlaggedItem = {
 function deriveState(exam: Exam, sheets: SheetRow[]): ExamState {
   if (sheets.length === 0) return "draft";
   const graded = sheets.filter((s) => s.status === "graded").length;
-  const inProgress = sheets.filter((s) => s.status === "pending" || s.status === "processing").length;
+  const inProgress = sheets.filter(
+    (s) => s.status === "pending" || s.status === "processing"
+  ).length;
   const failed = sheets.filter((s) => s.status === "failed").length;
   if (inProgress > 0) return "grading";
   if (graded === sheets.length) return exam.results_released ? "released" : "awaiting_signoff";
@@ -158,7 +168,11 @@ export default function ExamGradingList() {
           if (g.status !== "graded") continue;
           if (g.teacher_approved) continue;
           if (g.confidence != null && g.confidence >= FLAGGED_CONFIDENCE) continue;
-          items.push({ sheetId: gradedSheets[i].sheet_id, studentName: gradedSheets[i].student_name, grading: g });
+          items.push({
+            sheetId: gradedSheets[i].sheet_id,
+            studentName: gradedSheets[i].student_name,
+            grading: g,
+          });
         }
       });
       items.sort((a, b) => (a.grading.confidence ?? 0) - (b.grading.confidence ?? 0));
@@ -190,9 +204,15 @@ export default function ExamGradingList() {
         ? await unreleaseResults(token, row.exam.id)
         : await releaseResults(token, row.exam.id);
       setRows((prev) =>
-        prev.map((r) => (r.exam.id === updated.id ? { ...r, exam: updated, state: deriveState(updated, r.sheets) } : r))
+        prev.map((r) =>
+          r.exam.id === updated.id
+            ? { ...r, exam: updated, state: deriveState(updated, r.sheets) }
+            : r
+        )
       );
-      toast.success(updated.results_released ? "Results released to students" : "Results unreleased");
+      toast.success(
+        updated.results_released ? "Results released to students" : "Results unreleased"
+      );
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -219,7 +239,13 @@ export default function ExamGradingList() {
   }
 
   const counts = useMemo(() => {
-    const c: Record<ExamState, number> = { draft: 0, grading: 0, failed: 0, awaiting_signoff: 0, released: 0 };
+    const c: Record<ExamState, number> = {
+      draft: 0,
+      grading: 0,
+      failed: 0,
+      awaiting_signoff: 0,
+      released: 0,
+    };
     for (const r of rows) c[r.state]++;
     return c;
   }, [rows]);
@@ -235,7 +261,15 @@ export default function ExamGradingList() {
             ? "Create, schedule, and review what the AI graded."
             : `${rows.length} test${rows.length === 1 ? "" : "s"} · ${counts.awaiting_signoff} awaiting your sign-off`
         }
-        primary={canCreate ? { label: "New exam", onClick: () => setCreateOpen(true), icon: <Plus className="mr-1.5 h-4 w-4" /> } : undefined}
+        primary={
+          canCreate
+            ? {
+                label: "New exam",
+                onClick: () => setCreateOpen(true),
+                icon: <Plus className="mr-1.5 h-4 w-4" />,
+              }
+            : undefined
+        }
       />
 
       {error && <DsInlineError message={error} onRetry={load} />}
@@ -243,22 +277,24 @@ export default function ExamGradingList() {
       <div className="grid items-start gap-3.5 lg:grid-cols-[1.45fr_1fr]">
         <DsCard className="overflow-hidden">
           <div className="flex items-center gap-1.5 border-b border-ds-ink/[.08] px-3 py-2">
-            {(["all", "draft", "grading", "failed", "awaiting_signoff", "released"] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={
-                  "rounded-md px-2.5 py-1 font-ds-sans text-[12px] font-medium " +
-                  (filter === f ? "bg-ds-fill text-ds-ink" : "text-ds-ink/55 hover:bg-ds-fill/60")
-                }
-              >
-                {f === "all" ? `All · ${rows.length}` : `${STATE_LABEL[f]} · ${counts[f]}`}
-              </button>
-            ))}
+            {(["all", "draft", "grading", "failed", "awaiting_signoff", "released"] as const).map(
+              (f) => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={
+                    "rounded-md px-2.5 py-1 font-ds-sans text-[12px] font-medium " +
+                    (filter === f ? "bg-ds-fill text-ds-ink" : "text-ds-ink/55 hover:bg-ds-fill/60")
+                  }
+                >
+                  {f === "all" ? `All · ${rows.length}` : `${STATE_LABEL[f]} · ${counts[f]}`}
+                </button>
+              )
+            )}
           </div>
 
           {loading ? (
-            <DsSkeletonRows rows={6} height={58} />
+            <DsSkeletonRows rows={6} rowHeight={58} />
           ) : visibleRows.length === 0 ? (
             <DsEmpty
               title={rows.length === 0 ? "No exams yet" : "No tests in this state"}
@@ -268,12 +304,9 @@ export default function ExamGradingList() {
                   : undefined
               }
               action={
-                rows.length === 0 && canCreate ? (
-                  <Button size="sm" className="mt-2" onClick={() => setCreateOpen(true)}>
-                    <Plus className="mr-1.5 h-4 w-4" />
-                    New exam
-                  </Button>
-                ) : undefined
+                rows.length === 0 && canCreate
+                  ? { label: "New exam", onClick: () => setCreateOpen(true) }
+                  : undefined
               }
             />
           ) : (
@@ -305,8 +338,8 @@ export default function ExamGradingList() {
                   <Link to={`/educator/exam-grading/${r.exam.id}`} className="min-w-0 flex-1">
                     <div className="truncate font-semibold">{r.exam.title}</div>
                     <div className="mt-0.5 truncate font-ds-sans text-[11px] text-ds-ink/45">
-                      {r.exam.subject} · {r.sheets.length} sheet{r.sheets.length === 1 ? "" : "s"} · created{" "}
-                      {new Date(r.exam.created_at).toLocaleDateString()}
+                      {r.exam.subject} · {r.sheets.length} sheet{r.sheets.length === 1 ? "" : "s"} ·
+                      created {new Date(r.exam.created_at).toLocaleDateString()}
                     </div>
                   </Link>
                   {rowAction && canPublish && (
@@ -351,10 +384,15 @@ export default function ExamGradingList() {
                 <DsStatusPill tone="info">Running</DsStatusPill>
               </div>
               <div className="mb-3 mt-1 font-ds-sans text-[11.5px] text-ds-ink/50">
-                {activeRow.sheets.length} scanned sheet{activeRow.sheets.length === 1 ? "" : "s"} · per-question feedback
+                {activeRow.sheets.length} scanned sheet{activeRow.sheets.length === 1 ? "" : "s"} ·
+                per-question feedback
               </div>
               <DsMeter
-                pct={activeRow.sheets.length ? (activeRow.gradedCount / activeRow.sheets.length) * 100 : 0}
+                pct={
+                  activeRow.sheets.length
+                    ? (activeRow.gradedCount / activeRow.sheets.length) * 100
+                    : 0
+                }
                 tone="info"
               />
               <div className="mt-2 flex font-ds-mono text-[11px] text-ds-ink/50">
@@ -367,14 +405,17 @@ export default function ExamGradingList() {
                 Flagged for your review
               </div>
               {flaggedLoading ? (
-                <DsSkeletonRows rows={2} height={40} />
+                <DsSkeletonRows rows={2} rowHeight={40} />
               ) : flagged.length === 0 ? (
                 <p className="font-ds-sans text-[11.5px] text-ds-slate">
                   Nothing flagged yet — AI is confident in every graded question so far.
                 </p>
               ) : (
                 flagged.map((f) => (
-                  <div key={f.grading.id} className="mb-2 rounded-[8px] border border-ds-ink/[.09] p-2.5">
+                  <div
+                    key={f.grading.id}
+                    className="mb-2 rounded-[8px] border border-ds-ink/[.09] p-2.5"
+                  >
                     <div className="flex items-baseline gap-2">
                       <div className="font-ds-sans text-[12px] font-semibold text-ds-ink">
                         {f.studentName}
@@ -395,7 +436,9 @@ export default function ExamGradingList() {
                     </div>
                     <div className="mt-2 flex gap-1.5">
                       <Button size="sm" className="h-7 px-2.5 text-[11px]" asChild>
-                        <Link to={`/educator/exam-grading/${activeRow.exam.id}/review/${f.sheetId}`}>
+                        <Link
+                          to={`/educator/exam-grading/${activeRow.exam.id}/review/${f.sheetId}`}
+                        >
                           Open sheet
                         </Link>
                       </Button>

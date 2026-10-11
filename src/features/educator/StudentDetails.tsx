@@ -973,6 +973,7 @@ export default function StudentDetails() {
             onRetry={() => setReportReloadKey((k) => k + 1)}
             permissionDenied={reportPermissionDenied}
             permissionBackHref="/educator/students"
+            permissionMessage="This student isn't in one of your batches."
             data={report}
             onPracticeTopic={() => nav("/educator/dpp")}
             noDataHint="This student hasn't taken enough tests yet to unlock topic-level analysis."
