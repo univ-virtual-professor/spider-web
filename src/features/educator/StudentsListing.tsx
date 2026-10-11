@@ -1,13 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search, X, ChevronRight, Users, ArrowLeft } from "lucide-react";
-import { collection, getDocs, onSnapshot, query, orderBy } from "firebase/firestore";
+import { Search, X, ChevronRight, Users, ArrowLeft, ArrowLeftRight } from "lucide-react";
+import {
+  collection,
+  doc,
+  getDocs,
+  onSnapshot,
+  query,
+  orderBy,
+  writeBatch,
+} from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
+import { useEmployee } from "@shared/contexts/EmployeeContext";
+import { PERMISSIONS } from "@shared/lib/rolesConfig";
+import { toast } from "sonner";
 
 import { Input } from "@shared/ui/input";
+import { Button } from "@shared/ui/button";
+import { Checkbox } from "@shared/ui/checkbox";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@shared/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@shared/ui/dialog";
 import { Skeleton } from "@shared/ui/skeleton";
 import { DsPageHeader, DsCard, DsTableHead, DsTableRow, DsStatusPill } from "@shared/ui/ds";
 
@@ -20,11 +34,22 @@ type Student = {
   batchId?: string;
   courseId?: string;
   branchId?: string;
+  // Not written anywhere in this app yet (no enrolment flow captures a guardian today — see
+  // docs/agents/risks.md): shown only if some other process has set them on the doc.
+  guardianName?: string;
+  guardianPhone?: string;
+  joinedAt?: any;
 };
 
 type Branch = { id: string; name: string };
 type Course = { id: string; name: string; branchId: string };
 type Batch = { id: string; name: string; courseId: string; branchId: string };
+
+const MONKEY_KING_API = import.meta.env.VITE_MONKEY_KING_API_URL as string;
+
+// One batch-scoped call (GET /api/reports/batches/{batch_id}/students — monkey-king PR #3) once a
+// single batch is selected, instead of a per-student Firestore read for the whole roster.
+type ReadinessInfo = { weakTopics: string[]; readiness: number | null };
 
 export default function StudentsListing() {
   const navigate = useNavigate();
@@ -33,6 +58,8 @@ export default function StudentsListing() {
     window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const [searchParams, setSearchParams] = useSearchParams();
   const { firebaseUser } = useAuth();
+  const { hasPermission } = useEmployee();
+  const canManage = hasPermission(PERMISSIONS.STUDENTS_MANAGE);
   const educatorId = firebaseUser?.uid;
 
   const [students, setStudents] = useState<Student[]>([]);
@@ -47,6 +74,17 @@ export default function StudentsListing() {
   const programFilter = searchParams.get("program") || "All";
   const batchFilter = searchParams.get("batch") || "All";
   const searchQuery = searchParams.get("q") || "";
+  const atRiskOnly = searchParams.get("atRisk") === "1";
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferBranchId, setTransferBranchId] = useState("");
+  const [transferCourseId, setTransferCourseId] = useState("");
+  const [transferBatchId, setTransferBatchId] = useState("");
+  const [transferring, setTransferring] = useState(false);
+
+  const [readiness, setReadiness] = useState<Record<string, ReadinessInfo>>({});
+  const [readinessLoading, setReadinessLoading] = useState(false);
 
   useEffect(() => {
     if (!educatorId) return;
@@ -108,7 +146,7 @@ export default function StudentsListing() {
 
   const updateFilters = (key: string, value: string) => {
     const next = new URLSearchParams(searchParams);
-    if (value === "All") next.delete(key);
+    if (value === "All" || !value) next.delete(key);
     else next.set(key, value);
 
     // Reset dependent filters
@@ -118,8 +156,10 @@ export default function StudentsListing() {
     } else if (key === "program") {
       next.delete("batch");
     }
+    if (key === "batch") next.delete("atRisk");
 
     setSearchParams(next);
+    setSelectedIds(new Set());
   };
 
   const filteredStudents = useMemo(() => {
@@ -157,6 +197,94 @@ export default function StudentsListing() {
     });
   }, [students, branchFilter, programFilter, batchFilter, searchQuery, branches, courses, batches]);
 
+  // Readiness/weakest-topics lookup — only when a single batch is selected, one call for the
+  // whole batch roster (BUILD-NOTES' fa_students: "weakest first, at risk").
+  useEffect(() => {
+    const selectedBatch = batches.find((b) => b.name === batchFilter);
+    if (!selectedBatch || !firebaseUser) {
+      setReadiness({});
+      return;
+    }
+    let cancelled = false;
+    setReadinessLoading(true);
+    (async () => {
+      try {
+        const token = await firebaseUser.getIdToken();
+        const res = await fetch(
+          `${MONKEY_KING_API}/api/reports/batches/${selectedBatch.id}/students`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (cancelled) return;
+        if (!res.ok) {
+          // 404 ("not one of your batches") or any other failure: degrade quietly — the roster
+          // itself still works, it just loses the weakest-topics/at-risk/sort extras.
+          setReadiness({});
+          return;
+        }
+        const body = (await res.json()) as {
+          students: {
+            studentId: string;
+            readiness: number | null;
+            weakAreas: {
+              subject: string;
+              chapter: string;
+              topic: string;
+              weighted_accuracy: number;
+            }[];
+          }[];
+        };
+        const next: Record<string, ReadinessInfo> = {};
+        body.students.forEach((s) => {
+          next[s.studentId] = {
+            readiness: s.readiness,
+            weakTopics: (s.weakAreas || [])
+              .slice(0, 2)
+              .map((w) => String(w.topic || w.chapter || w.subject || "").trim())
+              .filter(Boolean),
+          };
+        });
+        setReadiness(next);
+      } catch {
+        if (!cancelled) setReadiness({});
+      } finally {
+        if (!cancelled) setReadinessLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [batchFilter, batches, firebaseUser]);
+
+  const hasReadiness = batchFilter !== "All" && Object.keys(readiness).length > 0;
+
+  // "Below 45% average" at-risk threshold, matching the mockup (ow_students KPI: "At risk · below
+  // 45% average"). A student with no readiness score yet falls back to "has any weak topic".
+  const isAtRisk = (info: ReadinessInfo | undefined) =>
+    info ? (info.readiness !== null ? info.readiness < 45 : info.weakTopics.length > 0) : false;
+
+  const visibleStudents = useMemo(() => {
+    let list = filteredStudents;
+    if (atRiskOnly && hasReadiness) {
+      list = list.filter((s) => isAtRisk(readiness[s.id]));
+    }
+    if (hasReadiness) {
+      list = [...list].sort((a, b) => {
+        const ra = readiness[a.id]?.readiness;
+        const rb = readiness[b.id]?.readiness;
+        if (ra == null && rb == null) return 0;
+        if (ra == null) return 1;
+        if (rb == null) return -1;
+        return ra - rb; // weakest (lowest readiness) first
+      });
+    }
+    return list;
+  }, [filteredStudents, atRiskOnly, hasReadiness, readiness]);
+
+  const atRiskCount = useMemo(
+    () => filteredStudents.filter((s) => isAtRisk(readiness[s.id])).length,
+    [filteredStudents, readiness]
+  );
+
   // Derived filter options
   const availableCourses = useMemo(() => {
     if (branchFilter === "All") return Array.from(new Set(courses.map((c) => c.name))).sort();
@@ -182,6 +310,101 @@ export default function StudentsListing() {
   const hasFilters =
     branchFilter !== "All" || programFilter !== "All" || batchFilter !== "All" || !!searchQuery;
 
+  const transferCourses = useMemo(
+    () => courses.filter((c) => c.branchId === transferBranchId),
+    [courses, transferBranchId]
+  );
+  const transferBatches = useMemo(
+    () => batches.filter((b) => b.courseId === transferCourseId),
+    [batches, transferCourseId]
+  );
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) =>
+      prev.size === visibleStudents.length ? new Set() : new Set(visibleStudents.map((s) => s.id))
+    );
+  };
+
+  const openTransfer = () => {
+    setTransferBranchId("");
+    setTransferCourseId("");
+    setTransferBatchId("");
+    setTransferOpen(true);
+  };
+
+  // Mirrors Learners.tsx's saveAssignBatch (single-student transfer) — same three docs, same
+  // fields. Firestore batched writes cap out at 500 operations; 3 writes/student means at most
+  // ~166 students per batch, so chunk well under that.
+  const TRANSFER_WRITES_PER_STUDENT = 3;
+  const TRANSFER_CHUNK_SIZE = Math.floor(450 / TRANSFER_WRITES_PER_STUDENT);
+
+  const runTransfer = async () => {
+    if (!educatorId || !transferBatchId || selectedIds.size === 0) return;
+    setTransferring(true);
+    try {
+      const ids = Array.from(selectedIds);
+      const fields = {
+        branchId: transferBranchId,
+        courseId: transferCourseId,
+        batchId: transferBatchId,
+      };
+      for (let i = 0; i < ids.length; i += TRANSFER_CHUNK_SIZE) {
+        const chunk = ids.slice(i, i + TRANSFER_CHUNK_SIZE);
+        const batchWrite = writeBatch(db);
+        chunk.forEach((id) => {
+          batchWrite.set(doc(db, "educators", educatorId, "students", id), fields, { merge: true });
+          batchWrite.update(doc(db, "users", id), fields);
+          batchWrite.set(doc(db, "educators", educatorId, "billingSeats", id), fields, {
+            merge: true,
+          });
+        });
+        await batchWrite.commit();
+      }
+      toast.success(`Moved ${selectedIds.size} student${selectedIds.size === 1 ? "" : "s"}.`);
+      setSelectedIds(new Set());
+      setTransferOpen(false);
+    } catch {
+      toast.error("Transfer failed. Try again.");
+    } finally {
+      setTransferring(false);
+    }
+  };
+
+  const handleExport = () => {
+    const header = "Name,Email,Batch,Status,Guardian,Guardian phone";
+    const rows = visibleStudents.map((s) => {
+      const batchName = batches.find((b) => b.id === s.batchId)?.name || "";
+      return [
+        s.name || "",
+        s.email || "",
+        batchName,
+        s.status || "",
+        s.guardianName || "",
+        s.guardianPhone || "",
+      ]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(",");
+    });
+    const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "students.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="space-y-5 font-ds-sans">
       <div className="flex items-center gap-3">
@@ -195,7 +418,13 @@ export default function StudentsListing() {
         )}
         <DsPageHeader
           title="Students"
-          subtitle={`Directory across branches and programs · ${students.length} enrolled`}
+          subtitle={
+            batchFilter !== "All"
+              ? `Your students in ${batchFilter}, weakest first.`
+              : `The full directory. Transfers and enrolment status · ${students.length} enrolled`
+          }
+          primary={{ label: "Generate practice", onClick: () => navigate("/educator/dpp") }}
+          secondary={{ label: "Export", onClick: handleExport }}
         />
       </div>
 
@@ -242,9 +471,30 @@ export default function StudentsListing() {
               ))}
             </SelectContent>
           </Select>
+          {hasReadiness && (
+            <button
+              onClick={() => updateFilters("atRisk", atRiskOnly ? "" : "1")}
+              className={
+                atRiskOnly
+                  ? "flex h-9 items-center gap-1.5 rounded-md bg-ds-accent/15 px-2.5 font-ds-sans text-[12px] font-semibold text-ds-accent"
+                  : "flex h-9 items-center gap-1.5 rounded-md bg-ds-fill px-2.5 font-ds-sans text-[12px] font-semibold text-ds-ink/70"
+              }
+            >
+              At risk · {atRiskCount}
+            </button>
+          )}
+          {canManage && selectedIds.size > 0 && (
+            <Button size="sm" variant="outline" className="h-9 gap-1.5" onClick={openTransfer}>
+              <ArrowLeftRight className="h-3.5 w-3.5" />
+              Bulk transfer ({selectedIds.size})
+            </Button>
+          )}
           {hasFilters && (
             <button
-              onClick={() => setSearchParams(new URLSearchParams())}
+              onClick={() => {
+                setSearchParams(new URLSearchParams());
+                setSelectedIds(new Set());
+              }}
               className="flex h-9 items-center gap-1.5 rounded-md px-2.5 font-ds-sans text-[12px] font-medium text-ds-slate hover:bg-ds-fill"
             >
               <X className="h-3 w-3" />
@@ -276,7 +526,7 @@ export default function StudentsListing() {
               </div>
             ))}
           </div>
-        ) : filteredStudents.length === 0 ? (
+        ) : visibleStudents.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <Users className="mb-3 h-8 w-8 text-ds-ink/25" />
             <p className="font-ds-sans text-[13px] font-semibold text-ds-ink">No students found</p>
@@ -295,13 +545,27 @@ export default function StudentsListing() {
         ) : (
           <>
             <DsTableHead
-              columns={["Student", "Batch", "Status", ""]}
-              cols="1.5fr 1.2fr .8fr .8fr"
+              columns={
+                canManage
+                  ? [
+                      "",
+                      "Student",
+                      "Batch",
+                      "Guardian",
+                      hasReadiness ? "Weakest topics" : "Status",
+                      "",
+                    ]
+                  : ["Student", "Batch", "Guardian", hasReadiness ? "Weakest topics" : "Status", ""]
+              }
+              cols={
+                canManage ? "32px 1.4fr 1.1fr 1.2fr 1.3fr .6fr" : "1.5fr 1.1fr 1.2fr 1.3fr .6fr"
+              }
             />
-            {filteredStudents.map((student) => {
+            {visibleStudents.map((student) => {
               const studentBatch = batches.find((b) => b.id === student.batchId);
               const studentCourse = courses.find((c) => c.id === student.courseId);
               const isActive = student.status?.toUpperCase() === "ACTIVE";
+              const info = readiness[student.id];
               const initials = (student.name || "S")
                 .split(" ")
                 .map((n) => n[0])
@@ -309,7 +573,20 @@ export default function StudentsListing() {
                 .toUpperCase();
 
               return (
-                <DsTableRow key={student.id} cols="1.5fr 1.2fr .8fr .8fr" height={56}>
+                <DsTableRow
+                  key={student.id}
+                  cols={
+                    canManage ? "32px 1.4fr 1.1fr 1.2fr 1.3fr .6fr" : "1.5fr 1.1fr 1.2fr 1.3fr .6fr"
+                  }
+                  height={56}
+                >
+                  {canManage && (
+                    <Checkbox
+                      checked={selectedIds.has(student.id)}
+                      onCheckedChange={() => toggleSelected(student.id)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  )}
                   <div className="flex min-w-0 items-center gap-2.5">
                     <Avatar className="h-8 w-8 shrink-0 border border-ds-ink/10">
                       <AvatarImage src={student.avatarUrl} />
@@ -330,11 +607,38 @@ export default function StudentsListing() {
                       {studentBatch?.name || "No batch"}
                     </div>
                   </div>
-                  <div>
-                    <DsStatusPill tone={isActive ? "positive" : "slate"}>
-                      {student.status || "Unknown"}
-                    </DsStatusPill>
+                  <div className="min-w-0 text-ds-ink/70">
+                    <div className="truncate">{student.guardianName || "—"}</div>
+                    {student.guardianPhone && (
+                      <div className="truncate font-ds-mono text-[10.5px] text-ds-ink/45">
+                        {student.guardianPhone}
+                      </div>
+                    )}
                   </div>
+                  {hasReadiness ? (
+                    <div className="flex min-w-0 flex-wrap gap-1.5">
+                      {info?.weakTopics.length ? (
+                        info.weakTopics.map((t) => (
+                          <span
+                            key={t}
+                            className="truncate rounded-md bg-ds-fill px-1.5 py-0.5 font-ds-sans text-[10.5px] text-ds-ink/60"
+                          >
+                            {t}
+                          </span>
+                        ))
+                      ) : readinessLoading ? (
+                        <Skeleton className="h-4 w-20" />
+                      ) : (
+                        <span className="font-ds-sans text-[11px] text-ds-ink/35">—</span>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <DsStatusPill tone={isActive ? "positive" : "slate"}>
+                        {student.status || "Unknown"}
+                      </DsStatusPill>
+                    </div>
+                  )}
                   <div className="flex justify-end">
                     <button
                       onClick={() => navigate(`/educator/students/${student.id}`)}
@@ -351,11 +655,95 @@ export default function StudentsListing() {
         )}
       </DsCard>
 
-      {!isLoading && filteredStudents.length > 0 && (
-        <p className="px-1 font-ds-sans text-[11.5px] text-ds-ink/45">
-          Showing {filteredStudents.length} of {students.length} students
-        </p>
+      {!isLoading && visibleStudents.length > 0 && (
+        <div className="flex items-center justify-between px-1">
+          <p className="font-ds-sans text-[11.5px] text-ds-ink/45">
+            Showing {visibleStudents.length} of {students.length} students
+          </p>
+          {canManage && visibleStudents.length > 0 && (
+            <button
+              onClick={toggleSelectAll}
+              className="font-ds-sans text-[11.5px] font-medium text-ds-ink/50 hover:text-ds-ink"
+            >
+              {selectedIds.size === visibleStudents.length ? "Clear selection" : "Select all"}
+            </button>
+          )}
+        </div>
       )}
+
+      <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Transfer {selectedIds.size} student{selectedIds.size === 1 ? "" : "s"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Select
+              value={transferBranchId}
+              onValueChange={(v) => {
+                setTransferBranchId(v);
+                setTransferCourseId("");
+                setTransferBatchId("");
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Target branch" />
+              </SelectTrigger>
+              <SelectContent>
+                {branches.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={transferCourseId}
+              onValueChange={(v) => {
+                setTransferCourseId(v);
+                setTransferBatchId("");
+              }}
+              disabled={!transferBranchId}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Target program" />
+              </SelectTrigger>
+              <SelectContent>
+                {transferCourses.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={transferBatchId}
+              onValueChange={setTransferBatchId}
+              disabled={!transferCourseId}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Target batch" />
+              </SelectTrigger>
+              <SelectContent>
+                {transferBatches.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTransferOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={runTransfer} disabled={!transferBatchId || transferring}>
+              {transferring ? "Moving…" : "Transfer"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

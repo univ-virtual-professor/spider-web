@@ -9,8 +9,10 @@ import {
   doc,
   getDocs,
   onSnapshot,
+  query,
   Timestamp,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
@@ -24,6 +26,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@shared/ui/label";
 import { Badge } from "@shared/ui/badge";
 import { Skeleton } from "@shared/ui/skeleton";
+import { DsCard, DsMeter, DsStatusPill } from "@shared/ui/ds";
+import { useEmployee } from "@shared/contexts/EmployeeContext";
 import {
   Loader2,
   Plus,
@@ -75,6 +79,7 @@ export default function BatchesListing() {
     new URLSearchParams(window.location.search).get("_app") === "1" ||
     window.sessionStorage.getItem("__PK_APP_WEBVIEW__") === "1";
   const { profile, firebaseUser, loading: authLoading } = useAuth();
+  const { isEmployee } = useEmployee();
   const { tenantSlug: currentTenantSlug } = useTenant();
   const educatorId = profile?.uid || firebaseUser?.uid || "";
 
@@ -88,6 +93,21 @@ export default function BatchesListing() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [studentCounts, setStudentCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+
+  // Owner "Batches" / faculty "My batches" read-only summary (BUILD-NOTES ow_batches/fa_batches)
+  // — curriculum progress is derived from each course's lessons' plannedDate (the same field
+  // Exam Schedule already uses for syllabus-risk warnings), faculty from the batch's own
+  // timetable slots (teacherUid/teacherName), and attendance from its sessions subcollection.
+  // There is no per-batch "avg. test score" or "weakest topics" data source cheap enough to
+  // compute here (attempts aren't tagged with batchId) — omitted rather than invented.
+  const [curriculumProgress, setCurriculumProgress] = useState<
+    Record<string, { done: number; total: number }>
+  >({});
+  const [batchFaculty, setBatchFaculty] = useState<Record<string, string[]>>({});
+  const [batchAttendance, setBatchAttendance] = useState<
+    Record<string, { present: number; total: number }>
+  >({});
+  const [myBatchIds, setMyBatchIds] = useState<Set<string>>(new Set());
 
   // Wizard
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -262,6 +282,179 @@ export default function BatchesListing() {
   useEffect(() => {
     if (pools.length === 1 && !wPlanId) setWPlanId(pools[0].planId);
   }, [pools]);
+
+  // Curriculum progress per course: share of lessons whose planned date has already passed.
+  useEffect(() => {
+    if (!educatorId || courses.length === 0) {
+      setCurriculumProgress({});
+      return;
+    }
+    let cancelled = false;
+    const today = new Date().toISOString().slice(0, 10);
+    Promise.all(
+      courses.map(async (c) => {
+        const moduleSnap = await getDocs(
+          collection(
+            db,
+            "educators",
+            educatorId,
+            "branches",
+            c.branchId,
+            "courses",
+            c.id,
+            "modules"
+          )
+        );
+        let done = 0;
+        let total = 0;
+        for (const m of moduleSnap.docs) {
+          const lessonSnap = await getDocs(
+            collection(
+              db,
+              "educators",
+              educatorId,
+              "branches",
+              c.branchId,
+              "courses",
+              c.id,
+              "modules",
+              m.id,
+              "lessons"
+            )
+          );
+          lessonSnap.docs.forEach((l) => {
+            const planned = (l.data() as any)?.plannedDate as string | undefined;
+            if (!planned) return;
+            total += 1;
+            if (planned <= today) done += 1;
+          });
+        }
+        return [c.id, { done, total }] as const;
+      })
+    ).then((pairs) => {
+      if (cancelled) return;
+      const next: Record<string, { done: number; total: number }> = {};
+      pairs.forEach(([id, v]) => {
+        next[id] = v;
+      });
+      setCurriculumProgress(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [educatorId, courses]);
+
+  // Faculty per batch, from its own (small) timetable subcollection — cheap enough to read for
+  // every batch, since it's just a handful of weekly slot docs. Also how "my batches" (the ones
+  // this signed-in employee teaches) gets determined.
+  useEffect(() => {
+    if (!educatorId || batches.length === 0) {
+      setBatchFaculty({});
+      setMyBatchIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      batches.map(async (b) => {
+        const ttSnap = await getDocs(
+          collection(
+            db,
+            "educators",
+            educatorId,
+            "branches",
+            b.branchId,
+            "courses",
+            b.courseId,
+            "batches",
+            b.id,
+            "timetable"
+          )
+        );
+        const teacherUids = new Set<string>();
+        const names = new Set<string>();
+        ttSnap.docs.forEach((d) => {
+          const data = d.data() as any;
+          if (data.teacherUid) teacherUids.add(data.teacherUid);
+          if (data.teacherName) names.add(data.teacherName);
+        });
+        return {
+          batchId: b.id,
+          names: Array.from(names),
+          isMine: firebaseUser?.uid ? teacherUids.has(firebaseUser.uid) : false,
+        };
+      })
+    ).then((results) => {
+      if (cancelled) return;
+      const faculty: Record<string, string[]> = {};
+      const mine = new Set<string>();
+      results.forEach((r) => {
+        faculty[r.batchId] = r.names;
+        if (r.isMine) mine.add(r.batchId);
+      });
+      setBatchFaculty(faculty);
+      setMyBatchIds(mine);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [educatorId, batches, firebaseUser?.uid]);
+
+  // Attendance per batch — only ever shown in the "My batches" section, so only fetched for the
+  // signed-in faculty member's own batches, and only the last 120 days of sessions (not the
+  // batch's full history).
+  useEffect(() => {
+    if (!educatorId || myBatchIds.size === 0) {
+      setBatchAttendance({});
+      return;
+    }
+    let cancelled = false;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 120);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const myBatches = batches.filter((b) => myBatchIds.has(b.id));
+    Promise.all(
+      myBatches.map(async (b) => {
+        const sessSnap = await getDocs(
+          query(
+            collection(
+              db,
+              "educators",
+              educatorId,
+              "branches",
+              b.branchId,
+              "courses",
+              b.courseId,
+              "batches",
+              b.id,
+              "sessions"
+            ),
+            where("date", ">=", cutoffStr)
+          )
+        );
+        let present = 0;
+        let total = 0;
+        sessSnap.docs.forEach((d) => {
+          const attendance = (d.data() as any)?.attendance as Record<string, string> | undefined;
+          if (!attendance) return;
+          Object.values(attendance).forEach((status) => {
+            total += 1;
+            if (status === "present" || status === "late") present += 1;
+          });
+        });
+        return { batchId: b.id, present, total };
+      })
+    ).then((results) => {
+      if (cancelled) return;
+      const attendance: Record<string, { present: number; total: number }> = {};
+      results.forEach((r) => {
+        attendance[r.batchId] = { present: r.present, total: r.total };
+      });
+      setBatchAttendance(attendance);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [educatorId, batches, myBatchIds]);
 
   const totalAvailableSeats = pools.reduce((sum, p) => sum + p.availableSeats, 0);
   const totalInUse = pools.reduce((sum, p) => sum + p.allocatedSeats, 0);
@@ -570,6 +763,17 @@ export default function BatchesListing() {
     );
   }
 
+  const batchStatusTone = (
+    batch: Batch
+  ): { label: string; tone: "accent" | "info" | "positive" | "slate" } => {
+    const today = new Date().toISOString().slice(0, 10);
+    if (batch.endDate && batch.endDate < today) return { label: "Ended", tone: "slate" };
+    if (batch.startDate && batch.startDate > today) return { label: "Upcoming", tone: "info" };
+    return { label: "Active", tone: "positive" };
+  };
+
+  const myBatches = batches.filter((b) => myBatchIds.has(b.id));
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -586,7 +790,7 @@ export default function BatchesListing() {
           <div className="font-ds-sans">
             <h1 className="font-ds-serif text-[23px] font-semibold text-ds-ink">Batches</h1>
             <p className="hidden font-ds-sans text-[12.5px] text-ds-slate md:block">
-              Manage your teaching batches and invite students
+              Every batch running this term, who leads it and how far the curriculum has moved.
             </p>
           </div>
         </div>
@@ -595,6 +799,66 @@ export default function BatchesListing() {
           New Batch
         </Button>
       </div>
+
+      {/* My batches (fa_batches): batches this signed-in teacher appears on in the timetable.
+          Avg. test score and weakest-topics aren't shown here — attempts aren't tagged with a
+          batchId anywhere in this app, so there's no affordable real aggregate for them; see
+          docs/agents/risks.md. */}
+      {isEmployee && myBatches.length > 0 && (
+        <div className="space-y-2.5">
+          <div className="font-ds-sans text-[13px] font-semibold text-ds-ink">My batches</div>
+          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+            {myBatches.map((batch) => {
+              const course = courses.find((c) => c.id === batch.courseId);
+              const count = studentCounts[batch.id] ?? 0;
+              const progress = course ? curriculumProgress[course.id] : undefined;
+              const progressPct =
+                progress && progress.total > 0 ? (progress.done / progress.total) * 100 : 0;
+              const att = batchAttendance[batch.id];
+              const attPct =
+                att && att.total > 0 ? Math.round((att.present / att.total) * 100) : null;
+              return (
+                <DsCard key={batch.id} className="p-4">
+                  <div className="flex items-baseline gap-2">
+                    <div className="font-ds-sans text-[14px] font-semibold text-ds-ink">
+                      {batch.name}
+                    </div>
+                    <div className="flex-1" />
+                    <div className="font-ds-mono text-[11px] text-ds-ink/45">{count} students</div>
+                  </div>
+                  <div className="mt-0.5 font-ds-sans text-[11.5px] text-ds-ink/50">
+                    {course?.name || "—"}
+                  </div>
+                  <div className="mt-3.5 font-ds-mono text-[22px] font-semibold text-ds-ink">
+                    {attPct !== null ? `${attPct}%` : "—"}
+                    <span className="ml-1.5 font-ds-sans text-[10.5px] font-medium uppercase tracking-[.04em] text-ds-ink/45">
+                      Attendance
+                    </span>
+                  </div>
+                  <div className="mt-3 font-ds-sans text-[10.5px] font-medium uppercase tracking-[.04em] text-ds-ink/45">
+                    Curriculum
+                  </div>
+                  <div className="mt-1.5">
+                    <DsMeter pct={progressPct} tone="info" />
+                  </div>
+                  <div className="mt-3 flex gap-1.5">
+                    <Button size="sm" className="flex-1" onClick={() => setScheduleBatch(batch)}>
+                      Open batch
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => navigate(`/educator/students?batch=${batch.name}`)}
+                    >
+                      Roster
+                    </Button>
+                  </div>
+                </DsCard>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Seat Balance Widget */}
       <Card className="border-primary/20 bg-primary/5">
@@ -744,6 +1008,9 @@ export default function BatchesListing() {
                                 Full
                               </Badge>
                             )}
+                            <DsStatusPill tone={batchStatusTone(batch).tone}>
+                              {batchStatusTone(batch).label}
+                            </DsStatusPill>
                           </div>
                         </div>
                       </CardHeader>
@@ -776,6 +1043,32 @@ export default function BatchesListing() {
                             </div>
                           )}
                         </div>
+
+                        {(() => {
+                          const progress = course ? curriculumProgress[course.id] : undefined;
+                          if (!progress || progress.total === 0) return null;
+                          const progressPct = (progress.done / progress.total) * 100;
+                          return (
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>Curriculum</span>
+                                <span>{Math.round(progressPct)}%</span>
+                              </div>
+                              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                                <div
+                                  className="h-full rounded-full bg-ds-info transition-all"
+                                  style={{ width: `${progressPct}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {(batchFaculty[batch.id]?.length ?? 0) > 0 && (
+                          <p className="truncate text-xs text-muted-foreground">
+                            Faculty: {batchFaculty[batch.id].join(", ")}
+                          </p>
+                        )}
 
                         {(batch.startDate || batch.endDate) && (
                           <p className="text-xs text-muted-foreground">
