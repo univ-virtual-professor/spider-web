@@ -357,7 +357,13 @@ export function DsInlineError({ message, onRetry }: { message: string; onRetry?:
 
 // Permission: an out-of-scope route is absent from nav; a deep link to it
 // resolves here instead of a 403 or a silent redirect.
-export function DsPermissionNotice({ backHref = "/" }: { backHref?: string }) {
+export function DsPermissionNotice({
+  backHref = "/",
+  message,
+}: {
+  backHref?: string;
+  message?: string;
+}) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 rounded-[10px] border border-ds-ink/[.09] bg-ds-surface px-6 py-14 text-center">
       <Lock className="h-5 w-5 text-ds-ink/35" />
@@ -365,8 +371,8 @@ export function DsPermissionNotice({ backHref = "/" }: { backHref?: string }) {
         This isn't part of your role
       </div>
       <div className="max-w-sm font-ds-sans text-[12.5px] leading-[1.55] text-ds-ink/55">
-        Your account doesn't have access to this page. If you think this is wrong, ask whoever
-        manages staff access at your institute to update your role.
+        {message ||
+          "Your account doesn't have access to this page. If you think this is wrong, ask whoever manages staff access at your institute to update your role."}
       </div>
       <Link
         to={backHref}

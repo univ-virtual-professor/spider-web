@@ -251,6 +251,56 @@ export const overrideGrading = (
 export const approveGrading = (token: string | undefined, gradingId: string) =>
   gradeEngineFetch(token, `/api/review/gradings/${gradingId}/approve`, { method: "POST" });
 
+// ── per-step marks (business rule #4: marks are stored per rubric step, the
+// per-question total is derived) ────────────────────────────────────────────
+
+export type StepOverride = {
+  educator_uid: string;
+  original_marks: number | null;
+  override_marks: number;
+  reason: string | null;
+  created_at: string;
+};
+
+export type GradingStep = {
+  step_id: string;
+  step_index: number;
+  title: string;
+  ai_marks_awarded: number;
+  marks_awarded: number;
+  max_marks: number;
+  note: string | null;
+  override: StepOverride | null;
+};
+
+export type SheetStepsQuestion = {
+  question_grading_id: string;
+  question_no: string;
+  status: string;
+  confidence: number | null;
+  teacher_approved: boolean;
+  marks_awarded: number | null;
+  max_marks: number | null;
+  steps: GradingStep[];
+};
+
+export const getSheetSteps = (token: string | undefined, sheetId: string) =>
+  gradeEngineFetch(token, `/api/review/answer-sheets/${sheetId}/steps`) as Promise<{
+    sheet_id: string;
+    questions: SheetStepsQuestion[];
+  }>;
+
+export const overrideStep = (
+  token: string | undefined,
+  stepId: string,
+  marks: number,
+  reason: string
+) =>
+  gradeEngineJson(token, `/api/review/steps/${stepId}/override`, { marks, reason }) as Promise<{
+    ok: boolean;
+    step: GradingStep;
+  }>;
+
 // ── student roster (monkey-king) ────────────────────────────────────────────
 
 export async function listRosterStudents(

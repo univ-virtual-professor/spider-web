@@ -5,7 +5,9 @@ import { format } from "date-fns";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { DsPageHeader, DsCard, DsCardHeader, DsStatusPill } from "@shared/ui/ds";
-import { Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@shared/ui/dialog";
+import { Button } from "@shared/ui/button";
+import { Loader2, Printer } from "lucide-react";
 
 type LessonRef = { moduleId: string; lessonId: string; lessonTitle: string };
 type SeatAssignment = { studentId: string; seatLabel: string };
@@ -35,9 +37,11 @@ export default function StudentExamSchedule() {
   const educatorId: string = profile?.educatorId ?? "";
   const batchId: string = profile?.batchId ?? "";
   const studentUid: string = profile?.uid ?? "";
+  const studentName = profile?.displayName || "Student";
 
   const [exams, setExams] = useState<ExamDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const [admitSlipOpen, setAdmitSlipOpen] = useState(false);
 
   const ready = !!(educatorId && batchId);
 
@@ -85,6 +89,9 @@ export default function StudentExamSchedule() {
   const daysAway = next
     ? Math.max(0, Math.round((new Date(next.examDate).getTime() - Date.now()) / 86400000))
     : 0;
+  // Admit slip only makes sense once ops has actually assigned a venue/hall/seat — never show it
+  // with placeholder "TBA" fields.
+  const admitSlipAvailable = !!(next && next.venue && next.hall && mySeat);
 
   return (
     <div className="space-y-5 font-ds-sans">
@@ -198,6 +205,16 @@ export default function StudentExamSchedule() {
                   Your seat: {mySeat.seatLabel}
                 </div>
               )}
+              {admitSlipAvailable && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-3 w-full border-white/25 bg-white/10 text-white hover:bg-white/20"
+                  onClick={() => setAdmitSlipOpen(true)}
+                >
+                  View admit slip
+                </Button>
+              )}
             </div>
 
             <DsCard className="p-4">
@@ -219,6 +236,38 @@ export default function StudentExamSchedule() {
             </DsCard>
           </div>
         </div>
+      )}
+
+      {admitSlipAvailable && (
+        <Dialog open={admitSlipOpen} onOpenChange={setAdmitSlipOpen}>
+          <DialogContent className="max-w-sm print:shadow-none">
+            <DialogHeader>
+              <DialogTitle>Admit Slip</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 rounded-[10px] border border-ds-ink/[.14] p-4 font-ds-sans text-[12.5px]">
+              <div className="border-b border-ds-ink/[.1] pb-2 font-ds-serif text-[15px] font-semibold text-ds-ink">
+                {next.title}
+              </div>
+              {[
+                ["Candidate", studentName],
+                ["Date", fmtDate(next.examDate)],
+                ["Time", `${next.startTime}–${next.endTime}`],
+                ["Venue", next.venue],
+                ["Hall", next.hall],
+                ["Seat", mySeat!.seatLabel],
+              ].map(([k, v]) => (
+                <div key={k} className="flex justify-between gap-3">
+                  <span className="text-ds-ink/50">{k}</span>
+                  <span className="font-medium text-ds-ink">{v}</span>
+                </div>
+              ))}
+            </div>
+            <Button className="mt-1 gap-1.5" onClick={() => window.print()}>
+              <Printer className="h-3.5 w-3.5" />
+              Print
+            </Button>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

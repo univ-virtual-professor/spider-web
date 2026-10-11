@@ -72,6 +72,7 @@ export function AnalysisView({
   onRetry,
   permissionDenied,
   permissionBackHref,
+  permissionMessage,
   data,
   onPracticeTopic,
   noDataHint,
@@ -88,6 +89,7 @@ export function AnalysisView({
   // batches) — shown via the shared DsPermissionNotice rather than an error.
   permissionDenied?: boolean;
   permissionBackHref?: string;
+  permissionMessage?: string;
   data: AnalysisData | null;
   onPracticeTopic?: (topic: AnalysisTopic) => void;
   noDataHint: string;
@@ -122,7 +124,7 @@ export function AnalysisView({
     return (
       <div className="space-y-4 font-ds-sans">
         {header}
-        <DsPermissionNotice backHref={permissionBackHref} />
+        <DsPermissionNotice backHref={permissionBackHref} message={permissionMessage} />
       </div>
     );
   }

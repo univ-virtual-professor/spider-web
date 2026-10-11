@@ -21,27 +21,37 @@ import {
   DsCardHeader,
   DsMeter,
   DsStatusPill,
+  DsEmpty,
+  DsFrozenBadge,
+  DsInlineError,
+  DsSkeletonRows,
 } from "@shared/ui/ds";
-import { DsEmpty, DsFrozenBadge, DsInlineError, DsSkeletonRows } from "./dsLocalStates";
 import { FLAGGED_CONFIDENCE } from "./constants";
 import {
   approveGrading,
   getExam,
   getResults,
+  getSheetSteps,
   listAnswerSheets,
-  overrideGrading,
+  overrideStep,
   releaseResults,
   startGrading,
   unreleaseResults,
   type AnswerSheet,
   type Exam,
   type Grading,
+  type GradingStep,
+  type SheetStepsQuestion,
 } from "./api";
 
 const ZOOM_STEPS = [75, 100, 125, 150];
 
 function isFlagged(g: Grading) {
-  return g.status === "graded" && !g.teacher_approved && (g.confidence == null || g.confidence < FLAGGED_CONFIDENCE);
+  return (
+    g.status === "graded" &&
+    !g.teacher_approved &&
+    (g.confidence == null || g.confidence < FLAGGED_CONFIDENCE)
+  );
 }
 
 type SheetListItem = {
@@ -64,6 +74,7 @@ export default function ExamGradingReview() {
   const [sheetList, setSheetList] = useState<SheetListItem[]>([]);
   const [sheet, setSheet] = useState<AnswerSheet | null>(null);
   const [gradings, setGradings] = useState<Grading[]>([]);
+  const [stepQuestions, setStepQuestions] = useState<SheetStepsQuestion[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -73,8 +84,6 @@ export default function ExamGradingReview() {
   const [rotation, setRotation] = useState(0);
   const [zoomIdx, setZoomIdx] = useState(1); // index into ZOOM_STEPS, default 100%
 
-  const [marksInput, setMarksInput] = useState("");
-  const [reasonInput, setReasonInput] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -89,16 +98,20 @@ export default function ExamGradingReview() {
     setError(null);
     try {
       const token = await firebaseUser.getIdToken();
-      const [examData, summary, results] = await Promise.all([
+      const [examData, summary, results, steps] = await Promise.all([
         getExam(token, examId),
         listAnswerSheets(token, examId),
         getResults(token, sheetId),
+        getSheetSteps(token, sheetId),
       ]);
       setExam(examData);
       setSheetList(summary.students);
       setSheet(results.sheet);
-      const graded = results.gradings.filter((g) => g.status === "graded" || g.status === "approved");
+      const graded = results.gradings.filter(
+        (g) => g.status === "graded" || g.status === "approved"
+      );
       setGradings(graded);
+      setStepQuestions(steps.questions);
       const firstFlagged = graded.find(isFlagged);
       setSelectedId((firstFlagged || graded[0])?.id ?? null);
     } catch (e: any) {
@@ -110,14 +123,10 @@ export default function ExamGradingReview() {
 
   const selected = gradings.find((g) => g.id === selectedId) || null;
   const selectedIndex = gradings.findIndex((g) => g.id === selectedId);
+  const selectedSteps = stepQuestions.find((q) => q.question_grading_id === selectedId) || null;
   const flaggedCount = gradings.filter(isFlagged).length;
   const frozen = !!exam?.results_released;
   const allSheetsGraded = sheetList.length > 0 && sheetList.every((s) => s.status === "graded");
-
-  useEffect(() => {
-    setMarksInput(String(selected?.marks_awarded ?? 0));
-    setReasonInput("");
-  }, [selectedId]);
 
   function goTo(offset: number) {
     if (gradings.length === 0) return;
@@ -127,20 +136,50 @@ export default function ExamGradingReview() {
     setZoomIdx(1);
   }
 
-  async function handleOverride() {
-    if (!selected) return;
-    const marks = Number(marksInput);
-    if (!Number.isFinite(marks) || marks < 0 || marks > (selected.max_marks ?? 0)) {
-      return toast.error(`Marks must be between 0 and ${selected.max_marks}`);
+  async function handleStepOverride(stepId: string, marks: number, reason: string) {
+    if (!selectedSteps) return;
+    const step = selectedSteps.steps.find((s) => s.step_id === stepId);
+    if (!step) return;
+    if (!Number.isFinite(marks) || marks < 0 || marks > step.max_marks) {
+      toast.error(`Marks must be between 0 and ${step.max_marks}`);
+      return;
     }
     setSaving(true);
     try {
       const token = await firebaseUser?.getIdToken();
-      await overrideGrading(token, selected.id, marks, reasonInput.trim());
-      setGradings((prev) =>
-        prev.map((g) => (g.id === selected.id ? { ...g, marks_awarded: marks, teacher_approved: true } : g))
+      const { step: updated } = await overrideStep(token, stepId, marks, reason.trim());
+      setStepQuestions((prev) =>
+        prev.map((q) =>
+          q.question_grading_id !== selectedSteps.question_grading_id
+            ? q
+            : {
+                ...q,
+                teacher_approved: true,
+                marks_awarded: q.steps.reduce(
+                  (sum, s) =>
+                    sum + (s.step_id === stepId ? updated.marks_awarded : s.marks_awarded),
+                  0
+                ),
+                steps: q.steps.map((s) => (s.step_id === stepId ? updated : s)),
+              }
+        )
       );
-      toast.success("Grade updated");
+      setGradings((prev) =>
+        prev.map((g) =>
+          g.id !== selectedSteps.question_grading_id
+            ? g
+            : {
+                ...g,
+                teacher_approved: true,
+                marks_awarded: selectedSteps.steps.reduce(
+                  (sum, s) =>
+                    sum + (s.step_id === stepId ? updated.marks_awarded : s.marks_awarded),
+                  0
+                ),
+              }
+        )
+      );
+      toast.success("Step marks updated");
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -154,7 +193,9 @@ export default function ExamGradingReview() {
     try {
       const token = await firebaseUser?.getIdToken();
       await approveGrading(token, selected.id);
-      setGradings((prev) => prev.map((g) => (g.id === selected.id ? { ...g, teacher_approved: true } : g)));
+      setGradings((prev) =>
+        prev.map((g) => (g.id === selected.id ? { ...g, teacher_approved: true } : g))
+      );
       const nextFlagged = gradings.find((g) => g.id !== selected.id && isFlagged(g));
       if (nextFlagged) {
         setSelectedId(nextFlagged.id);
@@ -172,7 +213,8 @@ export default function ExamGradingReview() {
 
   async function handleRegrade() {
     if (!sheet) return;
-    if (!window.confirm("Re-run AI grading for this whole sheet? Current marks will be replaced.")) return;
+    if (!window.confirm("Re-run AI grading for this whole sheet? Current marks will be replaced."))
+      return;
     setRegrading(true);
     try {
       const token = await firebaseUser?.getIdToken();
@@ -194,7 +236,9 @@ export default function ExamGradingReview() {
         ? await unreleaseResults(token, exam.id)
         : await releaseResults(token, exam.id);
       setExam(updated);
-      toast.success(updated.results_released ? "Results released to students" : "Results unreleased");
+      toast.success(
+        updated.results_released ? "Results released to students" : "Results unreleased"
+      );
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -211,8 +255,8 @@ export default function ExamGradingReview() {
   if (loading) {
     return (
       <div className="space-y-3.5 font-ds-sans">
-        <DsSkeletonRows rows={1} height={36} />
-        <DsSkeletonRows rows={8} height={60} />
+        <DsSkeletonRows rows={1} rowHeight={36} />
+        <DsSkeletonRows rows={8} rowHeight={60} />
       </div>
     );
   }
@@ -286,7 +330,14 @@ export default function ExamGradingReview() {
               s.total_marks_awarded != null && s.total_max_marks
                 ? (s.total_marks_awarded / s.total_max_marks) * 100
                 : null;
-            const fg = pct == null ? "text-ds-ink/30" : pct < 50 ? "text-ds-accent" : pct < 75 ? "text-ds-info" : "text-ds-positive";
+            const fg =
+              pct == null
+                ? "text-ds-ink/30"
+                : pct < 50
+                  ? "text-ds-accent"
+                  : pct < 75
+                    ? "text-ds-info"
+                    : "text-ds-positive";
             return (
               <button
                 key={s.sheet_id}
@@ -296,17 +347,23 @@ export default function ExamGradingReview() {
                   (s.sheet_id === sheetId ? "bg-ds-fill/60" : "hover:bg-ds-fill/30")
                 }
               >
-                <div className={"h-1.5 w-1.5 shrink-0 rounded-full " + fg.replace("text-", "bg-")} />
+                <div
+                  className={"h-1.5 w-1.5 shrink-0 rounded-full " + fg.replace("text-", "bg-")}
+                />
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-ds-sans text-[12px] font-medium text-ds-ink">
                     {s.student_name}
                   </div>
                   {s.student_roll && (
-                    <div className="truncate font-ds-mono text-[10.5px] text-ds-ink/40">{s.student_roll}</div>
+                    <div className="truncate font-ds-mono text-[10.5px] text-ds-ink/40">
+                      {s.student_roll}
+                    </div>
                   )}
                 </div>
                 <div className={"font-ds-mono text-[11px] font-medium " + fg}>
-                  {s.total_marks_awarded != null ? `${s.total_marks_awarded}/${s.total_max_marks}` : "—"}
+                  {s.total_marks_awarded != null
+                    ? `${s.total_marks_awarded}/${s.total_max_marks}`
+                    : "—"}
                 </div>
               </button>
             );
@@ -377,7 +434,9 @@ export default function ExamGradingReview() {
                 style={{ transform: `rotate(${rotation}deg) scale(${ZOOM_STEPS[zoomIdx] / 100})` }}
               />
             ) : (
-              <p className="font-ds-sans text-[12px] text-ds-slate">No scanned image available for this question.</p>
+              <p className="font-ds-sans text-[12px] text-ds-slate">
+                No scanned image available for this question.
+              </p>
             )}
           </div>
         </DsCard>
@@ -397,45 +456,24 @@ export default function ExamGradingReview() {
               </div>
               <div className="mb-3 font-ds-sans text-[11.5px] text-ds-ink/50">
                 {selected.question_text || "Subjective"}
-                {selected.confidence != null ? ` · confidence ${Math.round(selected.confidence * 100)}%` : ""}
+                {selected.confidence != null
+                  ? ` · confidence ${Math.round(selected.confidence * 100)}%`
+                  : ""}
               </div>
 
-              {(selected.annotation_json?.steps || []).length === 0 ? (
+              {!selectedSteps || selectedSteps.steps.length === 0 ? (
                 <p className="font-ds-sans text-[11.5px] text-ds-slate">
                   No rubric-step breakdown for this question.
                 </p>
               ) : (
-                (selected.annotation_json?.steps || []).map((step, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-2.5 border-b border-ds-ink/[.055] py-2 last:border-0"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="font-ds-sans text-[12px] font-medium text-ds-ink">{step.title}</div>
-                      <div className="mt-0.5 font-ds-sans text-[11px] leading-[1.4] text-ds-ink/50">
-                        {step.note}
-                      </div>
-                    </div>
-                    <div
-                      className={
-                        "shrink-0 font-ds-mono text-[12px] font-semibold " +
-                        (step.marks_awarded >= step.max_marks
-                          ? "text-ds-positive"
-                          : step.marks_awarded <= 0
-                            ? "text-ds-accent"
-                            : "text-ds-info")
-                      }
-                    >
-                      {step.marks_awarded}/{step.max_marks}
-                    </div>
-                  </div>
+                selectedSteps.steps.map((step) => (
+                  <StepRow
+                    key={step.step_id}
+                    step={step}
+                    disabled={frozen || saving}
+                    onSave={(marks, reason) => handleStepOverride(step.step_id, marks, reason)}
+                  />
                 ))
-              )}
-              {(selected.annotation_json?.steps || []).length > 0 && (
-                <p className="mt-2 font-ds-sans text-[10.5px] text-ds-ink/40">
-                  Per-step marks are read-only until grade-engine's per-step grading lands — override the
-                  question's total below.
-                </p>
               )}
 
               {selected.feedback && (
@@ -455,29 +493,7 @@ export default function ExamGradingReview() {
                 </p>
               ) : (
                 <>
-                  <div className="mb-1.5 mt-3.5 flex items-center gap-2">
-                    <label className="font-ds-sans text-[11.5px] font-medium text-ds-ink">
-                      Override total marks
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={selected.max_marks ?? undefined}
-                      step={0.5}
-                      value={marksInput}
-                      onChange={(e) => setMarksInput(e.target.value)}
-                      className="h-7 w-16 rounded-md border border-ds-ink/[.14] px-2 font-ds-mono text-[12px]"
-                    />
-                    <span className="font-ds-mono text-[11px] text-ds-ink/45">/ {selected.max_marks}</span>
-                  </div>
-                  <input
-                    type="text"
-                    placeholder="Reason (optional)"
-                    value={reasonInput}
-                    onChange={(e) => setReasonInput(e.target.value)}
-                    className="mb-2.5 h-8 w-full rounded-md border border-ds-ink/[.14] px-2.5 font-ds-sans text-[12px]"
-                  />
-                  <div className="flex gap-1.5">
+                  <div className="mt-3.5 flex gap-1.5">
                     <button
                       onClick={handleAcceptAndNext}
                       disabled={saving}
@@ -485,13 +501,6 @@ export default function ExamGradingReview() {
                     >
                       {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                       Accept &amp; next flagged
-                    </button>
-                    <button
-                      onClick={handleOverride}
-                      disabled={saving}
-                      className="h-[34px] rounded-[7px] border border-ds-ink/[.14] px-3 font-ds-sans text-[12.5px] font-medium text-ds-ink disabled:opacity-50"
-                    >
-                      Save override
                     </button>
                   </div>
                   <button
@@ -513,28 +522,145 @@ export default function ExamGradingReview() {
           <DsCard>
             <DsCardHeader title="Batch run" />
             <div className="p-4 pt-3">
-              <DsMeter pct={batchStats.total ? (batchStats.graded / batchStats.total) * 100 : 0} tone="info" />
+              <DsMeter
+                pct={batchStats.total ? (batchStats.graded / batchStats.total) * 100 : 0}
+                tone="info"
+              />
               <div className="mt-2 flex font-ds-mono text-[11px] text-ds-ink/50">
-                <div>{batchStats.graded} of {batchStats.total} sheets graded</div>
+                <div>
+                  {batchStats.graded} of {batchStats.total} sheets graded
+                </div>
               </div>
               <div className="mt-3 flex gap-2">
                 <div className="flex-1 rounded-[8px] bg-ds-fill p-2.5">
                   <div className="font-ds-serif text-[17px] font-semibold leading-none text-ds-ink">
                     {flaggedCount}
                   </div>
-                  <div className="mt-1 font-ds-sans text-[10.5px] text-ds-ink/45">Flagged (this sheet)</div>
+                  <div className="mt-1 font-ds-sans text-[10.5px] text-ds-ink/45">
+                    Flagged (this sheet)
+                  </div>
                 </div>
                 <div className="flex-1 rounded-[8px] bg-ds-fill p-2.5">
                   <div className="font-ds-serif text-[17px] font-semibold leading-none text-ds-ink">
                     {gradings.filter((g) => g.teacher_approved).length}
                   </div>
-                  <div className="mt-1 font-ds-sans text-[10.5px] text-ds-ink/45">Reviewed (this sheet)</div>
+                  <div className="mt-1 font-ds-sans text-[10.5px] text-ds-ink/45">
+                    Reviewed (this sheet)
+                  </div>
                 </div>
               </div>
             </div>
           </DsCard>
         </div>
       </div>
+    </div>
+  );
+}
+
+// One rubric step, its AI marks vs the current (possibly overridden) marks, and
+// a stepper to override just this step — business rule #4: marks live per
+// rubric step, the question/sheet totals are derived server-side.
+function StepRow({
+  step,
+  disabled,
+  onSave,
+}: {
+  step: GradingStep;
+  disabled: boolean;
+  onSave: (marks: number, reason: string) => void;
+}) {
+  const [marks, setMarks] = useState(String(step.marks_awarded));
+  const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    setMarks(String(step.marks_awarded));
+    setReason("");
+  }, [step.step_id, step.marks_awarded]);
+
+  const dirty = Number(marks) !== step.marks_awarded;
+  const tone =
+    step.marks_awarded >= step.max_marks
+      ? "text-ds-positive"
+      : step.marks_awarded <= 0
+        ? "text-ds-accent"
+        : "text-ds-info";
+
+  function clamp(value: number) {
+    return Math.min(step.max_marks, Math.max(0, value));
+  }
+
+  return (
+    <div className="border-b border-ds-ink/[.055] py-2 last:border-0">
+      <div className="flex items-center gap-2.5">
+        <div className="min-w-0 flex-1">
+          <div className="font-ds-sans text-[12px] font-medium text-ds-ink">{step.title}</div>
+          {step.note && (
+            <div className="mt-0.5 font-ds-sans text-[11px] leading-[1.4] text-ds-ink/50">
+              {step.note}
+            </div>
+          )}
+          {step.ai_marks_awarded !== step.marks_awarded && (
+            <div className="mt-0.5 font-ds-mono text-[10.5px] text-ds-ink/40">
+              AI gave {step.ai_marks_awarded}/{step.max_marks}
+            </div>
+          )}
+        </div>
+        {disabled ? (
+          <div className={`shrink-0 font-ds-mono text-[12px] font-semibold ${tone}`}>
+            {step.marks_awarded}/{step.max_marks}
+          </div>
+        ) : (
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setMarks(String(clamp(Number(marks) - 0.5)))}
+              className="h-6 w-6 rounded border border-ds-ink/[.14] font-ds-mono text-[12px] text-ds-ink"
+            >
+              −
+            </button>
+            <input
+              type="number"
+              min={0}
+              max={step.max_marks}
+              step={0.5}
+              value={marks}
+              onChange={(e) => setMarks(e.target.value)}
+              className={`h-6 w-12 rounded border border-ds-ink/[.14] text-center font-ds-mono text-[12px] ${tone}`}
+            />
+            <button
+              type="button"
+              onClick={() => setMarks(String(clamp(Number(marks) + 0.5)))}
+              className="h-6 w-6 rounded border border-ds-ink/[.14] font-ds-mono text-[12px] text-ds-ink"
+            >
+              +
+            </button>
+            <span className="font-ds-mono text-[11px] text-ds-ink/45">/ {step.max_marks}</span>
+          </div>
+        )}
+      </div>
+      {!disabled && dirty && (
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <input
+            type="text"
+            placeholder="Reason (optional)"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            className="h-6 flex-1 rounded border border-ds-ink/[.14] px-2 font-ds-sans text-[11px]"
+          />
+          <button
+            type="button"
+            onClick={() => onSave(clamp(Number(marks)), reason)}
+            className="h-6 shrink-0 rounded bg-ds-ink px-2 font-ds-sans text-[11px] font-semibold text-white"
+          >
+            Save
+          </button>
+        </div>
+      )}
+      {step.override && (
+        <div className="mt-1 font-ds-mono text-[10px] text-ds-ink/35">
+          Overridden from {step.override.original_marks ?? "—"} to {step.override.override_marks}
+        </div>
+      )}
     </div>
   );
 }

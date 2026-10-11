@@ -17,6 +17,7 @@ import {
 } from "recharts";
 import { DailyQuoteCard } from "@features/student/components/DailyQuoteCard";
 import { DsPageHeader, DsKpiRow } from "@shared/ui/ds";
+import { usePracticeHistory } from "@features/student/practice/usePracticeHistory";
 
 import { useAuth } from "@app/providers/AuthProvider";
 import { useTenant } from "@app/providers/TenantProvider";
@@ -34,7 +35,17 @@ import {
   where,
 } from "firebase/firestore";
 import { useQuery } from "@tanstack/react-query";
-import { Zap as DppIcon, BookOpenCheck, CalendarClock, Video, MapPin } from "lucide-react";
+import {
+  Zap as DppIcon,
+  BookOpenCheck,
+  CalendarClock,
+  Video,
+  MapPin,
+  Flame,
+  TrendingDown,
+} from "lucide-react";
+
+const MONKEY_KING_API = import.meta.env.VITE_MONKEY_KING_API_URL as string;
 
 type AttemptStatus = "in-progress" | "completed" | "expired";
 
@@ -76,6 +87,13 @@ type LeaderboardEntry = {
   name: string;
   score: number;
   studentId: string;
+};
+
+type WeakArea = {
+  subject: string;
+  chapter: string;
+  topic: string;
+  weighted_accuracy: number;
 };
 
 function toMillis(v: any): number {
@@ -283,6 +301,7 @@ export default function StudentDashboard() {
       running: [] as DashTest[],
       unlocked: [] as DashTest[],
       upcoming: [] as DashTest[],
+      dpps: [] as DashTest[],
     },
   } = useQuery({
     queryKey: ["dashboardTests", firebaseUser?.uid, educatorId, studentBatchId],
@@ -536,6 +555,29 @@ export default function StudentDashboard() {
     staleTime: 3 * 60 * 1000,
   });
 
+  // Weak areas (same monkey-king report StudentReports.tsx's full analysis page reads) — just
+  // the top few here, with a link to the full breakdown.
+  const { data: weakAreas = [] } = useQuery<WeakArea[]>({
+    queryKey: ["studentDashboardWeakAreas", firebaseUser?.uid],
+    queryFn: async () => {
+      const token = await firebaseUser!.getIdToken();
+      const res = await fetch(`${MONKEY_KING_API}/api/reports/my`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`Failed to load report (${res.status})`);
+      const body = (await res.json()) as { weak_areas_full?: WeakArea[] };
+      return body.weak_areas_full || [];
+    },
+    enabled: !!firebaseUser?.uid,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { dayStreak: practiceStreak } = usePracticeHistory(
+    firebaseUser?.uid,
+    educatorId || undefined,
+    null
+  );
+
   const loading = attemptsLoading;
   const rank = rankData.rank;
   const totalParticipants = rankData.totalParticipants;
@@ -753,6 +795,12 @@ export default function StudentDashboard() {
             <h2 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
               <DppIcon className="h-4 w-4 text-primary" />
               Daily Practice
+              {practiceStreak > 0 && (
+                <span className="ml-1 flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-600 dark:bg-orange-950/30 dark:text-orange-400">
+                  <Flame className="h-3 w-3" />
+                  {practiceStreak} day{practiceStreak === 1 ? "" : "s"}
+                </span>
+              )}
             </h2>
             <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" asChild>
               <Link to="/student/tests">
@@ -761,41 +809,134 @@ export default function StudentDashboard() {
             </Button>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {dashboardTests.dpps.map((test) => (
-              <div
-                key={test.id}
-                className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md"
-              >
-                <div className="gradient-bg h-1" />
-                <div className="flex flex-1 flex-col gap-3 p-3.5">
-                  <p className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
-                    {test.title || "Daily Practice"}
-                  </p>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    {test.subject && <span className="truncate">{test.subject}</span>}
-                    <span className="ml-auto flex shrink-0 items-center gap-2">
-                      {test.durationMinutes && (
-                        <span className="flex items-center gap-0.5">
-                          <Clock className="h-3 w-3" />
-                          {test.durationMinutes}m
-                        </span>
+            {dashboardTests.dpps.map((test, idx) => {
+              const completed = (attemptCounts as Record<string, number>)[test.id] > 0;
+              const attempt = completedAttempts.find((a) => a.testId === test.id);
+              return (
+                <div
+                  key={test.id}
+                  className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm transition-shadow hover:shadow-md"
+                >
+                  <div className="gradient-bg h-1" />
+                  <div className="flex flex-1 flex-col gap-3 p-3.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
+                        {test.title || "Daily Practice"}
+                      </p>
+                      {idx === 0 && !completed && (
+                        <Badge variant="secondary" className="shrink-0 text-[10px]">
+                          Today
+                        </Badge>
                       )}
-                      {test.questionsCount && <span>{test.questionsCount}Q</span>}
-                    </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      {test.subject && <span className="truncate">{test.subject}</span>}
+                      <span className="ml-auto flex shrink-0 items-center gap-2">
+                        {test.durationMinutes && (
+                          <span className="flex items-center gap-0.5">
+                            <Clock className="h-3 w-3" />
+                            {test.durationMinutes}m
+                          </span>
+                        )}
+                        {test.questionsCount && <span>{test.questionsCount}Q</span>}
+                      </span>
+                    </div>
+                    {completed ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 w-full rounded-lg text-xs font-medium"
+                        asChild
+                      >
+                        <Link
+                          to={attempt ? `/student/results/${attempt.id}` : "/student/my-results"}
+                        >
+                          Completed{attempt ? ` · ${attempt.score}/${attempt.maxScore}` : ""}
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="gradient-bg h-7 w-full rounded-lg text-xs font-medium"
+                        asChild
+                      >
+                        <Link to={`/student/tests/${test.id}`}>Start Practice</Link>
+                      </Button>
+                    )}
                   </div>
-                  <Button
-                    size="sm"
-                    className="gradient-bg h-7 w-full rounded-lg text-xs font-medium"
-                    asChild
-                  >
-                    <Link to={`/student/tests/${test.id}`}>Start Practice</Link>
-                  </Button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
+
+      {/* Weak areas + recent activity */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {weakAreas.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center justify-between text-sm font-semibold">
+                <span className="flex items-center gap-1.5">
+                  <TrendingDown className="h-4 w-4 text-destructive" />
+                  Weak areas
+                </span>
+                <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" asChild>
+                  <Link to="/student/reports">
+                    Full analysis <ArrowRight className="ml-1 h-3 w-3" />
+                  </Link>
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {weakAreas.slice(0, 3).map((w, i) => (
+                <div
+                  key={`${w.subject}-${w.topic}-${i}`}
+                  className="flex items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-foreground">{w.topic || w.chapter}</p>
+                    <p className="truncate text-muted-foreground">
+                      {w.subject}
+                      {w.chapter ? ` · ${w.chapter}` : ""}
+                    </p>
+                  </div>
+                  <span className="shrink-0 font-mono text-destructive">
+                    {Math.round(w.weighted_accuracy)}%
+                  </span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {completedAttempts.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">Recent activity</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {completedAttempts.slice(0, 4).map((a) => (
+                <Link
+                  key={a.id}
+                  to={`/student/results/${a.id}`}
+                  className="flex items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2 text-xs hover:bg-muted/60"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-foreground">{a.testTitle}</p>
+                    <p className="text-muted-foreground">
+                      {formatDateLabel(new Date(a.createdAt).getTime())}
+                    </p>
+                  </div>
+                  <span className="shrink-0 font-mono text-foreground">
+                    {a.score}/{a.maxScore}
+                  </span>
+                </Link>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
       {/* Tests Section */}
       {(() => {

@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   query,
@@ -64,6 +65,16 @@ const STATUS_TONE: Record<EmployeeStatus, PillTone> = {
   EXPIRED: "slate",
 };
 
+function formatLastActive(ms?: number) {
+  if (!ms) return null;
+  const diff = Date.now() - ms;
+  if (diff < 60_000) return "Active now";
+  if (diff < 3_600_000) return `${Math.max(1, Math.round(diff / 60_000))} min ago`;
+  if (diff < 86_400_000) return `${Math.max(1, Math.round(diff / 3_600_000))} hr ago`;
+  if (diff < 30 * 86_400_000) return `${Math.max(1, Math.round(diff / 86_400_000))} day ago`;
+  return new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
 type Props = { educatorId: string; branches: Branch[] };
 
 export default function EmployeesTab({ educatorId, branches }: Props) {
@@ -72,6 +83,8 @@ export default function EmployeesTab({ educatorId, branches }: Props) {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [empLoading, setEmpLoading] = useState(true);
+  const [lastActive, setLastActive] = useState<Record<string, number>>({});
+  const fetchedUidsRef = useRef<Set<string>>(new Set());
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -107,6 +120,41 @@ export default function EmployeesTab({ educatorId, branches }: Props) {
       setRoles(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Role, "id">) })));
     });
   }, []);
+
+  // Last active, from the same users/{uid}.lastLoginAt every Login/Signup/Join flow writes
+  // (src/shared/lib/session.ts) — not employee-specific, so active staff only show it once
+  // they've actually logged in at least once since that was added. fetchedUidsRef tracks every
+  // uid already looked up (whether or not it had a value) so this never refetches in a loop.
+  useEffect(() => {
+    const toFetch = employees.filter((e) => e.uid && !fetchedUidsRef.current.has(e.uid));
+    if (toFetch.length === 0) return;
+    toFetch.forEach((e) => fetchedUidsRef.current.add(e.uid));
+    let cancelled = false;
+    Promise.all(
+      toFetch.map(async (e) => {
+        try {
+          const snap = await getDoc(doc(db, "users", e.uid));
+          const ts = snap.data()?.lastLoginAt;
+          const ms = typeof ts?.toMillis === "function" ? ts.toMillis() : null;
+          return [e.uid, ms] as const;
+        } catch {
+          return [e.uid, null] as const;
+        }
+      })
+    ).then((pairs) => {
+      if (cancelled) return;
+      const found = pairs.filter(([, ms]) => ms);
+      if (found.length === 0) return;
+      setLastActive((prev) => {
+        const next = { ...prev };
+        for (const [uid, ms] of found) next[uid] = ms as number;
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [employees]);
 
   // Filtered list
   const filtered = employees.filter((emp) => {
@@ -314,11 +362,11 @@ export default function EmployeesTab({ educatorId, branches }: Props) {
         ) : (
           <>
             <DsTableHead
-              columns={["Name", "Role", "Scope", "Status", ""]}
-              cols="1.5fr .9fr 1fr .8fr .4fr"
+              columns={["Name", "Role", "Scope", "Last active", "Status", ""]}
+              cols="1.4fr .8fr .9fr .8fr .7fr .4fr"
             />
             {filtered.map((emp) => (
-              <DsTableRow key={emp.id} cols="1.5fr .9fr 1fr .8fr .4fr" height={54}>
+              <DsTableRow key={emp.id} cols="1.4fr .8fr .9fr .8fr .7fr .4fr" height={54}>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2.5">
                     <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full bg-ds-fill font-ds-sans text-[10px] font-semibold text-ds-ink/70">
@@ -342,6 +390,9 @@ export default function EmployeesTab({ educatorId, branches }: Props) {
                   )}
                 </div>
                 <div className="truncate text-ds-ink/60">{scopeLabel(emp)}</div>
+                <div className="font-ds-mono text-[11px] text-ds-ink/50">
+                  {formatLastActive(lastActive[emp.uid]) || "—"}
+                </div>
                 <div>
                   <DsStatusPill tone={STATUS_TONE[emp.status]}>{emp.status}</DsStatusPill>
                 </div>
