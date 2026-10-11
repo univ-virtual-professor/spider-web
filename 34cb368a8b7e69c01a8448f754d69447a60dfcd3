@@ -1,0 +1,25 @@
+src/features/educator/StudentDetails.tsx
+  28def1481053587f 975
+src/shared/components/analysis/AnalysisView.tsx
+  28def1481053587f 16-17,21-22,74,88,90,115,125,134,144,187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "34cb368a8b7e69c01a8448f754d69447a60dfcd3",
+  "prompts": {
+    "28def1481053587f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e90cf844-3897-41e6-acbd-6e75ec6da262",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 16,
+      "total_deletions": 76,
+      "accepted_lines": 15,
+      "overriden_lines": 0
+    }
+  }
+}
