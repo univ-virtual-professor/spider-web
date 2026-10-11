@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, getDocs, onSnapshot } from "firebase/firestore";
+import { collection, getDocs, onSnapshot, query, where } from "firebase/firestore";
 
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
@@ -222,19 +222,21 @@ export default function OwnerOverview() {
 
   useEffect(() => {
     if (!educatorId) return;
-    getDocs(collection(db, "examResults")).then((snap) => {
-      setExamResults(
-        snap.docs
-          .map((d) => d.data() as any)
-          .filter((r) => r.educatorId === educatorId)
-          .map((r) => ({
-            examId: String(r.examId || ""),
-            studentId: String(r.studentId || ""),
-            marks: Number(r.marks) || 0,
-            maxMarks: Number(r.maxMarks) || 0,
-          }))
-      );
-    });
+    getDocs(query(collection(db, "examResults"), where("educatorId", "==", educatorId))).then(
+      (snap) => {
+        setExamResults(
+          snap.docs.map((d) => {
+            const r = d.data() as any;
+            return {
+              examId: String(r.examId || ""),
+              studentId: String(r.studentId || ""),
+              marks: Number(r.marks) || 0,
+              maxMarks: Number(r.maxMarks) || 0,
+            };
+          })
+        );
+      }
+    );
   }, [educatorId]);
 
   useEffect(() => {

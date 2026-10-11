@@ -23,6 +23,8 @@ import {
 } from "@shared/ui/ds";
 import { listAnswerSheets, listExams } from "./examGrading/api";
 
+const MONKEY_KING_API = import.meta.env.VITE_MONKEY_KING_API_URL as string;
+
 type Batch = { id: string; branchId: string; courseId: string; name: string; courseName: string };
 type Slot = {
   id: string;
@@ -34,18 +36,14 @@ type Slot = {
   startTime: string;
   endTime: string;
 };
-type Exam = {
-  id: string;
-  title: string;
-  courseName: string;
-  targetBatches: string[];
-  examDate: string;
-};
-type ExamResult = { examId: string; studentId: string; marks: number; maxMarks: number };
 // One row per (DPP test, batch) — a single `my_tests` doc with type "from_dpp" can target
 // several batches (see ScheduledDpps.tsx, the source of truth for this data shape).
 type DppRow = { dppId: string; batchId: string; batchName: string };
 type SheetsAwaitingReview = { examId: string; title: string; sheetCount: number };
+// GET /api/reports/batches/{batch_id}/students (docs/agents/mockups/revamp/faculty-report-api.md,
+// also consumed by StudentsListing.tsx) — one call per batch, no per-student Firestore reads.
+type WeakArea = { subject: string; chapter: string; topic: string; weighted_accuracy: number };
+type WeakTopic = { topic: string; studentIds: Set<string>; batchIds: Set<string> };
 
 function fmtTime(t: string) {
   const [h, m] = (t || "0:0").split(":").map(Number);
@@ -67,14 +65,12 @@ export default function FacultyToday() {
     Map<string, { branchId: string; courseId: string }>
   >(new Map());
   const [studentsByBatch, setStudentsByBatch] = useState<Map<string, number>>(new Map());
-  const [studentBatch, setStudentBatch] = useState<Map<string, string>>(new Map());
-  const [exams, setExams] = useState<Exam[]>([]);
-  const [examResults, setExamResults] = useState<ExamResult[]>([]);
   const [sessionMarked, setSessionMarked] = useState<Map<string, boolean>>(new Map());
   const [dpps, setDpps] = useState<DppRow[]>([]);
   const [dppSubmitted, setDppSubmitted] = useState<Map<string, number>>(new Map());
   const [reviewExams, setReviewExams] = useState<SheetsAwaitingReview[]>([]);
   const [gradingError, setGradingError] = useState(false);
+  const [weakTopic, setWeakTopic] = useState<WeakTopic | null>(null);
 
   const todayDow = new Date().getDay();
   const dateStr = new Date().toISOString().slice(0, 10);
@@ -167,21 +163,6 @@ export default function FacultyToday() {
         setMySlots(mine);
         setMyBatchIds(new Set(mine.map((s) => s.batchId)));
 
-        const examsSnap = await getDocs(collection(db, "educators", educatorId, "exams"));
-        if (cancelled) return;
-        setExams(
-          examsSnap.docs.map((d) => {
-            const data = d.data() as any;
-            return {
-              id: d.id,
-              title: String(data.title || "Exam"),
-              courseName: String(data.courseName || ""),
-              targetBatches: Array.isArray(data.targetBatches) ? data.targetBatches : [],
-              examDate: String(data.examDate || ""),
-            };
-          })
-        );
-
         // DPPs: `educators/{id}/my_tests` docs with type "from_dpp" are the generated sets
         // (same source ScheduledDpps.tsx / DppGenerator.tsx read), one doc per generation run,
         // each possibly targeting several batches. Only today's generation, only this
@@ -226,32 +207,12 @@ export default function FacultyToday() {
     if (!educatorId) return;
     getDocs(collection(db, "educators", educatorId, "students")).then((snap) => {
       const byBatch = new Map<string, number>();
-      const batchOf = new Map<string, string>();
       snap.docs.forEach((d) => {
         const batchId = (d.data() as any)?.batchId;
         if (!batchId) return;
         byBatch.set(batchId, (byBatch.get(batchId) || 0) + 1);
-        batchOf.set(d.id, batchId);
       });
       setStudentsByBatch(byBatch);
-      setStudentBatch(batchOf);
-    });
-  }, [educatorId]);
-
-  useEffect(() => {
-    if (!educatorId) return;
-    getDocs(collection(db, "examResults")).then((snap) => {
-      setExamResults(
-        snap.docs
-          .map((d) => d.data() as any)
-          .filter((r) => r.educatorId === educatorId)
-          .map((r) => ({
-            examId: String(r.examId || ""),
-            studentId: String(r.studentId || ""),
-            marks: Number(r.marks) || 0,
-            maxMarks: Number(r.maxMarks) || 0,
-          }))
-      );
     });
   }, [educatorId]);
 
@@ -389,35 +350,73 @@ export default function FacultyToday() {
     };
   }, [firebaseUser]);
 
-  // Weak-area signal: per-subject average on released results across this
-  // teacher's own batches (exam.courseName doubles as the subject label —
-  // see src/shared/lib/examModel.ts).
-  const weakSubject = useMemo(() => {
-    const relevantExamIds = new Set(
-      exams.filter((e) => e.targetBatches.some((b) => myBatchIds.has(b))).map((e) => e.id)
-    );
-    const bySubject = new Map<string, { sum: number; count: number; subject: string }>();
-    examResults
-      .filter(
-        (r) => relevantExamIds.has(r.examId) && myBatchIds.has(studentBatch.get(r.studentId) || "")
-      )
-      .forEach((r) => {
-        const exam = exams.find((e) => e.id === r.examId);
-        const subject = exam?.courseName || "General";
-        const cur = bySubject.get(subject) || { sum: 0, count: 0, subject };
-        cur.sum += r.maxMarks ? (r.marks / r.maxMarks) * 100 : 0;
-        cur.count += 1;
-        bySubject.set(subject, cur);
-      });
-    let weakest: { subject: string; avg: number; count: number } | null = null;
-    bySubject.forEach((v) => {
-      const avg = v.sum / v.count;
-      if (avg < 50 && (!weakest || avg < weakest.avg)) {
-        weakest = { subject: v.subject, avg, count: v.count };
+  // Weak-area signal: one GET /api/reports/batches/{batch_id}/students call per the teacher's
+  // own batch (not per student — see faculty-report-api.md), aggregated by topic across all of
+  // them. A student counts against a topic when one of their (already top-3) weakAreas names it
+  // with weighted_accuracy below 40%. Picks the topic hurting the most students to surface as
+  // the single alert, matching the design's one-strip-at-a-time layout.
+  useEffect(() => {
+    if (!firebaseUser || myBatchIds.size === 0) {
+      setWeakTopic(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await firebaseUser.getIdToken();
+        const perBatch = await Promise.all(
+          Array.from(myBatchIds).map(async (batchId) => {
+            try {
+              const res = await fetch(
+                `${MONKEY_KING_API}/api/reports/batches/${batchId}/students`,
+                {
+                  headers: { Authorization: `Bearer ${token}` },
+                }
+              );
+              if (!res.ok)
+                return { batchId, students: [] as { studentId: string; weakAreas: WeakArea[] }[] };
+              const body = (await res.json()) as {
+                students: { studentId: string; weakAreas: WeakArea[] }[];
+              };
+              return { batchId, students: body.students || [] };
+            } catch {
+              return { batchId, students: [] as { studentId: string; weakAreas: WeakArea[] }[] };
+            }
+          })
+        );
+        if (cancelled) return;
+
+        const byTopic = new Map<string, WeakTopic>();
+        perBatch.forEach(({ batchId, students }) => {
+          students.forEach((s) => {
+            (s.weakAreas || [])
+              .filter((w) => w.topic && w.weighted_accuracy < 0.4)
+              .forEach((w) => {
+                const cur = byTopic.get(w.topic) || {
+                  topic: w.topic,
+                  studentIds: new Set<string>(),
+                  batchIds: new Set<string>(),
+                };
+                cur.studentIds.add(s.studentId);
+                cur.batchIds.add(batchId);
+                byTopic.set(w.topic, cur);
+              });
+          });
+        });
+
+        let worst: WeakTopic | null = null;
+        byTopic.forEach((v) => {
+          if (!worst || v.studentIds.size > worst.studentIds.size) worst = v;
+        });
+        setWeakTopic(worst);
+      } catch {
+        if (!cancelled) setWeakTopic(null);
       }
-    });
-    return weakest;
-  }, [exams, examResults, myBatchIds, studentBatch]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [firebaseUser, myBatchIds]);
 
   const sessionsToday = todaySessions.length;
   const attendanceMarkedCount = todaySessions.filter((s) => sessionMarked.get(s.id)).length;
@@ -580,10 +579,10 @@ export default function FacultyToday() {
             )}
           </DsCard>
 
-          {weakSubject && (
+          {weakTopic && (
             <DsAlertStrip
               title="Weak-area signal"
-              body={`Students across your batches are averaging ${Math.round(weakSubject.avg)}% on ${weakSubject.subject} (${weakSubject.count} result${weakSubject.count === 1 ? "" : "s"} this term). A practice set can help close the gap.`}
+              body={`${weakTopic.studentIds.size} student${weakTopic.studentIds.size === 1 ? "" : "s"} across ${weakTopic.batchIds.size} batch${weakTopic.batchIds.size === 1 ? "" : "es"} are weak on ${weakTopic.topic}. A practice set can help close the gap.`}
               actions={[
                 {
                   label: "Generate practice set",
