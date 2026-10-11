@@ -36,7 +36,5 @@ yarn.lock
 
 .vercel
 
-# Agent docs (local only)
-/project.md
-/design.md
-/docs/agents/
+# Agent design mockups (local only)
+/docs/agents/mockups/
