@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { normalizeQuestionType } from "@shared/lib/questionTypes";
 import { uploadToImageKit } from "@shared/lib/imagekitUpload";
 import { TimerChip } from "@features/student/components/TimerChip";
+import { PracticePlayerView } from "@features/student/components/PracticePlayerView";
+import { decideAttemptKind, type ExamMode } from "@features/student/practice/attemptKind";
 import { cn } from "@shared/lib/utils";
 import { HtmlView } from "@shared/lib/safeHtml";
 
@@ -123,6 +125,10 @@ type AttemptQuestion = {
   groupOrder?: number;
   /** Used for display ordering; not shown to students */
   sortOrder: number;
+  /** Topic metadata, shown as tags in the practice player */
+  topic?: string;
+  chapter?: string;
+  difficulty?: string;
 };
 
 type TestSection = {
@@ -138,6 +144,8 @@ type TestMeta = {
   subject?: string;
   durationMinutes: number;
   sections: TestSection[];
+  /** "practice" = personalized/DPP self-practice set (st_practice chrome); "live" = proctored CBT (st_live chrome) */
+  kind: "live" | "practice";
 };
 
 type AttemptDoc = {
@@ -196,7 +204,9 @@ const buildInitResponses = (qs: AttemptQuestion[]) => {
   return init;
 };
 
-function buildMarkingSchemeResolver(testDoc: any): (sectionId?: string) => { correct: number; incorrect: number } {
+function buildMarkingSchemeResolver(
+  testDoc: any
+): (sectionId?: string) => { correct: number; incorrect: number } {
   const sectionMap = new Map<string, { correct: number; incorrect: number }>();
   if (Array.isArray(testDoc?.sections)) {
     for (const sec of testDoc.sections) {
@@ -208,9 +218,13 @@ function buildMarkingSchemeResolver(testDoc: any): (sectionId?: string) => { cor
       }
     }
   }
-  const global = testDoc?.markingScheme?.correct != null
-    ? { correct: Number(testDoc.markingScheme.correct), incorrect: Number(testDoc.markingScheme.incorrect ?? 0) }
-    : { correct: 1, incorrect: 0 };
+  const global =
+    testDoc?.markingScheme?.correct != null
+      ? {
+          correct: Number(testDoc.markingScheme.correct),
+          incorrect: Number(testDoc.markingScheme.incorrect ?? 0),
+        }
+      : { correct: 1, incorrect: 0 };
   return (sectionId?: string) => (sectionId ? sectionMap.get(sectionId) : undefined) ?? global;
 }
 
@@ -229,9 +243,10 @@ const mapQuestion = (
   const positive = hasExplicitMarks
     ? safeNumber(data.marks ?? data.positiveMarks, fallbackScheme?.correct ?? 1)
     : (fallbackScheme?.correct ?? 1);
-  const negative = data.negativeMarks != null
-    ? Math.abs(safeNumber(data.negativeMarks, 0))
-    : Math.abs(fallbackScheme?.incorrect ?? 0);
+  const negative =
+    data.negativeMarks != null
+      ? Math.abs(safeNumber(data.negativeMarks, 0))
+      : Math.abs(fallbackScheme?.incorrect ?? 0);
 
   // Determine question type using canonical normalizer; field may be "questionType" or "format"
   const rawType = normalizeQuestionType(data.questionType ?? data.format);
@@ -276,6 +291,9 @@ const mapQuestion = (
     groupId: data.groupId ? String(data.groupId) : undefined,
     groupOrder: data.groupOrder != null ? Number(data.groupOrder) : undefined,
     sortOrder: safeNumber(data.questionOrder, Number.MAX_SAFE_INTEGER),
+    topic: data.topic ? String(data.topic) : undefined,
+    chapter: data.chapter ? String(data.chapter) : undefined,
+    difficulty: data.difficulty ? String(data.difficulty) : undefined,
   };
 };
 
@@ -336,6 +354,7 @@ export default function StudentCBTAttempt() {
   const [instructionsOpen, setInstructionsOpen] = useState(true);
   const [instructionsChecked, setInstructionsChecked] = useState(false);
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
+  const [submitSectionDialogOpen, setSubmitSectionDialogOpen] = useState(false);
   const [backPressDialogOpen, setBackPressDialogOpen] = useState(false);
 
   const [saving, setSaving] = useState(false);
@@ -418,6 +437,9 @@ export default function StudentCBTAttempt() {
   }, [questions, currentIndex, sectionQuestions]);
 
   const currentQuestion = questions[currentIndex] || null;
+  // Practice sets (personalized / daily practice) render the self-paced practice chrome and
+  // skip proctoring entirely; everything else keeps the proctored live-test chrome unchanged.
+  const isPractice = testMeta?.kind === "practice";
 
   const effectiveResponses = useMemo(() => {
     if (!isStarted || !currentQuestion) return responses;
@@ -505,6 +527,40 @@ export default function StudentCBTAttempt() {
   const answeredCount = submissionCounts.answeredCount;
   const unansweredVisitedCount = submissionCounts.notAnsweredCount;
 
+  // Practice: running score from questions already answered — only self-checkable types
+  // (mcq/integer) have a known correct answer client-side; subjective answers are excluded.
+  const practiceRunningScore = useMemo(() => {
+    if (!isPractice) return { correct: 0, incorrect: 0 };
+    let correct = 0;
+    let incorrect = 0;
+    for (const q of questions) {
+      if (q.correctAnswer === undefined) continue;
+      const r = responses[q.id];
+      if (!r?.answered || r.answer === null || r.answer === undefined) continue;
+      if (r.answer === q.correctAnswer) correct += 1;
+      else incorrect += 1;
+    }
+    return { correct, incorrect };
+  }, [isPractice, questions, responses]);
+
+  // Practice: "why these questions" topic breakdown, derived from the real topic/chapter tags
+  // on the questions actually in this set (not from the generator's original request, which
+  // isn't persisted anywhere this attempt can read).
+  const practiceTopicAllocation = useMemo(() => {
+    if (!isPractice || !questions.length) return [];
+    const counts = new Map<string, number>();
+    for (const q of questions) {
+      const label = q.topic || q.chapter || "Mixed revision";
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+    const top = sorted.slice(0, 2);
+    const restCount = sorted.slice(2).reduce((sum, [, n]) => sum + n, 0);
+    const rows = top.map(([label, n]) => ({ label, count: n }));
+    if (restCount > 0) rows.push({ label: "Mixed revision", count: restCount });
+    return rows;
+  }, [isPractice, questions]);
+
   // Load test + questions + existing attempt
   useEffect(() => {
     let mounted = true;
@@ -534,6 +590,14 @@ export default function StudentCBTAttempt() {
         let meta: TestMeta | null = null;
         let qs: AttemptQuestion[] = [];
         let localTestData: any = null;
+        // Raw test `type` + batch-assignment overlay data, resolved into a final `kind` only
+        // after the assignment fetch below — see attemptKind.ts for why this can't be decided
+        // from the test doc's `type` alone.
+        let testTypeRaw = "";
+        let assignmentLoaded = false;
+        let assignmentFailed = false;
+        let assignmentExamMode: string | null | undefined;
+        let assignmentProctoringConfig: Record<string, unknown> | null | undefined;
 
         const educatorTestRef = doc(db, "educators", educatorId, "my_tests", testId);
         const educatorTestSnap = await getDoc(educatorTestRef);
@@ -579,6 +643,7 @@ export default function StudentCBTAttempt() {
             { id: "main", name: resolvedTest?.subject || localTest?.subject || "General" },
           ];
 
+          testTypeRaw = String(localTest?.type || "");
           meta = {
             id: testId,
             title: resolvedTest?.title || localTest?.title || "Untitled Test",
@@ -588,6 +653,9 @@ export default function StudentCBTAttempt() {
               Array.isArray(resolvedTest?.sections) && resolvedTest.sections.length
                 ? resolvedTest.sections
                 : computedSections,
+            // Fail-safe default: stays "live" (proctored) until the batch-assignment overlay
+            // below has actually been resolved, so nothing is briefly unproctored.
+            kind: "live",
           };
           (meta as any).price = safeNumber(resolvedTest?.price || localTest?.price, 0);
 
@@ -613,6 +681,7 @@ export default function StudentCBTAttempt() {
             );
             const computedSections = [{ id: "main", name: globalTest?.subject || "General" }];
 
+            testTypeRaw = String(globalTest?.type || "");
             meta = {
               id: testId,
               title: globalTest?.title || "Untitled Test",
@@ -622,6 +691,8 @@ export default function StudentCBTAttempt() {
                 Array.isArray(globalTest?.sections) && globalTest.sections.length
                   ? globalTest.sections
                   : computedSections,
+              // Fail-safe default — see the local-test branch above.
+              kind: "live",
             };
             (meta as any).price = safeNumber(globalTest?.price, 0);
 
@@ -677,6 +748,9 @@ export default function StudentCBTAttempt() {
               const assignDoc = assignSnap.docs[0];
               const assignment = assignDoc.data() as any;
               setBatchAssignmentId((prev) => prev ?? assignDoc.id);
+              assignmentLoaded = true;
+              assignmentExamMode = assignment.examMode ?? null;
+              assignmentProctoringConfig = assignment.proctoringConfig ?? null;
               if (assignment.accessType === "scheduled") {
                 startTime = assignment.startTime?.toMillis?.() ?? assignment.startTime ?? null;
                 endTime = assignment.endTime?.toMillis?.() ?? assignment.endTime ?? null;
@@ -685,9 +759,22 @@ export default function StudentCBTAttempt() {
                 endTime = null;
               }
             }
-          } catch {
-            // non-fatal — fall back to test doc fields
+          } catch (e) {
+            // Assignment couldn't be confirmed — attemptKind.ts treats this as "can't confirm
+            // unproctored practice", not as "fall back to the test doc's type alone".
+            assignmentFailed = true;
+            console.error("[StudentCBTAttempt] batchAssignment fetch failed:", e);
           }
+        }
+
+        if (meta) {
+          meta.kind = decideAttemptKind({
+            testType: testTypeRaw,
+            assignmentLoaded,
+            assignmentFailed,
+            examMode: assignmentExamMode as ExamMode,
+            proctoringConfig: assignmentProctoringConfig,
+          });
         }
 
         const isLive = startTime && endTime && Date.now() >= startTime && Date.now() <= endTime;
@@ -802,7 +889,10 @@ export default function StudentCBTAttempt() {
 
           setAttemptStartedAtMs(startedMs ? safeNumber(startedMs, Date.now()) : null);
           setDurationSec(safeNumber(foundAttempt.durationSec, meta.durationMinutes * 60));
-          if (foundAttempt.sectionStartTimes && typeof foundAttempt.sectionStartTimes === "object") {
+          if (
+            foundAttempt.sectionStartTimes &&
+            typeof foundAttempt.sectionStartTimes === "object"
+          ) {
             setSectionStartTimes(foundAttempt.sectionStartTimes);
           }
 
@@ -835,14 +925,18 @@ export default function StudentCBTAttempt() {
     };
   }, [testId, authLoading, tenantLoading, firebaseUser, educatorId, attemptIdStorageKey]);
 
-  // Always show instructions gate before starting / resuming
+  // Always show instructions gate before starting / resuming a live (proctored) test.
+  // Practice sets have no instructions gate and no proctoring — start them right away.
   useEffect(() => {
     if (loading || authLoading || tenantLoading) return;
-    if (!isStarted) {
-      setInstructionsOpen(true);
-      setInstructionsChecked(false);
+    if (isStarted) return;
+    if (isPractice) {
+      pendingAutoResumeRef.current = true;
+      return;
     }
-  }, [loading, authLoading, tenantLoading, isStarted, testId]);
+    setInstructionsOpen(true);
+    setInstructionsChecked(false);
+  }, [loading, authLoading, tenantLoading, isStarted, testId, isPractice]);
 
   // Keep section in sync and load saved answer into local state
   useEffect(() => {
@@ -922,12 +1016,27 @@ export default function StudentCBTAttempt() {
     }
   };
 
+  // Mock's "Submit section" control: locks the current section (same mechanism the per-section
+  // timer already uses to lock an expired section) and advances to the next unlocked one. Once
+  // locked a section can't be revisited — matches the "cannot return" warning shown before this.
+  const handleSubmitSection = () => {
+    if (!currentSectionId) return;
+    setLockedSections((prev) => new Set(prev).add(currentSectionId));
+    const idx = sections.findIndex((s) => s.id === currentSectionId);
+    const nextSection = sections.slice(idx + 1).find((s) => s.id !== currentSectionId);
+    setSubmitSectionDialogOpen(false);
+    if (nextSection) switchSection(nextSection.id);
+  };
+
   const handleStart = async () => {
     if (!firebaseUser || !testId || !educatorId || !testMeta) return;
 
-    const fullscreenOk = await requestFullscreenSafe();
-    if (!fullscreenOk)
-      toast.message("Fullscreen was blocked by browser. Continuing in normal mode.");
+    // Practice is self-paced, not proctored — never force fullscreen for it.
+    if (testMeta.kind !== "practice") {
+      const fullscreenOk = await requestFullscreenSafe();
+      if (!fullscreenOk)
+        toast.message("Fullscreen was blocked by browser. Continuing in normal mode.");
+    }
 
     let id = attemptId;
     let startedAtMs = attemptStartedAtMs;
@@ -1058,6 +1167,44 @@ export default function StudentCBTAttempt() {
     }
   };
 
+  // Practice: save the current answer without advancing, so the worked solution and running
+  // score can appear in place — navigation between questions happens via the question dots.
+  const handleSubmitPracticeAnswer = () => {
+    if (!currentQuestion || !attemptId || !isStarted) return;
+
+    const answer = selectedAnswer;
+    const hasAnswer = answer !== null && answer !== undefined && String(answer).trim() !== "";
+    if (!hasAnswer) {
+      toast.error("Select an answer before submitting.");
+      return;
+    }
+
+    setResponses((prev) => ({
+      ...prev,
+      [currentQuestion.id]: {
+        ...prev[currentQuestion.id],
+        answer,
+        answered: true,
+        visited: true,
+        markedForReview: false,
+      },
+    }));
+
+    queueAttemptUpdate({
+      [`responses.${currentQuestion.id}.answer`]: answer,
+      [`responses.${currentQuestion.id}.answered`]: true,
+      [`responses.${currentQuestion.id}.visited`]: true,
+      [`responses.${currentQuestion.id}.markedForReview`]: false,
+      currentIndex,
+    });
+  };
+
+  // Practice: move to the next question in the set without recording an answer.
+  const handleSkipPracticeQuestion = () => {
+    if (!isStarted) return;
+    goToIndex(currentIndex + 1);
+  };
+
   const handleSaveAndMarkForReview = () => {
     if (!currentQuestion || !attemptId || !isStarted) return;
 
@@ -1186,7 +1333,9 @@ export default function StudentCBTAttempt() {
         } else {
           match =
             String(ans).toLowerCase().trim() ===
-            String(q.referenceAnswer ?? "").toLowerCase().trim();
+            String(q.referenceAnswer ?? "")
+              .toLowerCase()
+              .trim();
         }
         if (match) {
           score += safeNumber(q.marks.correct, 0);
@@ -1500,9 +1649,9 @@ export default function StudentCBTAttempt() {
     return () => clearInterval(tick);
   }, [isStarted, testMeta, sectionStartTimes]);
 
-  // Proctoring: Prevent copy, cut, paste, context menu
+  // Proctoring: Prevent copy, cut, paste, context menu (live tests only — practice is unproctored)
   useEffect(() => {
-    if (!isStarted) return;
+    if (!isStarted || isPractice) return;
 
     const preventDefault = (e: Event) => e.preventDefault();
 
@@ -1517,7 +1666,7 @@ export default function StudentCBTAttempt() {
       document.removeEventListener("paste", preventDefault);
       document.removeEventListener("contextmenu", preventDefault);
     };
-  }, [isStarted]);
+  }, [isStarted, isPractice]);
 
   // Use a ref to access latest values in the violation effect
   const proctorStateRef = useRef({
@@ -1572,9 +1721,9 @@ export default function StudentCBTAttempt() {
     [queueAttemptUpdate, handleSubmit, educatorId, firebaseUser, profile, testMeta, tenantSlug]
   );
 
-  // Proctoring: Tab switch & Full-screen exit logic
+  // Proctoring: Tab switch & Full-screen exit logic (live tests only)
   useEffect(() => {
-    if (!isStarted) return;
+    if (!isStarted || isPractice) return;
 
     const handleVisibilityChange = () => {
       if (ignoreProctoringRef.current) return;
@@ -1623,7 +1772,7 @@ export default function StudentCBTAttempt() {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
       window.removeEventListener("focus", handleWindowFocus);
     };
-  }, [isStarted, handleViolation]);
+  }, [isStarted, isPractice, handleViolation]);
 
   // Warn on reload/close while started
   useEffect(() => {
@@ -1668,10 +1817,16 @@ export default function StudentCBTAttempt() {
   const currentSectionLimitMinutes = currentSectionMeta
     ? Number(currentSectionMeta.timeLimit ?? currentSectionMeta.durationMinutes ?? 0) || null
     : null;
-  const currentSectionStartedAt = currentSectionId ? sectionStartTimes[currentSectionId] : undefined;
+  const currentSectionStartedAt = currentSectionId
+    ? sectionStartTimes[currentSectionId]
+    : undefined;
   const currentSectionRemainingSec =
     currentSectionLimitMinutes && currentSectionStartedAt && isStarted
-      ? Math.max(0, currentSectionLimitMinutes * 60 - Math.floor((Date.now() - currentSectionStartedAt) / 1000))
+      ? Math.max(
+          0,
+          currentSectionLimitMinutes * 60 -
+            Math.floor((Date.now() - currentSectionStartedAt) / 1000)
+        )
       : null;
 
   if (loading || authLoading || tenantLoading)
@@ -1744,6 +1899,97 @@ export default function StudentCBTAttempt() {
     );
   }
 
+  // ─── PRACTICE PLAYER (personalized / daily practice) ───
+  // Self-paced, unproctored chrome — own render branch rather than threading practice-only
+  // JSX through the proctored live-test layout below. Shares every piece of underlying state
+  // and the handlers above (selectedAnswer, responses, goToIndex, handleSubmit, autosave).
+  if (isPractice) {
+    const dotStatuses: ("current" | "answered" | "pending")[] = questions.map((q, i) => {
+      if (i === currentIndex) return "current";
+      if (responses[q.id]?.answered) return "answered";
+      return "pending";
+    });
+    const isCurrentAnswered = Boolean(responses[currentQuestion.id]?.answered);
+
+    return (
+      <div className="min-h-screen bg-ds-canvas p-4 lg:p-6">
+        <div className="mx-auto flex max-w-[1180px] flex-col gap-3.5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="font-ds-serif text-[23px] font-semibold leading-[28px] text-ds-ink">
+                {testMeta.title}
+              </h1>
+              <p className="mt-1 font-ds-sans text-[12.5px] text-ds-slate">
+                {questions.length} questions
+              </p>
+            </div>
+            <button
+              onClick={() => setSubmitDialogOpen(true)}
+              disabled={!isStarted}
+              className="h-9 rounded-[8px] bg-ds-accent px-4 font-ds-sans text-[12.5px] font-semibold text-white disabled:opacity-50"
+            >
+              Submit set
+            </button>
+          </div>
+
+          <PracticePlayerView
+            testTitle={testMeta.title}
+            totalQuestions={questions.length}
+            currentIndex={currentIndex}
+            question={currentQuestion}
+            isAnswered={isCurrentAnswered}
+            isStarted={isStarted}
+            selectedAnswer={selectedAnswer}
+            onSelectOption={handleSelectOption}
+            onSubmitAnswer={handleSubmitPracticeAnswer}
+            onSkip={handleSkipPracticeQuestion}
+            onJumpTo={goToIndex}
+            dotStatuses={dotStatuses}
+            runningScore={practiceRunningScore}
+            topicAllocation={practiceTopicAllocation}
+            studentId={firebaseUser?.uid}
+            educatorId={educatorId || undefined}
+            attemptId={attemptId}
+          />
+        </div>
+
+        {submitDialogOpen && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4">
+            <div className="w-full max-w-[420px] overflow-hidden rounded-[10px] bg-white">
+              <div className="flex items-start gap-3 border-b border-ds-ink/[.08] p-4">
+                <AlertTriangle size={20} className="mt-0.5 shrink-0 text-ds-accent" />
+                <div>
+                  <div className="font-ds-sans text-[15px] font-semibold text-ds-ink">
+                    Submit practice set?
+                  </div>
+                  <div className="mt-0.5 font-ds-sans text-[13px] text-ds-ink/55">
+                    {answeredCount} of {questions.length} answered. You can review the worked
+                    solutions after submitting.
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 p-3.5">
+                <button
+                  onClick={() => setSubmitDialogOpen(false)}
+                  className="h-9 rounded-[7px] border border-ds-ink/15 px-4 font-ds-sans text-[13px] font-medium text-ds-ink"
+                >
+                  Keep practicing
+                </button>
+                <button
+                  onClick={() => handleSubmit(false)}
+                  disabled={saving}
+                  className="h-9 rounded-[7px] bg-ds-accent px-4 font-ds-sans text-[13px] font-semibold text-white disabled:opacity-70"
+                >
+                  {saving ? "Submitting…" : "Submit set"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const timerKey = isStarted ? `running_${attemptId || "new"}` : `paused_${attemptId || "new"}`;
 
   // Palette legend counts
@@ -1752,36 +1998,40 @@ export default function StudentCBTAttempt() {
   const markedForReviewCount = submissionCounts.markedForReviewUnansweredCount;
   const answeredAndMarkedCount = submissionCounts.answeredAndMarkedCount;
 
+  // Palette colours per BUILD-NOTES §02/§04: ink = current, positive tint = answered, accent
+  // tint = marked for review, transparent/bordered = not visited. "Visited but not answered" is
+  // not one of the design's four states, but the signal is useful, so it keeps a slate tint
+  // rather than being discarded on restyle.
   const getQuestionBtnStyle = (qId: string): React.CSSProperties => {
     const r = responses[qId];
     const isCurrent = currentQuestion?.id === qId;
 
     if (isCurrent) {
-      return { background: "#3b82f6", color: "#ffffff", border: "2px solid #1e40af" };
+      return { background: "#14171c", color: "#ffffff", border: "1px solid #14171c" };
     }
     if (r?.answered && r?.markedForReview) {
-      return {
-        background: "linear-gradient(135deg, #7c3aed 60%, #22c55e 100%)",
-        color: "#ffffff",
-        border: "1px solid #7c3aed",
-      };
+      return { background: "#fbeee8", color: "#8a4b28", border: "1px solid rgba(207,97,52,.35)" };
     }
     if (r?.answered) {
-      return { background: "#22c55e", color: "#ffffff", border: "1px solid #16a34a" };
+      return { background: "#e9f3ee", color: "#2f7357", border: "1px solid rgba(63,143,107,.3)" };
     }
     if (r?.markedForReview) {
-      return { background: "#7c3aed", color: "#ffffff", border: "1px solid #6d28d9" };
+      return { background: "#fbeee8", color: "#8a4b28", border: "1px solid rgba(207,97,52,.35)" };
     }
     if (r?.visited) {
-      return { background: "#ef4444", color: "#ffffff", border: "1px solid #dc2626" };
+      return { background: "#f2f3f5", color: "#5b646e", border: "1px solid rgba(20,23,28,.12)" };
     }
-    return { background: "#e5e7eb", color: "#374151", border: "1px solid #d1d5db" };
+    return {
+      background: "transparent",
+      color: "rgba(20,23,28,.4)",
+      border: "1px solid rgba(20,23,28,.12)",
+    };
   };
 
   const PaletteContent = ({ onClose }: { onClose?: () => void }) => (
-    <div style={{ fontFamily: "Arial, sans-serif" }}>
+    <div style={{ fontFamily: "'Public Sans', sans-serif" }}>
       {/* Legend */}
-      <div style={{ padding: "8px 10px", borderBottom: "1px solid #d1d5db" }}>
+      <div style={{ padding: "8px 10px", borderBottom: "1px solid rgba(20,23,28,.09)" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", fontSize: 11 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span
@@ -1789,19 +2039,19 @@ export default function StudentCBTAttempt() {
                 width: 22,
                 height: 22,
                 borderRadius: "50%",
-                background: "#e5e7eb",
-                border: "1px solid #d1d5db",
+                background: "transparent",
+                border: "1px solid rgba(20,23,28,.12)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 fontWeight: 700,
                 fontSize: 10,
-                color: "#374151",
+                color: "rgba(20,23,28,.4)",
               }}
             >
               {notVisitedCount}
             </span>
-            <span style={{ color: "#374151" }}>Not Visited</span>
+            <span style={{ color: "#5b646e" }}>Not Visited</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span
@@ -1809,19 +2059,19 @@ export default function StudentCBTAttempt() {
                 width: 22,
                 height: 22,
                 borderRadius: "50%",
-                background: "#ef4444",
-                border: "1px solid #dc2626",
+                background: "#f2f3f5",
+                border: "1px solid rgba(20,23,28,.12)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 fontWeight: 700,
                 fontSize: 10,
-                color: "#fff",
+                color: "#5b646e",
               }}
             >
               {notAnsweredCount}
             </span>
-            <span style={{ color: "#374151" }}>Not Answered</span>
+            <span style={{ color: "#5b646e" }}>Not Answered</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span
@@ -1829,19 +2079,19 @@ export default function StudentCBTAttempt() {
                 width: 22,
                 height: 22,
                 borderRadius: "50%",
-                background: "#22c55e",
-                border: "1px solid #16a34a",
+                background: "#e9f3ee",
+                border: "1px solid rgba(63,143,107,.3)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 fontWeight: 700,
                 fontSize: 10,
-                color: "#fff",
+                color: "#2f7357",
               }}
             >
               {answeredCount}
             </span>
-            <span style={{ color: "#374151" }}>Answered</span>
+            <span style={{ color: "#5b646e" }}>Answered</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span
@@ -1849,19 +2099,19 @@ export default function StudentCBTAttempt() {
                 width: 22,
                 height: 22,
                 borderRadius: "50%",
-                background: "#7c3aed",
-                border: "1px solid #6d28d9",
+                background: "#fbeee8",
+                border: "1px solid rgba(207,97,52,.35)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 fontWeight: 700,
                 fontSize: 10,
-                color: "#fff",
+                color: "#8a4b28",
               }}
             >
               {markedForReviewCount}
             </span>
-            <span style={{ color: "#374151" }}>Marked for Review</span>
+            <span style={{ color: "#5b646e" }}>Marked for Review</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, gridColumn: "span 2" }}>
             <span
@@ -1870,14 +2120,14 @@ export default function StudentCBTAttempt() {
                 width: 22,
                 height: 22,
                 borderRadius: "50%",
-                background: "#7c3aed",
-                border: "1px solid #6d28d9",
+                background: "#fbeee8",
+                border: "1px solid rgba(207,97,52,.35)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 fontWeight: 700,
                 fontSize: 10,
-                color: "#fff",
+                color: "#8a4b28",
               }}
             >
               <span
@@ -1888,7 +2138,7 @@ export default function StudentCBTAttempt() {
                   width: 11,
                   height: 11,
                   borderRadius: "50%",
-                  background: "#22c55e",
+                  background: "#2f7357",
                   border: "1px solid #fff",
                   display: "flex",
                   alignItems: "center",
@@ -1901,9 +2151,9 @@ export default function StudentCBTAttempt() {
               </span>
               {answeredAndMarkedCount}
             </span>
-            <span style={{ color: "#374151" }}>
+            <span style={{ color: "#5b646e" }}>
               Answered &amp; Marked for Review{" "}
-              <span style={{ fontSize: 9, color: "#6b7280" }}>(will be considered)</span>
+              <span style={{ fontSize: 9, color: "rgba(20,23,28,.45)" }}>(will be considered)</span>
             </span>
           </div>
         </div>
@@ -1932,7 +2182,11 @@ export default function StudentCBTAttempt() {
                   fontWeight: currentSectionId === section.id ? 700 : 400,
                   borderBottom:
                     currentSectionId === section.id ? "3px solid #2563eb" : "3px solid transparent",
-                  color: isLocked ? "#9ca3af" : currentSectionId === section.id ? "#2563eb" : "#374151",
+                  color: isLocked
+                    ? "#9ca3af"
+                    : currentSectionId === section.id
+                      ? "#2563eb"
+                      : "#374151",
                   background: "none",
                   border: "none",
                   cursor: isLocked ? "not-allowed" : "pointer",
@@ -2295,51 +2549,59 @@ export default function StudentCBTAttempt() {
         </div>
       )}
 
-      {/* ─── TOP HEADER BAR ─── */}
+      {/* ─── TOP HEADER BAR — BUILD-NOTES "Test player" chrome: ink bar, accent timer chip ─── */}
       <div
         style={{
-          background: "#1e3a8a",
+          background: "#14171c",
           color: "#fff",
-          padding: "0 12px",
-          height: 44,
+          padding: "0 18px",
+          height: 58,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           flexShrink: 0,
         }}
       >
-        <div
-          style={{
-            fontWeight: 700,
-            fontSize: 15,
-            letterSpacing: 0.5,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {testMeta.title}
+        <div style={{ overflow: "hidden" }}>
+          <div
+            style={{
+              fontFamily: "'Public Sans', sans-serif",
+              fontWeight: 600,
+              fontSize: 13,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {testMeta.title}
+            {currentSectionMeta?.name ? ` · ${currentSectionMeta.name}` : ""}
+          </div>
+          <div
+            style={{
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontSize: 11,
+              color: "rgba(255,255,255,.5)",
+              marginTop: 2,
+            }}
+          >
+            Proctored
+          </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {isStarted && currentSectionRemainingSec !== null && (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", lineHeight: 1 }}>
-                {currentSectionMeta?.name ?? "Section"}
-              </span>
-              <TimerChip
-                key={`sec_${currentSectionId}`}
-                initialSeconds={currentSectionRemainingSec}
-                className="h-6 border border-yellow-300/50 bg-yellow-400/20 px-2 py-0 text-xs font-bold text-yellow-100"
-              />
-            </div>
+            <TimerChip
+              key={`sec_${currentSectionId}`}
+              initialSeconds={currentSectionRemainingSec}
+              className="h-7 border border-white/15 bg-white/10 px-2.5 py-0 font-ds-mono text-xs font-semibold text-white/80"
+            />
           )}
-          <div style={{ fontSize: 12, padding: "0", borderRadius: 20, whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: 12, whiteSpace: "nowrap" }}>
             {isStarted ? (
               <TimerChip
                 key={timerKey}
                 initialSeconds={timerStartSeconds}
                 onTimeUp={handleTimeUp}
-                className="h-8 border border-white/30 bg-white/20 px-3 py-0 text-sm font-bold text-white"
+                className="h-7 rounded-[7px] border-none bg-ds-accent px-3 py-0 font-ds-mono text-sm font-semibold text-white"
               />
             ) : (
               <span
@@ -2420,7 +2682,11 @@ export default function StudentCBTAttempt() {
                         currentSectionId === section.id
                           ? "3px solid #1e3a8a"
                           : "3px solid transparent",
-                      color: isLocked ? "#9ca3af" : currentSectionId === section.id ? "#1e3a8a" : "#374151",
+                      color: isLocked
+                        ? "#9ca3af"
+                        : currentSectionId === section.id
+                          ? "#1e3a8a"
+                          : "#374151",
                       background: "none",
                       border: "none",
                       cursor: isLocked ? "not-allowed" : "pointer",
@@ -3133,13 +3399,14 @@ export default function StudentCBTAttempt() {
           <div
             style={{
               flexShrink: 0,
-              borderTop: "1px solid #e5e7eb",
-              background: "#f9fafb",
+              borderTop: "1px solid rgba(20,23,28,.09)",
+              background: "#fafbfc",
               padding: "8px 12px",
               display: "flex",
               flexWrap: "wrap",
               gap: 6,
               alignItems: "center",
+              fontFamily: "'Public Sans', sans-serif",
             }}
           >
             {/* Save & Next */}
@@ -3147,18 +3414,18 @@ export default function StudentCBTAttempt() {
               onClick={handleSaveAndNext}
               disabled={!isStarted}
               style={{
-                background: isStarted ? "#22c55e" : "#9ca3af",
+                background: isStarted ? "#cf6134" : "#9ca3af",
                 color: "#fff",
                 border: "none",
-                borderRadius: 4,
-                padding: "7px 14px",
-                fontSize: 12,
-                fontWeight: 700,
+                borderRadius: 8,
+                padding: "8px 16px",
+                fontSize: 12.5,
+                fontWeight: 600,
                 cursor: isStarted ? "pointer" : "not-allowed",
                 whiteSpace: "nowrap",
               }}
             >
-              SAVE &amp; NEXT
+              Save &amp; next
             </button>
 
             {/* Clear */}
@@ -3167,17 +3434,17 @@ export default function StudentCBTAttempt() {
               disabled={!isStarted}
               style={{
                 background: "#fff",
-                color: "#374151",
-                border: "1.5px solid #d1d5db",
-                borderRadius: 4,
-                padding: "6px 14px",
-                fontSize: 12,
-                fontWeight: 700,
+                color: "#14171c",
+                border: "1px solid rgba(20,23,28,.14)",
+                borderRadius: 8,
+                padding: "7px 14px",
+                fontSize: 12.5,
+                fontWeight: 500,
                 cursor: isStarted ? "pointer" : "not-allowed",
                 whiteSpace: "nowrap",
               }}
             >
-              CLEAR
+              Clear response
             </button>
 
             {/* Save & Mark for Review */}
@@ -3185,18 +3452,18 @@ export default function StudentCBTAttempt() {
               onClick={handleSaveAndMarkForReview}
               disabled={!isStarted}
               style={{
-                background: isStarted ? "#7c3aed" : "#9ca3af",
-                color: "#fff",
-                border: "none",
-                borderRadius: 4,
+                background: "#fff",
+                color: "#14171c",
+                border: "1px solid rgba(20,23,28,.14)",
+                borderRadius: 8,
                 padding: "7px 14px",
-                fontSize: 12,
-                fontWeight: 700,
+                fontSize: 12.5,
+                fontWeight: 500,
                 cursor: isStarted ? "pointer" : "not-allowed",
                 whiteSpace: "nowrap",
               }}
             >
-              SAVE &amp; MARK FOR REVIEW
+              Save &amp; mark for review
             </button>
 
             {/* Mark for Review & Next */}
@@ -3204,18 +3471,18 @@ export default function StudentCBTAttempt() {
               onClick={handleMarkForReviewAndNext}
               disabled={!isStarted}
               style={{
-                background: isStarted ? "#2563eb" : "#9ca3af",
-                color: "#fff",
-                border: "none",
-                borderRadius: 4,
+                background: "#fff",
+                color: "#14171c",
+                border: "1px solid rgba(20,23,28,.14)",
+                borderRadius: 8,
                 padding: "7px 14px",
-                fontSize: 12,
-                fontWeight: 700,
+                fontSize: 12.5,
+                fontWeight: 500,
                 cursor: isStarted ? "pointer" : "not-allowed",
                 whiteSpace: "nowrap",
               }}
             >
-              MARK FOR REVIEW &amp; NEXT
+              Mark for review
             </button>
           </div>
 
@@ -3296,23 +3563,50 @@ export default function StudentCBTAttempt() {
               </button>
             </div>
 
-            <button
-              onClick={() => setSubmitDialogOpen(true)}
-              disabled={!isStarted}
-              className="bottom-submit-btn"
-              style={{
-                background: isStarted ? "#22c55e" : "#9ca3af",
-                color: "#fff",
-                border: "none",
-                borderRadius: 4,
-                padding: "7px 22px",
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: isStarted ? "pointer" : "not-allowed",
-              }}
-            >
-              SUBMIT
-            </button>
+            {(() => {
+              const curIdx = sections.findIndex((s) => s.id === currentSectionId);
+              const hasNextSection =
+                sections.length > 1 && curIdx >= 0 && curIdx < sections.length - 1;
+              if (hasNextSection) {
+                return (
+                  <button
+                    onClick={() => setSubmitSectionDialogOpen(true)}
+                    disabled={!isStarted}
+                    style={{
+                      background: isStarted ? "#14171c" : "#9ca3af",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "9px 22px",
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      cursor: isStarted ? "pointer" : "not-allowed",
+                    }}
+                  >
+                    Submit section
+                  </button>
+                );
+              }
+              return (
+                <button
+                  onClick={() => setSubmitDialogOpen(true)}
+                  disabled={!isStarted}
+                  className="bottom-submit-btn"
+                  style={{
+                    background: isStarted ? "#22c55e" : "#9ca3af",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 4,
+                    padding: "7px 22px",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: isStarted ? "pointer" : "not-allowed",
+                  }}
+                >
+                  SUBMIT
+                </button>
+              );
+            })()}
           </div>
         </div>
 
@@ -3548,6 +3842,75 @@ export default function StudentCBTAttempt() {
                 }}
               >
                 {saving ? "Submitting..." : "Submit Test"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── SUBMIT SECTION DIALOG — "cannot return" warning per BUILD-NOTES Test player ─── */}
+      {submitSectionDialogOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 120,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              borderRadius: 10,
+              background: "#fff",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid #e5e7eb" }}>
+              <div style={{ fontWeight: 700, fontSize: 15, color: "#14171c" }}>
+                Submit {currentSectionMeta?.name || "this section"}?
+              </div>
+              <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
+                Once submitted you cannot return to this section.
+              </div>
+            </div>
+            <div
+              style={{ padding: "12px 18px", display: "flex", justifyContent: "flex-end", gap: 8 }}
+            >
+              <button
+                onClick={() => setSubmitSectionDialogOpen(false)}
+                style={{
+                  background: "#fff",
+                  color: "#14171c",
+                  border: "1px solid rgba(20,23,28,.14)",
+                  borderRadius: 7,
+                  padding: "7px 18px",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Keep working
+              </button>
+              <button
+                onClick={handleSubmitSection}
+                style={{
+                  background: "#14171c",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 7,
+                  padding: "7px 20px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Submit section
               </button>
             </div>
           </div>
