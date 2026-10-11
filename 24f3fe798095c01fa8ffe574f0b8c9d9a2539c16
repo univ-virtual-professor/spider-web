@@ -1,0 +1,47 @@
+src/features/student/StudentLayout.tsx
+  9e9742745b542db5 27,50-75,304-308,390,405,412,430,442-464
+src/shared/ui/ds/index.tsx
+  9e9742745b542db5 7-8,275-390
+src/features/educator/components/EducatorLayout.tsx
+  9e9742745b542db5 53,56-60,69-70,72-75,114-118,156-161,255,259,261-264,268-270,272-276,280-282,286-288,292-294,296-300,304-306,310-373,375-379,383-385,389-391,395-397,401-402,404,406-412,414-423,430-434,438-440,445-449,459-461,469,517,522,528,534,537-539,551,556-558,562,566-569,572-574,578,580-594,596-599,602-606,608,618,622,628-632,634-636,643,646-647,649-662,668,678-679
+  28def1481053587f 77-112,250-254,425-429,435-436,441-444,450-451
+CLAUDE.md
+  9e9742745b542db5 263,265-287,301,303
+src/shared/contexts/EmployeeContext.tsx
+  9e9742745b542db5 12-13,23,33,43,61-63,93,95
+src/shared/auth/RequirePermission.tsx
+  9e9742745b542db5 5,12,21-23,44,47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "24f3fe798095c01fa8ffe574f0b8c9d9a2539c16",
+  "prompts": {
+    "28def1481053587f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e90cf844-3897-41e6-acbd-6e75ec6da262",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 64,
+      "total_deletions": 31,
+      "accepted_lines": 54,
+      "overriden_lines": 0
+    },
+    "9e9742745b542db5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c459f816-f77c-4544-8dd5-4e17a6595d1d",
+        "model": "unknown"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 595,
+      "total_deletions": 605,
+      "accepted_lines": 501,
+      "overriden_lines": 0
+    }
+  }
+}
