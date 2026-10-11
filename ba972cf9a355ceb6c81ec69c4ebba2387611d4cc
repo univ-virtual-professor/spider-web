@@ -1,0 +1,25 @@
+src/features/educator/OwnerOverview.tsx
+  28def1481053587f 3,225,228-230,235-236
+src/features/educator/FacultyToday.tsx
+  28def1481053587f 26-27,43-46,73,353-413,415-419,582,585
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "ba972cf9a355ceb6c81ec69c4ebba2387611d4cc",
+  "prompts": {
+    "28def1481053587f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e90cf844-3897-41e6-acbd-6e75ec6da262",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 92,
+      "total_deletions": 94,
+      "accepted_lines": 82,
+      "overriden_lines": 0
+    }
+  }
+}
