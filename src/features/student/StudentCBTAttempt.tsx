@@ -8,6 +8,7 @@ import { normalizeQuestionType } from "@shared/lib/questionTypes";
 import { uploadToImageKit } from "@shared/lib/imagekitUpload";
 import { TimerChip } from "@features/student/components/TimerChip";
 import { PracticePlayerView } from "@features/student/components/PracticePlayerView";
+import { decideAttemptKind, type ExamMode } from "@features/student/practice/attemptKind";
 import { cn } from "@shared/lib/utils";
 import { HtmlView } from "@shared/lib/safeHtml";
 
@@ -203,7 +204,9 @@ const buildInitResponses = (qs: AttemptQuestion[]) => {
   return init;
 };
 
-function buildMarkingSchemeResolver(testDoc: any): (sectionId?: string) => { correct: number; incorrect: number } {
+function buildMarkingSchemeResolver(
+  testDoc: any
+): (sectionId?: string) => { correct: number; incorrect: number } {
   const sectionMap = new Map<string, { correct: number; incorrect: number }>();
   if (Array.isArray(testDoc?.sections)) {
     for (const sec of testDoc.sections) {
@@ -215,9 +218,13 @@ function buildMarkingSchemeResolver(testDoc: any): (sectionId?: string) => { cor
       }
     }
   }
-  const global = testDoc?.markingScheme?.correct != null
-    ? { correct: Number(testDoc.markingScheme.correct), incorrect: Number(testDoc.markingScheme.incorrect ?? 0) }
-    : { correct: 1, incorrect: 0 };
+  const global =
+    testDoc?.markingScheme?.correct != null
+      ? {
+          correct: Number(testDoc.markingScheme.correct),
+          incorrect: Number(testDoc.markingScheme.incorrect ?? 0),
+        }
+      : { correct: 1, incorrect: 0 };
   return (sectionId?: string) => (sectionId ? sectionMap.get(sectionId) : undefined) ?? global;
 }
 
@@ -236,9 +243,10 @@ const mapQuestion = (
   const positive = hasExplicitMarks
     ? safeNumber(data.marks ?? data.positiveMarks, fallbackScheme?.correct ?? 1)
     : (fallbackScheme?.correct ?? 1);
-  const negative = data.negativeMarks != null
-    ? Math.abs(safeNumber(data.negativeMarks, 0))
-    : Math.abs(fallbackScheme?.incorrect ?? 0);
+  const negative =
+    data.negativeMarks != null
+      ? Math.abs(safeNumber(data.negativeMarks, 0))
+      : Math.abs(fallbackScheme?.incorrect ?? 0);
 
   // Determine question type using canonical normalizer; field may be "questionType" or "format"
   const rawType = normalizeQuestionType(data.questionType ?? data.format);
@@ -288,10 +296,6 @@ const mapQuestion = (
     difficulty: data.difficulty ? String(data.difficulty) : undefined,
   };
 };
-
-/** Personalized ("Practice for Me") and scheduled DPP tests get the practice player chrome;
- *  everything else (scheduled curriculum tests, mocks) gets the proctored live test chrome. */
-const PRACTICE_TEST_TYPES = new Set(["personalized", "from_dpp", "dpp"]);
 
 const computeRemainingSeconds = (startedAtMs: number | null, totalSec: number) => {
   if (!totalSec) return 0;
@@ -586,6 +590,14 @@ export default function StudentCBTAttempt() {
         let meta: TestMeta | null = null;
         let qs: AttemptQuestion[] = [];
         let localTestData: any = null;
+        // Raw test `type` + batch-assignment overlay data, resolved into a final `kind` only
+        // after the assignment fetch below — see attemptKind.ts for why this can't be decided
+        // from the test doc's `type` alone.
+        let testTypeRaw = "";
+        let assignmentLoaded = false;
+        let assignmentFailed = false;
+        let assignmentExamMode: string | null | undefined;
+        let assignmentProctoringConfig: Record<string, unknown> | null | undefined;
 
         const educatorTestRef = doc(db, "educators", educatorId, "my_tests", testId);
         const educatorTestSnap = await getDoc(educatorTestRef);
@@ -631,6 +643,7 @@ export default function StudentCBTAttempt() {
             { id: "main", name: resolvedTest?.subject || localTest?.subject || "General" },
           ];
 
+          testTypeRaw = String(localTest?.type || "");
           meta = {
             id: testId,
             title: resolvedTest?.title || localTest?.title || "Untitled Test",
@@ -640,7 +653,9 @@ export default function StudentCBTAttempt() {
               Array.isArray(resolvedTest?.sections) && resolvedTest.sections.length
                 ? resolvedTest.sections
                 : computedSections,
-            kind: PRACTICE_TEST_TYPES.has(String(localTest?.type || "")) ? "practice" : "live",
+            // Fail-safe default: stays "live" (proctored) until the batch-assignment overlay
+            // below has actually been resolved, so nothing is briefly unproctored.
+            kind: "live",
           };
           (meta as any).price = safeNumber(resolvedTest?.price || localTest?.price, 0);
 
@@ -666,6 +681,7 @@ export default function StudentCBTAttempt() {
             );
             const computedSections = [{ id: "main", name: globalTest?.subject || "General" }];
 
+            testTypeRaw = String(globalTest?.type || "");
             meta = {
               id: testId,
               title: globalTest?.title || "Untitled Test",
@@ -675,7 +691,8 @@ export default function StudentCBTAttempt() {
                 Array.isArray(globalTest?.sections) && globalTest.sections.length
                   ? globalTest.sections
                   : computedSections,
-              kind: PRACTICE_TEST_TYPES.has(String(globalTest?.type || "")) ? "practice" : "live",
+              // Fail-safe default — see the local-test branch above.
+              kind: "live",
             };
             (meta as any).price = safeNumber(globalTest?.price, 0);
 
@@ -731,6 +748,9 @@ export default function StudentCBTAttempt() {
               const assignDoc = assignSnap.docs[0];
               const assignment = assignDoc.data() as any;
               setBatchAssignmentId((prev) => prev ?? assignDoc.id);
+              assignmentLoaded = true;
+              assignmentExamMode = assignment.examMode ?? null;
+              assignmentProctoringConfig = assignment.proctoringConfig ?? null;
               if (assignment.accessType === "scheduled") {
                 startTime = assignment.startTime?.toMillis?.() ?? assignment.startTime ?? null;
                 endTime = assignment.endTime?.toMillis?.() ?? assignment.endTime ?? null;
@@ -739,9 +759,22 @@ export default function StudentCBTAttempt() {
                 endTime = null;
               }
             }
-          } catch {
-            // non-fatal — fall back to test doc fields
+          } catch (e) {
+            // Assignment couldn't be confirmed — attemptKind.ts treats this as "can't confirm
+            // unproctored practice", not as "fall back to the test doc's type alone".
+            assignmentFailed = true;
+            console.error("[StudentCBTAttempt] batchAssignment fetch failed:", e);
           }
+        }
+
+        if (meta) {
+          meta.kind = decideAttemptKind({
+            testType: testTypeRaw,
+            assignmentLoaded,
+            assignmentFailed,
+            examMode: assignmentExamMode as ExamMode,
+            proctoringConfig: assignmentProctoringConfig,
+          });
         }
 
         const isLive = startTime && endTime && Date.now() >= startTime && Date.now() <= endTime;
@@ -856,7 +889,10 @@ export default function StudentCBTAttempt() {
 
           setAttemptStartedAtMs(startedMs ? safeNumber(startedMs, Date.now()) : null);
           setDurationSec(safeNumber(foundAttempt.durationSec, meta.durationMinutes * 60));
-          if (foundAttempt.sectionStartTimes && typeof foundAttempt.sectionStartTimes === "object") {
+          if (
+            foundAttempt.sectionStartTimes &&
+            typeof foundAttempt.sectionStartTimes === "object"
+          ) {
             setSectionStartTimes(foundAttempt.sectionStartTimes);
           }
 
@@ -1297,7 +1333,9 @@ export default function StudentCBTAttempt() {
         } else {
           match =
             String(ans).toLowerCase().trim() ===
-            String(q.referenceAnswer ?? "").toLowerCase().trim();
+            String(q.referenceAnswer ?? "")
+              .toLowerCase()
+              .trim();
         }
         if (match) {
           score += safeNumber(q.marks.correct, 0);
@@ -1779,10 +1817,16 @@ export default function StudentCBTAttempt() {
   const currentSectionLimitMinutes = currentSectionMeta
     ? Number(currentSectionMeta.timeLimit ?? currentSectionMeta.durationMinutes ?? 0) || null
     : null;
-  const currentSectionStartedAt = currentSectionId ? sectionStartTimes[currentSectionId] : undefined;
+  const currentSectionStartedAt = currentSectionId
+    ? sectionStartTimes[currentSectionId]
+    : undefined;
   const currentSectionRemainingSec =
     currentSectionLimitMinutes && currentSectionStartedAt && isStarted
-      ? Math.max(0, currentSectionLimitMinutes * 60 - Math.floor((Date.now() - currentSectionStartedAt) / 1000))
+      ? Math.max(
+          0,
+          currentSectionLimitMinutes * 60 -
+            Math.floor((Date.now() - currentSectionStartedAt) / 1000)
+        )
       : null;
 
   if (loading || authLoading || tenantLoading)
@@ -1977,7 +2021,11 @@ export default function StudentCBTAttempt() {
     if (r?.visited) {
       return { background: "#f2f3f5", color: "#5b646e", border: "1px solid rgba(20,23,28,.12)" };
     }
-    return { background: "transparent", color: "rgba(20,23,28,.4)", border: "1px solid rgba(20,23,28,.12)" };
+    return {
+      background: "transparent",
+      color: "rgba(20,23,28,.4)",
+      border: "1px solid rgba(20,23,28,.12)",
+    };
   };
 
   const PaletteContent = ({ onClose }: { onClose?: () => void }) => (
@@ -2134,7 +2182,11 @@ export default function StudentCBTAttempt() {
                   fontWeight: currentSectionId === section.id ? 700 : 400,
                   borderBottom:
                     currentSectionId === section.id ? "3px solid #2563eb" : "3px solid transparent",
-                  color: isLocked ? "#9ca3af" : currentSectionId === section.id ? "#2563eb" : "#374151",
+                  color: isLocked
+                    ? "#9ca3af"
+                    : currentSectionId === section.id
+                      ? "#2563eb"
+                      : "#374151",
                   background: "none",
                   border: "none",
                   cursor: isLocked ? "not-allowed" : "pointer",
@@ -2630,7 +2682,11 @@ export default function StudentCBTAttempt() {
                         currentSectionId === section.id
                           ? "3px solid #1e3a8a"
                           : "3px solid transparent",
-                      color: isLocked ? "#9ca3af" : currentSectionId === section.id ? "#1e3a8a" : "#374151",
+                      color: isLocked
+                        ? "#9ca3af"
+                        : currentSectionId === section.id
+                          ? "#1e3a8a"
+                          : "#374151",
                       background: "none",
                       border: "none",
                       cursor: isLocked ? "not-allowed" : "pointer",
@@ -3509,7 +3565,8 @@ export default function StudentCBTAttempt() {
 
             {(() => {
               const curIdx = sections.findIndex((s) => s.id === currentSectionId);
-              const hasNextSection = sections.length > 1 && curIdx >= 0 && curIdx < sections.length - 1;
+              const hasNextSection =
+                sections.length > 1 && curIdx >= 0 && curIdx < sections.length - 1;
               if (hasNextSection) {
                 return (
                   <button
@@ -3822,7 +3879,9 @@ export default function StudentCBTAttempt() {
                 Once submitted you cannot return to this section.
               </div>
             </div>
-            <div style={{ padding: "12px 18px", display: "flex", justifyContent: "flex-end", gap: 8 }}>
+            <div
+              style={{ padding: "12px 18px", display: "flex", justifyContent: "flex-end", gap: 8 }}
+            >
               <button
                 onClick={() => setSubmitSectionDialogOpen(false)}
                 style={{

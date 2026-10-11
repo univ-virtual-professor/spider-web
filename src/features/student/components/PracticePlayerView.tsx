@@ -86,7 +86,7 @@ export function PracticePlayerView({
             <HtmlView html={question.stem} />
           </div>
 
-          <div className="mt-3.5 mb-[18px] flex flex-wrap gap-1.5">
+          <div className="mb-[18px] mt-3.5 flex flex-wrap gap-1.5">
             <span className="rounded-md bg-ds-fill px-[9px] py-1 font-ds-mono text-[11px] font-medium text-ds-ink/60">
               {TYPE_LABEL[question.type]}
             </span>
@@ -107,9 +107,7 @@ export function PracticePlayerView({
                       key={option.id}
                       className={cn(
                         "flex cursor-pointer items-start gap-2.5 rounded-[5px] border px-2.5 py-2",
-                        isSelected
-                          ? "border-ds-accent/40 bg-ds-accent/[.08]"
-                          : "border-transparent"
+                        isSelected ? "border-ds-accent/40 bg-ds-accent/[.08]" : "border-transparent"
                       )}
                     >
                       <input
