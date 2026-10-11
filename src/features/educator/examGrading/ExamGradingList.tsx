@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { CheckCircle2, Loader2, Plus } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@shared/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@shared/ui/dialog";
@@ -9,15 +9,9 @@ import { Label } from "@shared/ui/label";
 import { useAuth } from "@app/providers/AuthProvider";
 import { useEmployee } from "@shared/contexts/EmployeeContext";
 import { PERMISSIONS } from "@shared/lib/rolesConfig";
-import {
-  DsPageHeader,
-  DsCard,
-  DsTableRow,
-  DsStatusPill,
-  DsMeter,
-  DsDetailRail,
-} from "@shared/ui/ds";
+import { DsPageHeader, DsCard, DsStatusPill, DsMeter, DsDetailRail } from "@shared/ui/ds";
 import { DsEmpty, DsSkeletonRows, DsInlineError } from "./dsLocalStates";
+import { FLAGGED_CONFIDENCE } from "./constants";
 import {
   approveGrading,
   createExam,
@@ -30,11 +24,6 @@ import {
   type Grading,
 } from "./api";
 
-// Flagged = AI graded the question but either confidence is below this bar or
-// the educator hasn't approved/overridden it yet. There's no server-side
-// "flagged" flag, so this is derived client-side from real grading data.
-const FLAGGED_CONFIDENCE = 0.75;
-
 type SheetRow = {
   sheet_id: string;
   student_name: string;
@@ -42,7 +31,7 @@ type SheetRow = {
   status: string;
 };
 
-type ExamState = "draft" | "grading" | "awaiting_signoff" | "released";
+type ExamState = "draft" | "grading" | "failed" | "awaiting_signoff" | "released";
 
 type ExamRow = {
   exam: Exam;
@@ -61,20 +50,24 @@ function deriveState(exam: Exam, sheets: SheetRow[]): ExamState {
   if (sheets.length === 0) return "draft";
   const graded = sheets.filter((s) => s.status === "graded").length;
   const inProgress = sheets.filter((s) => s.status === "pending" || s.status === "processing").length;
+  const failed = sheets.filter((s) => s.status === "failed").length;
   if (inProgress > 0) return "grading";
   if (graded === sheets.length) return exam.results_released ? "released" : "awaiting_signoff";
+  if (failed > 0) return "failed";
   return "draft";
 }
 
 const STATE_LABEL: Record<ExamState, string> = {
   draft: "Draft",
   grading: "Grading",
+  failed: "Needs attention",
   awaiting_signoff: "Awaiting sign-off",
   released: "Released",
 };
 const STATE_TONE: Record<ExamState, "slate" | "info" | "accent" | "positive"> = {
   draft: "slate",
   grading: "info",
+  failed: "accent",
   awaiting_signoff: "accent",
   released: "positive",
 };
@@ -97,7 +90,7 @@ export default function ExamGradingList() {
 
   const [flagged, setFlagged] = useState<FlaggedItem[]>([]);
   const [flaggedLoading, setFlaggedLoading] = useState(false);
-  const [releaseBusy, setReleaseBusy] = useState(false);
+  const [releasingExamId, setReleasingExamId] = useState<string | null>(null);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -139,8 +132,11 @@ export default function ExamGradingList() {
     }
   }
 
-  // The "live AI grading run" card tracks one exam at a time — the most
-  // recently created exam that currently has sheets mid-grading.
+  // The "live AI grading run" card only ever tracks an exam that's actually
+  // mid-grading (never awaiting_signoff/released) so its "Running" label and
+  // progress meter are always true — release/unrelease live on each exam's
+  // own row instead (see rowAction below), since that's reachable for every
+  // awaiting_signoff/released exam, not just whichever one this card shows.
   const activeRow = useMemo(() => rows.find((r) => r.state === "grading") || null, [rows]);
 
   async function loadFlagged(token: string, built: ExamRow[]) {
@@ -186,14 +182,13 @@ export default function ExamGradingList() {
     }
   }
 
-  async function handleRelease() {
-    if (!activeRow) return;
-    setReleaseBusy(true);
+  async function handleToggleRelease(row: ExamRow) {
+    setReleasingExamId(row.exam.id);
     try {
       const token = await firebaseUser?.getIdToken();
-      const updated = activeRow.exam.results_released
-        ? await unreleaseResults(token, activeRow.exam.id)
-        : await releaseResults(token, activeRow.exam.id);
+      const updated = row.exam.results_released
+        ? await unreleaseResults(token, row.exam.id)
+        : await releaseResults(token, row.exam.id);
       setRows((prev) =>
         prev.map((r) => (r.exam.id === updated.id ? { ...r, exam: updated, state: deriveState(updated, r.sheets) } : r))
       );
@@ -201,7 +196,7 @@ export default function ExamGradingList() {
     } catch (e: any) {
       toast.error(e.message);
     } finally {
-      setReleaseBusy(false);
+      setReleasingExamId(null);
     }
   }
 
@@ -224,7 +219,7 @@ export default function ExamGradingList() {
   }
 
   const counts = useMemo(() => {
-    const c: Record<ExamState, number> = { draft: 0, grading: 0, awaiting_signoff: 0, released: 0 };
+    const c: Record<ExamState, number> = { draft: 0, grading: 0, failed: 0, awaiting_signoff: 0, released: 0 };
     for (const r of rows) c[r.state]++;
     return c;
   }, [rows]);
@@ -248,7 +243,7 @@ export default function ExamGradingList() {
       <div className="grid items-start gap-3.5 lg:grid-cols-[1.45fr_1fr]">
         <DsCard className="overflow-hidden">
           <div className="flex items-center gap-1.5 border-b border-ds-ink/[.08] px-3 py-2">
-            {(["all", "draft", "grading", "awaiting_signoff", "released"] as const).map((f) => (
+            {(["all", "draft", "grading", "failed", "awaiting_signoff", "released"] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
@@ -282,37 +277,60 @@ export default function ExamGradingList() {
               }
             />
           ) : (
-            visibleRows.map((r) => (
-              <Link key={r.exam.id} to={`/educator/exam-grading/${r.exam.id}`} className="block">
-                <DsTableRow cols="3px minmax(0,1fr) auto" height={58} className="gap-3 hover:bg-ds-fill/30">
+            visibleRows.map((r) => {
+              const rowAction =
+                r.state === "awaiting_signoff"
+                  ? { label: "Release", next: "released" as const }
+                  : r.state === "released"
+                    ? { label: "Unrelease", next: "awaiting_signoff" as const }
+                    : null;
+              return (
+                <div
+                  key={r.exam.id}
+                  className="flex items-center gap-3 border-b border-ds-ink/[.055] px-4 hover:bg-ds-fill/30"
+                  style={{ height: 58 }}
+                >
                   <div
                     className={
-                      "h-8 rounded-sm " +
+                      "h-8 w-[3px] shrink-0 rounded-sm " +
                       (r.state === "grading"
                         ? "bg-ds-info"
-                        : r.state === "awaiting_signoff"
+                        : r.state === "awaiting_signoff" || r.state === "failed"
                           ? "bg-ds-accent"
                           : r.state === "released"
                             ? "bg-ds-positive"
                             : "bg-ds-slate")
                     }
                   />
-                  <div className="min-w-0">
+                  <Link to={`/educator/exam-grading/${r.exam.id}`} className="min-w-0 flex-1">
                     <div className="truncate font-semibold">{r.exam.title}</div>
                     <div className="mt-0.5 truncate font-ds-sans text-[11px] text-ds-ink/45">
                       {r.exam.subject} · {r.sheets.length} sheet{r.sheets.length === 1 ? "" : "s"} · created{" "}
                       {new Date(r.exam.created_at).toLocaleDateString()}
                     </div>
-                  </div>
+                  </Link>
+                  {rowAction && canPublish && (
+                    <button
+                      onClick={() => handleToggleRelease(r)}
+                      disabled={releasingExamId === r.exam.id}
+                      className="h-7 shrink-0 rounded-md border border-ds-ink/[.14] px-2.5 font-ds-sans text-[11px] font-medium text-ds-ink hover:bg-ds-fill disabled:opacity-50"
+                    >
+                      {releasingExamId === r.exam.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        rowAction.label
+                      )}
+                    </button>
+                  )}
                   <DsStatusPill tone={STATE_TONE[r.state]}>
                     {STATE_LABEL[r.state]}
                     {r.state === "grading" && r.sheets.length > 0
                       ? ` ${Math.round((r.gradedCount / r.sheets.length) * 100)}%`
                       : ""}
                   </DsStatusPill>
-                </DsTableRow>
-              </Link>
-            ))
+                </div>
+              );
+            })
           )}
         </DsCard>
 
@@ -321,7 +339,7 @@ export default function ExamGradingList() {
             <DsCard className="p-0">
               <DsEmpty
                 title="No grading run in progress"
-                body="Start grading from a test's answer sheets to see live progress and flagged sheets here."
+                body="Start grading from a test's answer sheets to see live progress and flagged sheets here. Release and unrelease live on each test's own row once grading finishes."
               />
             </DsCard>
           ) : activeRow ? (
@@ -397,21 +415,6 @@ export default function ExamGradingList() {
                     </div>
                   </div>
                 ))
-              )}
-
-              {canPublish && (
-                <button
-                  onClick={handleRelease}
-                  disabled={releaseBusy || activeRow.gradedCount < activeRow.sheets.length}
-                  className="mt-3 flex h-[34px] w-full items-center justify-center gap-1.5 rounded-[7px] bg-ds-accent font-ds-sans text-[12.5px] font-semibold text-white disabled:opacity-40"
-                >
-                  {releaseBusy ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                  )}
-                  Release results to students
-                </button>
               )}
             </DsCard>
           ) : null}

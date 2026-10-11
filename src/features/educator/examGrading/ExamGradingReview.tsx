@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   AlertCircle,
   ArrowLeft,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -13,6 +14,8 @@ import {
 import { toast } from "sonner";
 import { Button } from "@shared/ui/button";
 import { useAuth } from "@app/providers/AuthProvider";
+import { useEmployee } from "@shared/contexts/EmployeeContext";
+import { PERMISSIONS } from "@shared/lib/rolesConfig";
 import {
   DsCard,
   DsCardHeader,
@@ -20,21 +23,21 @@ import {
   DsStatusPill,
 } from "@shared/ui/ds";
 import { DsEmpty, DsFrozenBadge, DsInlineError, DsSkeletonRows } from "./dsLocalStates";
+import { FLAGGED_CONFIDENCE } from "./constants";
 import {
   approveGrading,
   getExam,
   getResults,
   listAnswerSheets,
   overrideGrading,
+  releaseResults,
   startGrading,
+  unreleaseResults,
   type AnswerSheet,
   type Exam,
   type Grading,
 } from "./api";
 
-// Flagged = low AI confidence and not yet reviewed — same bar used on the test
-// list's live grading run card, kept in sync here.
-const FLAGGED_CONFIDENCE = 0.75;
 const ZOOM_STEPS = [75, 100, 125, 150];
 
 function isFlagged(g: Grading) {
@@ -53,6 +56,8 @@ type SheetListItem = {
 export default function ExamGradingReview() {
   const { examId, sheetId } = useParams<{ examId: string; sheetId: string }>();
   const { firebaseUser } = useAuth();
+  const { isEmployee, hasPermission } = useEmployee();
+  const canPublish = !isEmployee || hasPermission(PERMISSIONS.TESTS_PUBLISH);
   const navigate = useNavigate();
 
   const [exam, setExam] = useState<Exam | null>(null);
@@ -63,6 +68,7 @@ export default function ExamGradingReview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [regrading, setRegrading] = useState(false);
+  const [releaseBusy, setReleaseBusy] = useState(false);
 
   const [rotation, setRotation] = useState(0);
   const [zoomIdx, setZoomIdx] = useState(1); // index into ZOOM_STEPS, default 100%
@@ -106,6 +112,7 @@ export default function ExamGradingReview() {
   const selectedIndex = gradings.findIndex((g) => g.id === selectedId);
   const flaggedCount = gradings.filter(isFlagged).length;
   const frozen = !!exam?.results_released;
+  const allSheetsGraded = sheetList.length > 0 && sheetList.every((s) => s.status === "graded");
 
   useEffect(() => {
     setMarksInput(String(selected?.marks_awarded ?? 0));
@@ -178,6 +185,23 @@ export default function ExamGradingReview() {
     }
   }
 
+  async function handleToggleRelease() {
+    if (!exam) return;
+    setReleaseBusy(true);
+    try {
+      const token = await firebaseUser?.getIdToken();
+      const updated = exam.results_released
+        ? await unreleaseResults(token, exam.id)
+        : await releaseResults(token, exam.id);
+      setExam(updated);
+      toast.success(updated.results_released ? "Results released to students" : "Results unreleased");
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setReleaseBusy(false);
+    }
+  }
+
   const batchStats = useMemo(() => {
     const total = sheetList.length;
     const graded = sheetList.filter((s) => s.status === "graded").length;
@@ -225,6 +249,27 @@ export default function ExamGradingReview() {
           </p>
         </div>
         {frozen && <DsFrozenBadge />}
+        {canPublish && (
+          <div className="flex flex-col items-end gap-1">
+            <button
+              onClick={handleToggleRelease}
+              disabled={releaseBusy || (!frozen && !allSheetsGraded)}
+              className="flex h-[34px] items-center justify-center gap-1.5 whitespace-nowrap rounded-[7px] bg-ds-accent px-3.5 font-ds-sans text-[12.5px] font-semibold text-white disabled:opacity-40"
+            >
+              {releaseBusy ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-3.5 w-3.5" />
+              )}
+              {frozen ? "Unrelease results" : "Release results"}
+            </button>
+            {!frozen && !allSheetsGraded && (
+              <span className="font-ds-sans text-[10.5px] text-ds-ink/40">
+                Every sheet must be graded first
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid items-start gap-3.5 lg:grid-cols-[212px_minmax(0,1fr)_320px]">
@@ -406,7 +451,7 @@ export default function ExamGradingReview() {
 
               {frozen ? (
                 <p className="mt-3.5 font-ds-sans text-[11.5px] text-ds-slate">
-                  Results are released to students — unrelease from the test page to make changes.
+                  Results are released to students — use Unrelease results above to make changes.
                 </p>
               ) : (
                 <>
