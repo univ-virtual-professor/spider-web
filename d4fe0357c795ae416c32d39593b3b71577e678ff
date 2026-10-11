@@ -1,0 +1,29 @@
+src/features/educator/test-series/ManageQuestionsPage.tsx
+  28def1481053587f 376
+src/features/educator/ScheduledDpps.tsx
+  28def1481053587f 184-189,199-207,212
+src/features/educator/test-series/QuestionEditor.tsx
+  28def1481053587f 2,4-5,14-15,26-150,152-166,561-565,573,575-582,950-952,954-956,958-965,967-968,970
+src/features/educator/components/ImageTextarea.tsx
+  28def1481053587f 42-43,84,455
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "d4fe0357c795ae416c32d39593b3b71577e678ff",
+  "prompts": {
+    "28def1481053587f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e90cf844-3897-41e6-acbd-6e75ec6da262",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 214,
+      "total_deletions": 37,
+      "accepted_lines": 198,
+      "overriden_lines": 0
+    }
+  }
+}
