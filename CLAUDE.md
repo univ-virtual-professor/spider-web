@@ -270,14 +270,30 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
   employee whose assigned role template is "Front Desk / Ops" — `EmployeeContext`'s `roleName`),
   Student. Resolved in `EducatorLayout.tsx` from `useEmployee()`'s `isEmployee`/`roleName`; Student
   always gets the Student nav in `StudentLayout.tsx`.
-- **Nav**: both layouts build a flat `navCatalog` (no nested/expandable items) tagged with which
-  role(s) it's a top-level ("primary") item for, per BUILD-NOTES §04's screen map, plus a
-  permission check (`anyOf`/`ownerOnly`) reused from the old sidebar logic. An item a viewer can't
-  reach is omitted entirely (not disabled). Anything reachable but not in the current role's
-  design nav — Question Bank, Test Upload Request, Reported Questions, Review Answers, Access
-  Codes, Content, the standalone Test Platform dashboard (`/educator/testing`), etc. for educators;
-  My Results, Attendance, Grades, Content, AI Tutor, Rankings for students — shows in a "More"
-  group at the bottom of the sidebar instead of disappearing.
+- **Nav**: both layouts build a flat `navCatalog`/nav-item catalog (icon, default label,
+  permission check) keyed by href, plus a separate per-role primary-nav order
+  (`PRIMARY_NAV_ORDER` in `EducatorLayout.tsx`, `STUDENT_PRIMARY_NAV` in `StudentLayout.tsx`) that
+  lists each role's top-level items in the exact order of the design's `NAV` constant (Desktop
+  Portal.dc.html) — a flat href list per role, not the catalog's own array order, since
+  Owner/Faculty/Ops order the same underlying items differently. The same permission check
+  (`anyOf`/`ownerOnly`) the old sidebar used still applies — an item a viewer can't reach is
+  omitted entirely (not disabled). Anything reachable but not in the current role's design nav —
+  Question Bank, Test Upload Request, Reported Questions, Review Answers, Access Codes, Content,
+  Test series (`/educator/test-series`), the DPP generator (`/educator/dpp`), Invite students
+  (`/educator/learners`), Analytics (`/educator/analytics`), the standalone Test Platform
+  dashboard (`/educator/testing`), etc. for educators; My Results, Attendance, Grades, Content, AI
+  Tutor, Rankings for students — shows in a "More" group at the bottom of the sidebar instead of
+  disappearing. Each catalog item has an always-readable default `label` plus an optional per-role
+  `roleLabel` override for when the design calls it something more specific as that role's primary
+  item (e.g. the two Attendance routes default to "Attendance (mark)"/"Attendance overview" to
+  stay unambiguous in "More", but read as plain "Attendance" when primary for Faculty/Ops
+  respectively). Some design nav items map to a route other than the most literally-named one —
+  Faculty's "Tests & grading" is `/educator/exam-grading` (where the merged revamp built that
+  screen), not `/educator/test-series`; Faculty's "Daily practice" is `/educator/scheduled-dpps`,
+  not the `/educator/dpp` generator; Faculty's and Ops's "Students" is `/educator/students`
+  (`StudentsListing`), not `/educator/learners` (`Learners.tsx`, actually the invite/seat screen).
+  "Sheet review" and "Student analysis" aren't sidebar entries at all — see design.md for the
+  reasoning per item.
 - Shell chrome: 236px sidebar, 56px top bar with a `{Role} / {page label}` breadcrumb, using the
   `ds-*` tokens (`src/shared/ui/ds/index.tsx`) — this is the shell only; individual screens keep
   their existing (non-`ds-*`) look until their own revamp ticket.

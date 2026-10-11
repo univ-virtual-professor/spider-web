@@ -28,6 +28,7 @@ import {
   CalendarDays,
   Layers,
   Database,
+  UserPlus,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
@@ -69,7 +70,12 @@ type SidebarItem = {
 type NavCatalogItem = {
   icon: any;
   href: string;
-  label: string | Partial<Record<EducatorPortalRole, string>>;
+  /** Always a readable default — never the raw href — used whenever `roleLabel` has no
+   *  entry for the current role (e.g. when the item shows up in another role's "More"
+   *  group, or to disambiguate two items that share a generic name there). */
+  label: string;
+  /** Per-role override matching the design's exact wording for that role's primary nav. */
+  roleLabel?: Partial<Record<EducatorPortalRole, string>>;
   ownerOnly?: boolean;
   anyOf?: Permission[];
   enabled?: boolean;
@@ -79,10 +85,16 @@ type NavCatalogItem = {
 // Exact per-role primary-nav order from the design's NAV constant
 // (Desktop Portal.dc.html, BUILD-NOTES §04) — a flat href list rather than
 // navCatalog's own array order, since each role orders the same items
-// differently. "Create test" (fa_create) has no standalone route in this
-// codebase today — it's a dialog reached from the "Tests & grading"
-// (test-series) page — so it's omitted here rather than duplicating that
-// page's nav entry; see design.md.
+// differently.
+//
+// Omitted deliberately (see design.md):
+// - "Create test" (fa_create): a dialog reached from the "Tests & grading" page, not a
+//   standalone route.
+// - "Sheet review": the per-sheet drill-down (/educator/exam-grading/:examId/review/:sheetId),
+//   like "Live test" on the student side — not a top-level screen.
+// - "Student analysis" on Faculty's primary nav (owner's call): in the design it's actually
+//   per-student (an Analysis tab on that student's detail page), not a standalone list for
+//   Faculty today. /educator/analytics stays reachable from More as "Analytics".
 const PRIMARY_NAV_ORDER: Record<EducatorPortalRole, string[]> = {
   Owner: [
     "/educator/dashboard",
@@ -96,25 +108,22 @@ const PRIMARY_NAV_ORDER: Record<EducatorPortalRole, string[]> = {
     "/educator/batches",
     "/educator/curriculum",
     "/educator/attendance",
-    "/educator/test-series",
-    "/educator/exam-schedule",
     "/educator/exam-grading",
-    "/educator/dpp",
-    "/educator/learners",
-    "/educator/analytics",
+    "/educator/exam-schedule",
+    "/educator/scheduled-dpps",
+    "/educator/students",
   ],
   Ops: [
     "/educator/timetable",
     "/educator/exam-schedule",
     "/educator/enrolments",
-    "/educator/learners",
+    "/educator/students",
     "/educator/attendance-overview",
   ],
 };
 
-function resolveLabel(label: NavCatalogItem["label"], role: EducatorPortalRole, fallback: string) {
-  if (typeof label === "string") return label;
-  return label[role] ?? fallback;
+function resolveLabel(item: NavCatalogItem, role: EducatorPortalRole) {
+  return item.roleLabel?.[role] ?? item.label;
 }
 
 function initials(name: string) {
@@ -254,13 +263,13 @@ function EducatorLayoutInner() {
   // entirely, not disabled.
   const navCatalog = useMemo<NavCatalogItem[]>(() => {
     const objectiveEnabled = examConfig?.objective?.enabled ?? true;
-    const subjectiveEnabled = examConfig?.subjective?.enabled ?? false;
 
     return [
       {
         icon: LayoutDashboard,
         href: "/educator/dashboard",
-        label: { Owner: "Overview", Faculty: "Today" },
+        label: "Dashboard",
+        roleLabel: { Owner: "Overview", Faculty: "Today" },
       },
       {
         icon: Users,
@@ -271,25 +280,34 @@ function EducatorLayoutInner() {
       {
         icon: Users,
         href: "/educator/batches",
-        label: { Owner: "Batches", Faculty: "My batches" },
+        label: "Batches",
+        roleLabel: { Faculty: "My batches" },
         anyOf: [PERMISSIONS.STUDENTS_VIEW],
       },
       {
         icon: UserCheck,
-        href: "/educator/learners",
+        href: "/educator/students",
         label: "Students",
+        anyOf: [PERMISSIONS.STUDENTS_VIEW],
+      },
+      {
+        icon: UserPlus,
+        href: "/educator/learners",
+        label: "Invite students",
         anyOf: [PERMISSIONS.STUDENTS_VIEW],
       },
       {
         icon: CalendarCheck,
         href: "/educator/attendance",
-        label: "Attendance",
+        label: "Attendance (mark)",
+        roleLabel: { Faculty: "Attendance" },
         anyOf: [PERMISSIONS.STUDENTS_VIEW],
       },
       {
         icon: CalendarCheck,
         href: "/educator/attendance-overview",
-        label: "Attendance",
+        label: "Attendance overview",
+        roleLabel: { Ops: "Attendance" },
         anyOf: [PERMISSIONS.STUDENTS_VIEW],
       },
       {
@@ -307,7 +325,7 @@ function EducatorLayoutInner() {
       {
         icon: BarChart3,
         href: "/educator/analytics",
-        label: { Faculty: "Student analysis" },
+        label: "Analytics",
         anyOf: [PERMISSIONS.ANALYTICS_VIEW],
       },
       {
@@ -325,7 +343,7 @@ function EducatorLayoutInner() {
       {
         icon: FileText,
         href: "/educator/test-series",
-        label: "Tests & grading",
+        label: "Test series",
         enabled: objectiveEnabled,
         anyOf: [
           PERMISSIONS.TESTS_VIEW,
@@ -343,13 +361,18 @@ function EducatorLayoutInner() {
       {
         icon: FileCheck2,
         href: "/educator/exam-grading",
-        label: "Sheet review",
-        enabled: subjectiveEnabled,
+        label: "Tests & grading",
         anyOf: [PERMISSIONS.TESTS_VIEW],
       },
       {
         icon: Zap,
         href: "/educator/dpp",
+        label: "DPP generator",
+        anyOf: [PERMISSIONS.DPPS_MANAGE],
+      },
+      {
+        icon: Zap,
+        href: "/educator/scheduled-dpps",
         label: "Daily practice",
         anyOf: [PERMISSIONS.DPPS_MANAGE],
       },
@@ -430,7 +453,7 @@ function EducatorLayoutInner() {
       .map((item) => ({
         icon: item.icon,
         href: item.href,
-        label: resolveLabel(item.label, role, item.href),
+        label: resolveLabel(item, role),
         badge: item.badge,
       }));
   }, [visibleNavCatalog, role]);
@@ -445,7 +468,7 @@ function EducatorLayoutInner() {
       .map((item) => ({
         icon: item.icon,
         href: item.href,
-        label: resolveLabel(item.label, role, item.href),
+        label: resolveLabel(item, role),
         badge: item.badge,
       }));
   }, [visibleNavCatalog, role]);
