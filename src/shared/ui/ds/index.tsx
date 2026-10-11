@@ -4,6 +4,8 @@
 // to match those mockups (Enrolments, Attendance Overview, Exam Schedule,
 // Website Pages so far), not as a wholesale replacement elsewhere.
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
+import { Lock, RefreshCw } from "lucide-react";
 import { cn } from "@shared/lib/utils";
 import { Button } from "@shared/ui/button";
 
@@ -268,5 +270,121 @@ export function DsAlertStrip({
         </div>
       )}
     </div>
+  );
+}
+
+// ── Shared states (BUILD-NOTES §03) ───────────────────────────────────────
+// Every screen needs these six states. Keep them here instead of re-rolling
+// an empty/loading/error block inline per screen.
+
+// Empty: new institute/batch/no records yet. Exactly one primary action —
+// the single action that creates the first record.
+export function DsEmpty({
+  title,
+  body,
+  action,
+}: {
+  title: string;
+  body?: string;
+  action?: { label: string; onClick: () => void };
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 rounded-[10px] border border-dashed border-ds-ink/[.14] bg-ds-surface px-6 py-14 text-center">
+      <div className="font-ds-sans text-[13.5px] font-semibold text-ds-ink">{title}</div>
+      {body && (
+        <div className="max-w-sm font-ds-sans text-[12.5px] leading-[1.55] text-ds-ink/55">
+          {body}
+        </div>
+      )}
+      {action && (
+        <Button
+          className="mt-2 bg-ds-accent font-ds-sans text-[12.5px] font-semibold text-white hover:bg-ds-accent/90"
+          onClick={action.onClick}
+        >
+          {action.label}
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// Loading: skeleton rows drawn at the real row height so a table never jumps
+// once data arrives. No spinners inside cards.
+export function DsSkeletonRows({
+  rows = 5,
+  rowHeight = 48,
+  cols = "1fr",
+}: {
+  rows?: number;
+  rowHeight?: number;
+  cols?: string;
+}) {
+  return (
+    <div role="status" aria-label="Loading">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className="grid items-center gap-3 border-b border-ds-ink/[.055] px-4 last:border-b-0"
+          style={{ gridTemplateColumns: cols, height: rowHeight }}
+        >
+          {cols.split(" ").map((_, c) => (
+            <div key={c} className="h-3 w-full animate-pulse rounded bg-ds-fill" />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Error: failed scan upload, generation failure. Inline in the card that
+// owns the data, with a retry — never a page-level redirect.
+export function DsInlineError({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-[10px] border border-ds-accent/25 bg-ds-accent/[.06] px-4 py-3">
+      <div className="font-ds-sans text-[12.5px] text-ds-accent">{message}</div>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          className="flex items-center gap-1.5 rounded-md border border-ds-accent/30 bg-white px-2.5 py-1 font-ds-sans text-[11.5px] font-semibold text-ds-accent"
+        >
+          <RefreshCw className="h-3 w-3" />
+          Retry
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Permission: an out-of-scope route is absent from nav; a deep link to it
+// resolves here instead of a 403 or a silent redirect.
+export function DsPermissionNotice({ backHref = "/" }: { backHref?: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 rounded-[10px] border border-ds-ink/[.09] bg-ds-surface px-6 py-14 text-center">
+      <Lock className="h-5 w-5 text-ds-ink/35" />
+      <div className="font-ds-sans text-[13.5px] font-semibold text-ds-ink">
+        This isn't part of your role
+      </div>
+      <div className="max-w-sm font-ds-sans text-[12.5px] leading-[1.55] text-ds-ink/55">
+        Your account doesn't have access to this page. If you think this is wrong, ask whoever
+        manages staff access at your institute to update your role.
+      </div>
+      <Link
+        to={backHref}
+        className="mt-2 rounded-md bg-ds-accent px-3 py-1.5 font-ds-sans text-[12.5px] font-semibold text-white hover:bg-ds-accent/90"
+      >
+        Back to dashboard
+      </Link>
+    </div>
+  );
+}
+
+// Frozen: published exams, released results, submitted attendance — the
+// record is read-only; edits go through a correction request, not an inline edit.
+export function DsFrozenBadge({ label = "Locked" }: { label?: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-[5px] bg-ds-fill px-2 py-0.5 font-ds-mono text-[10.5px] font-semibold uppercase tracking-wide text-ds-ink/55">
+      <Lock className="h-2.5 w-2.5" />
+      {label}
+    </span>
   );
 }

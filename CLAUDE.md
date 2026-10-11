@@ -260,12 +260,31 @@ Multi-tenant SaaS platform for coaching institutes. Built with React + TypeScrip
 - No LLM involved — monkey-king's `personalized_test_manager.py` does a plain weighted allocation across the student's weak (subject, chapter, topic) nodes and samples from a Postgres question pool (synced from `qbank-scraper`, see monkey-king's CLAUDE.md)
 - Generated tests are normal `educators/{uid}/my_tests/{testId}` docs (`type: "personalized"`, `visibility: "private"`) under the _student's own_ educator — reuses `StudentCBTAttempt` and the whole existing attempt/scoring/report pipeline. Excluded from `StudentTests.tsx`'s grid and `TestSeries.tsx`'s educator listing via a `type !== "personalized"` filter.
 
-## Workspace Split — Academics vs Test Platform (master_revamped)
+## Portal shell — role-based nav (master_revamped, ticket 1 of the portal revamp)
 
-- Nav-only reorganization, no route renames (preserves bookmarks, batchAssignment links, and the `spider-desktop` deep link which references `testId`/`assignmentId`, not paths).
-- Switcher state lives in `src/shared/contexts/EducatorWorkspaceContext.tsx` / `StudentWorkspaceContext.tsx` (lifted out of the layouts so other pages — e.g. `Dashboard.tsx` — can read the active workspace too), persisted in `localStorage` (`pk_educator_workspace` / `pk_student_workspace`), defaulted from the current pathname. Internal values are still `"lms"|"test"` / `"course"|"test"` — only the visible switcher labels read "Academics" / "Test Platform".
-- **Educator** (`EducatorLayout.tsx`): `sidebarItems` entries carry an optional `workspace: "lms" | "test" | "both"` tag; `visibleSidebarItems` filters by the active workspace. Academics: Dashboard, Batches, Students, Attendance, Timetable, Curriculum. Test Platform: Objective Exams (+children), Subjective Exams. Analytics is tagged `"both"`. Organization/Billing/Settings remain in the profile dropdown, unaffected.
-- **Student** (`StudentLayout.tsx`): same pattern. Academics: Dashboard, Curriculum, Timetable, Attendance, Grades, Content, AI Tutor. Test Platform: Tests, My Results, Reports, Practice for Me, Rankings.
+- The Academics/Test Platform workspace switcher described below has been **removed**
+  (`EducatorWorkspaceContext.tsx`/`StudentWorkspaceContext.tsx` and their `pk_educator_workspace`/
+  `pk_student_workspace` localStorage keys are deleted — nothing reads the old switcher state
+  anymore). Replaced by a role-based sidebar per `docs/agents/mockups/revamp/BUILD-NOTES.md` §02.
+- **Roles**: Owner (org head, not an employee), Faculty (any other educator employee), Ops (an
+  employee whose assigned role template is "Front Desk / Ops" — `EmployeeContext`'s `roleName`),
+  Student. Resolved in `EducatorLayout.tsx` from `useEmployee()`'s `isEmployee`/`roleName`; Student
+  always gets the Student nav in `StudentLayout.tsx`.
+- **Nav**: both layouts build a flat `navCatalog` (no nested/expandable items) tagged with which
+  role(s) it's a top-level ("primary") item for, per BUILD-NOTES §04's screen map, plus a
+  permission check (`anyOf`/`ownerOnly`) reused from the old sidebar logic. An item a viewer can't
+  reach is omitted entirely (not disabled). Anything reachable but not in the current role's
+  design nav — Question Bank, Test Upload Request, Reported Questions, Review Answers, Access
+  Codes, Content, the standalone Test Platform dashboard (`/educator/testing`), etc. for educators;
+  My Results, Attendance, Grades, Content, AI Tutor, Rankings for students — shows in a "More"
+  group at the bottom of the sidebar instead of disappearing.
+- Shell chrome: 236px sidebar, 56px top bar with a `{Role} / {page label}` breadcrumb, using the
+  `ds-*` tokens (`src/shared/ui/ds/index.tsx`) — this is the shell only; individual screens keep
+  their existing (non-`ds-*`) look until their own revamp ticket.
+- Shared states for every screen (`DsEmpty`, `DsSkeletonRows`, `DsInlineError`,
+  `DsPermissionNotice`, `DsFrozenBadge`) live in `src/shared/ui/ds/index.tsx` alongside the other
+  `Ds*` primitives. `RequirePermission.tsx` now renders `DsPermissionNotice` in place for an
+  out-of-scope deep link instead of redirecting.
 
 ## Curriculum, Attendance, Timetable, Grades (master_revamped)
 
@@ -279,9 +298,9 @@ All Firestore-only — no monkey-king changes. Faculty assignment is expressed _
 
 ## Persona-aware home pages (master_revamped)
 
-- **Educator `Dashboard.tsx`** (`/educator/dashboard`, the Academics-workspace home): "My Classes Today" card (only shown when the _viewer's own_ `firebaseUser.uid` — not `educatorId`, which for an employee is the org head's uid — matches a `teacherUid` on today's timetable slots) with a "Mark Attendance" button that deep-links into `/educator/attendance` via router state; institute snapshot (batches/students/curriculum/attendance counts, Seats & Plan); "Today Across All Batches" (institute-wide, org-head/coordinator view).
+- **Educator `Dashboard.tsx`** (`/educator/dashboard` — "Overview" for Owner, "Today" for Faculty in the role-based sidebar): "My Classes Today" card (only shown when the _viewer's own_ `firebaseUser.uid` — not `educatorId`, which for an employee is the org head's uid — matches a `teacherUid` on today's timetable slots) with a "Mark Attendance" button that deep-links into `/educator/attendance` via router state; institute snapshot (batches/students/curriculum/attendance counts, Seats & Plan); "Today Across All Batches" (institute-wide, org-head/coordinator view).
 - **Student `StudentDashboard.tsx`**: new "Today's Classes" card inserted above the existing Daily Quote card, sourced from the student's batch timetable filtered to today's `dayOfWeek` — purely additive, the rest of the file (metrics, DPP grid, leaderboard, score trend) is unchanged.
-- **Test Platform home**: `TestPlatformDashboard.tsx` (`/educator/testing`) — what used to be at `/educator/dashboard` before the workspace split (live tests/DPPs, assessments feed, activity feeds).
+- **Test Platform home**: `TestPlatformDashboard.tsx` (`/educator/testing`) — reachable from the sidebar's "More" group (labeled "Testing overview"); not in any role's primary nav per the revamp design.
 
 ## Desktop Exam Integration (spider-desktop)
 
