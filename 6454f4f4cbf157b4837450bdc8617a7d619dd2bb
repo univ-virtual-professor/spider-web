@@ -1,0 +1,27 @@
+src/features/educator/examGrading/constants.ts
+  28def1481053587f 1-5
+src/features/educator/examGrading/ExamGradingList.tsx
+  28def1481053587f 3,14,34,53,56,63,70,93,135-139,185-186,189-191,199,222,246,280-288,290-291,295,298,305,311-324,331-333,342
+src/features/educator/examGrading/ExamGradingReview.tsx
+  28def1481053587f 6,17-18,26,33,35,59-60,71,115,188-204,252-272,454
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "6454f4f4cbf157b4837450bdc8617a7d619dd2bb",
+  "prompts": {
+    "28def1481053587f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e90cf844-3897-41e6-acbd-6e75ec6da262",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 110,
+      "total_deletions": 57,
+      "accepted_lines": 107,
+      "overriden_lines": 0
+    }
+  }
+}
