@@ -28,7 +28,8 @@ import {
   DsStatusPill,
   DsMeter,
 } from "@shared/ui/ds";
-import { Check, X, Loader2 } from "lucide-react";
+import { Check, X, Loader2, Download } from "lucide-react";
+import { downloadCsv } from "@shared/components/analysis/AnalysisView";
 
 type Branch = { id: string; name: string };
 type Slot = {
@@ -62,6 +63,15 @@ type TodayRow = {
 
 type Defaulter = { studentId: string; name: string; batchName: string; pct: number };
 
+type AttendanceSummaryRow = {
+  studentId: string;
+  name: string;
+  batchName: string;
+  present: number;
+  total: number;
+  pct: number;
+};
+
 type CorrectionRow = {
   path: string;
   studentId?: string;
@@ -85,6 +95,7 @@ export default function AttendanceOps() {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<TodayRow[]>([]);
   const [defaulters, setDefaulters] = useState<Defaulter[]>([]);
+  const [attendanceSummary, setAttendanceSummary] = useState<AttendanceSummaryRow[]>([]);
   const [defaultersLoading, setDefaultersLoading] = useState(true);
   const [corrections, setCorrections] = useState<CorrectionRow[]>([]);
   const [correctionsLoading, setCorrectionsLoading] = useState(true);
@@ -195,21 +206,27 @@ export default function AttendanceOps() {
         }
       }
 
-      const defaulterRows: Defaulter[] = [...studentTally.entries()]
-        .filter(([, v]) => v.total >= 3)
+      const summaryRows: AttendanceSummaryRow[] = [...studentTally.entries()]
+        .filter(([, v]) => v.total >= 1)
         .map(([studentId, v]) => ({
           studentId,
           name: v.name,
           batchName: v.batchName,
+          present: v.present,
+          total: v.total,
           pct: (v.present / v.total) * 100,
         }))
-        .filter((d) => d.pct < DEFAULTER_THRESHOLD_PCT)
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      const defaulterRows: Defaulter[] = summaryRows
+        .filter((v) => v.total >= 3 && v.pct < DEFAULTER_THRESHOLD_PCT)
         .sort((a, b) => a.pct - b.pct)
         .slice(0, 20);
 
       if (!cancelled) {
         setRows(todayRows.sort((a, b) => a.startTime.localeCompare(b.startTime)));
         setDefaulters(defaulterRows);
+        setAttendanceSummary(summaryRows);
         setLoading(false);
         setDefaultersLoading(false);
       }
@@ -264,11 +281,33 @@ export default function AttendanceOps() {
 
   const markedCount = rows.filter((r) => r.marked).length;
 
+  function exportMonthlyReport() {
+    const header = "Student,Batch,Present,Total sessions,Attendance %";
+    const csvRows = attendanceSummary.map((r) =>
+      [r.name, r.batchName, String(r.present), String(r.total), r.pct.toFixed(1)]
+        .map((v) => `"${v.replace(/"/g, '""')}"`)
+        .join(",")
+    );
+    downloadCsv(
+      `attendance-last-${DEFAULTER_WINDOW_DAYS}-days-${format(new Date(), "yyyy-MM-dd")}.csv`,
+      [header, ...csvRows].join("\n")
+    );
+  }
+
   return (
     <div className="space-y-5 font-ds-sans">
       <DsPageHeader
         title="Attendance"
         subtitle={`Institute-wide, today. Faculty mark it; you chase what is missing.`}
+        secondary={
+          attendanceSummary.length > 0
+            ? {
+                label: "Export report",
+                icon: <Download className="mr-1 h-3.5 w-3.5" />,
+                onClick: exportMonthlyReport,
+              }
+            : undefined
+        }
       />
 
       <div className="grid items-start gap-3.5 lg:grid-cols-[minmax(0,1.5fr)_1fr]">

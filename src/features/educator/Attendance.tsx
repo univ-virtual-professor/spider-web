@@ -4,6 +4,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
   onSnapshot,
   query,
   setDoc,
@@ -54,6 +55,14 @@ type CorrectionRequest = {
   requestedByName: string;
 };
 
+type ShortAttendanceRow = {
+  id: string;
+  name: string;
+  pct: number;
+  attended: number;
+  total: number;
+};
+
 export default function Attendance() {
   const { profile } = useAuth();
   const educatorId: string = profile?.uid ?? "";
@@ -82,6 +91,7 @@ export default function Attendance() {
   const [correctionStatus, setCorrectionStatus] = useState<Status>("present");
   const [correctionReason, setCorrectionReason] = useState("");
   const [correctionBusy, setCorrectionBusy] = useState(false);
+  const [shortAttendance, setShortAttendance] = useState<ShortAttendanceRow[]>([]);
 
   const selectedBatch = batches.find((b) => b.id === selectedBatchId) || null;
   const dateStr = format(date, "yyyy-MM-dd");
@@ -267,6 +277,70 @@ export default function Attendance() {
     });
     return () => unsub();
   }, [educatorId, selectedBatch, sessionId]);
+
+  // Term-to-date attendance per student in this batch, for the short-attendance list
+  // (BUILD-NOTES fa_attendance gap) — there's no server-side aggregate for this, so it's
+  // computed here from every session recorded for the batch so far. No notify-parents action:
+  // monkey-king's only notification route (POST /api/notifications/broadcast) fans out to a
+  // whole batch/course/branch, not an individual student or their parent, and there's no SMS
+  // path at all (parent login itself is SMS-only and still undesigned per BUILD-NOTES §06) — so
+  // that part of the gap is omitted rather than wired to an action that doesn't actually reach a
+  // parent.
+  useEffect(() => {
+    if (!educatorId || !selectedBatch || students.length === 0) {
+      setShortAttendance([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDocs(
+          collection(
+            db,
+            "educators",
+            educatorId,
+            "branches",
+            selectedBatch.branchId,
+            "courses",
+            selectedBatch.courseId,
+            "batches",
+            selectedBatch.id,
+            "sessions"
+          )
+        );
+        const totals: Record<string, { attended: number; total: number }> = {};
+        snap.docs.forEach((d) => {
+          const attendance = (d.data() as any).attendance as Record<string, Status> | undefined;
+          if (!attendance) return;
+          Object.entries(attendance).forEach(([studentId, status]) => {
+            const t = (totals[studentId] ||= { attended: 0, total: 0 });
+            t.total += 1;
+            if (status === "present" || status === "late") t.attended += 1;
+          });
+        });
+        const rows: ShortAttendanceRow[] = students
+          .map((s) => {
+            const t = totals[s.id];
+            if (!t || t.total === 0) return null;
+            return {
+              id: s.id,
+              name: s.name,
+              attended: t.attended,
+              total: t.total,
+              pct: Math.round((t.attended / t.total) * 100),
+            };
+          })
+          .filter((r): r is ShortAttendanceRow => !!r && r.pct < 75)
+          .sort((a, b) => a.pct - b.pct);
+        if (!cancelled) setShortAttendance(rows);
+      } catch {
+        if (!cancelled) setShortAttendance([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [educatorId, selectedBatch, students]);
 
   // Business rule #6: once a session has a recorded owner (teacherUid), only
   // that teacher (or the org head) can edit it directly — anyone else files a
@@ -659,6 +733,34 @@ export default function Attendance() {
                             </button>
                           </div>
                         )}
+                      </div>
+                    ))}
+                  </DsCard>
+                )}
+
+                {shortAttendance.length > 0 && (
+                  <DsCard className="p-4">
+                    <div className="mb-1 font-ds-sans text-[13.5px] font-semibold text-ds-ink">
+                      Below 75% attendance
+                    </div>
+                    <p className="mb-3 font-ds-sans text-[11.5px] text-ds-ink/50">
+                      {shortAttendance.length} student{shortAttendance.length === 1 ? "" : "s"},
+                      term to date.
+                    </p>
+                    {shortAttendance.map((row) => (
+                      <div
+                        key={row.id}
+                        className="flex items-center justify-between gap-2 border-b border-ds-ink/[.055] py-2 last:border-0"
+                      >
+                        <div className="min-w-0 truncate font-ds-sans text-[12px] font-medium text-ds-ink">
+                          {row.name}
+                        </div>
+                        <div className="shrink-0 font-ds-mono text-[11px] font-semibold text-ds-accent">
+                          {row.pct}%
+                          <span className="ml-1 font-ds-sans font-normal text-ds-ink/40">
+                            ({row.attended}/{row.total})
+                          </span>
+                        </div>
                       </div>
                     ))}
                   </DsCard>
