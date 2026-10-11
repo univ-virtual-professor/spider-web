@@ -1,0 +1,27 @@
+src/features/student/StudentCBTAttempt.tsx
+  28def1481053587f 11,593-600,646,656-658,684,694-695,751-753,762-766,770-777
+src/features/student/practice/attemptKind.ts
+  28def1481053587f 1-16,18-67
+src/features/student/practice/attemptKind.test.ts
+  28def1481053587f 1-160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "7ce61824bd45476ce9c73635bb5a1d58b6fe4df2",
+  "prompts": {
+    "28def1481053587f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e90cf844-3897-41e6-acbd-6e75ec6da262",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 258,
+      "total_deletions": 8,
+      "accepted_lines": 260,
+      "overriden_lines": 1
+    }
+  }
+}
