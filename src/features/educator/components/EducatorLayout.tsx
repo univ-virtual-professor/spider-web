@@ -11,9 +11,6 @@ import {
   LogOut,
   Menu,
   X,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
   BookOpen,
   Zap,
   BarChart3,
@@ -31,6 +28,7 @@ import {
   CalendarDays,
   Layers,
   Database,
+  UserPlus,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
@@ -53,25 +51,80 @@ import ImpersonationBanner from "@shared/components/ImpersonationBanner";
 import NotificationBell from "@shared/components/NotificationBell";
 import EducatorBroadcastModal from "./EducatorBroadcastModal";
 import { EmployeeProvider, useEmployee } from "@shared/contexts/EmployeeContext";
-import {
-  EducatorWorkspaceProvider,
-  useEducatorWorkspace,
-  type EducatorWorkspace,
-} from "@shared/contexts/EducatorWorkspaceContext";
-import { PERMISSIONS } from "@shared/lib/rolesConfig";
+import { PERMISSIONS, type Permission } from "@shared/lib/rolesConfig";
 import { useAppTokenBootstrap } from "@shared/hooks/useAppTokenBootstrap";
 
-type SubItem = { icon: any; label: string; href: string; badge?: number };
+// Owner / Faculty / Ops per BUILD-NOTES §02 — Student has its own layout
+// (StudentLayout.tsx). Resolved from what already exists: the org head (not
+// an employee) is Owner; an employee on the "Front Desk / Ops" role template
+// is Ops; any other educator employee is Faculty.
+export type EducatorPortalRole = "Owner" | "Faculty" | "Ops";
+
 type SidebarItem = {
   icon: any;
   label: string;
   href: string;
   badge?: number;
-  children?: SubItem[];
-  // Which workspace this item belongs to in the LMS / Test Platform switcher.
-  // Omitted (or "both") means it shows regardless of the selected workspace.
-  workspace?: EducatorWorkspace | "both";
 };
+
+type NavCatalogItem = {
+  icon: any;
+  href: string;
+  /** Always a readable default — never the raw href — used whenever `roleLabel` has no
+   *  entry for the current role (e.g. when the item shows up in another role's "More"
+   *  group, or to disambiguate two items that share a generic name there). */
+  label: string;
+  /** Per-role override matching the design's exact wording for that role's primary nav. */
+  roleLabel?: Partial<Record<EducatorPortalRole, string>>;
+  ownerOnly?: boolean;
+  anyOf?: Permission[];
+  enabled?: boolean;
+  badge?: number;
+};
+
+// Exact per-role primary-nav order from the design's NAV constant
+// (Desktop Portal.dc.html, BUILD-NOTES §04) — a flat href list rather than
+// navCatalog's own array order, since each role orders the same items
+// differently.
+//
+// Omitted deliberately (see design.md):
+// - "Create test" (fa_create): a dialog reached from the "Tests & grading" page, not a
+//   standalone route.
+// - "Sheet review": the per-sheet drill-down (/educator/exam-grading/:examId/review/:sheetId),
+//   like "Live test" on the student side — not a top-level screen.
+// - "Student analysis" on Faculty's primary nav (owner's call): in the design it's actually
+//   per-student (an Analysis tab on that student's detail page), not a standalone list for
+//   Faculty today. /educator/analytics stays reachable from More as "Analytics".
+const PRIMARY_NAV_ORDER: Record<EducatorPortalRole, string[]> = {
+  Owner: [
+    "/educator/dashboard",
+    "/educator/batches",
+    "/educator/organization",
+    "/educator/billing",
+    "/educator/website-pages",
+  ],
+  Faculty: [
+    "/educator/dashboard",
+    "/educator/batches",
+    "/educator/curriculum",
+    "/educator/attendance",
+    "/educator/exam-grading",
+    "/educator/exam-schedule",
+    "/educator/scheduled-dpps",
+    "/educator/students",
+  ],
+  Ops: [
+    "/educator/timetable",
+    "/educator/exam-schedule",
+    "/educator/enrolments",
+    "/educator/students",
+    "/educator/attendance-overview",
+  ],
+};
+
+function resolveLabel(item: NavCatalogItem, role: EducatorPortalRole) {
+  return item.roleLabel?.[role] ?? item.label;
+}
 
 function initials(name: string) {
   const parts = (name || "").trim().split(/\s+/).filter(Boolean);
@@ -85,15 +138,12 @@ function initials(name: string) {
 // Inner layout that can use useEmployee() since it's inside EmployeeProvider
 function EducatorLayoutInner() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [pendingReviewCount, setPendingReviewCount] = useState(0);
   const [broadcastOpen, setBroadcastOpen] = useState(false);
   const [examConfig, setExamConfig] = useState<any>(null);
   const location = useLocation();
   const navigate = useNavigate();
-
-  const { workspace, setWorkspace: setWorkspaceAndPersist } = useEducatorWorkspace();
 
   // Radix Dialog/Select/Popover/DropdownMenu content portals to document.body,
   // outside this component's own DOM subtree — a CSS-variable scope on the
@@ -112,7 +162,12 @@ function EducatorLayoutInner() {
   const { isReady: appTokenReady } = useAppTokenBootstrap();
 
   const { profile } = useAuth();
-  const { isEmployee, hasPermission, empLoading } = useEmployee();
+  const { isEmployee, hasPermission, empLoading, roleName } = useEmployee();
+  const role: EducatorPortalRole = !isEmployee
+    ? "Owner"
+    : roleName === "Front Desk / Ops"
+      ? "Ops"
+      : "Faculty";
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [instituteName, setInstituteName] = useState<string | null>(null);
 
@@ -201,163 +256,222 @@ function EducatorLayoutInner() {
     return () => unsub();
   }, [profile?.uid]);
 
-  const sidebarItems = useMemo<SidebarItem[]>(() => {
-    // Don't build sidebar while employee permissions are still loading
-    if (isEmployee && empLoading) return [];
-
+  // Flat nav catalog (BUILD-NOTES §04 screen map): item metadata (icon, label,
+  // permission) keyed by href. Which items are "primary" for a role, and in
+  // what order, comes from PRIMARY_NAV_ORDER above, not this array's order.
+  // An item an employee can't reach per their role permissions is omitted
+  // entirely, not disabled.
+  const navCatalog = useMemo<NavCatalogItem[]>(() => {
     const objectiveEnabled = examConfig?.objective?.enabled ?? true;
-    const subjectiveEnabled = examConfig?.subjective?.enabled ?? false;
 
-    const items: SidebarItem[] = [
-      { icon: LayoutDashboard, label: "Dashboard", href: "/educator/dashboard", workspace: "lms" },
-    ];
-
-    if (
-      !isEmployee ||
-      hasPermission(PERMISSIONS.ENROLMENTS_VIEW) ||
-      hasPermission(PERMISSIONS.ENROLMENTS_MANAGE)
-    ) {
-      items.push({
+    return [
+      {
+        icon: LayoutDashboard,
+        href: "/educator/dashboard",
+        label: "Dashboard",
+        roleLabel: { Owner: "Overview", Faculty: "Today" },
+      },
+      {
         icon: Users,
-        label: "Enrolments",
         href: "/educator/enrolments",
-        workspace: "lms",
-      });
-    }
-    if (!isEmployee || hasPermission(PERMISSIONS.STUDENTS_VIEW)) {
-      items.push({ icon: Users, label: "Batches", href: "/educator/batches", workspace: "lms" });
-      items.push({
+        label: "Enrolments",
+        anyOf: [PERMISSIONS.ENROLMENTS_VIEW, PERMISSIONS.ENROLMENTS_MANAGE],
+      },
+      {
+        icon: Users,
+        href: "/educator/batches",
+        label: "Batches",
+        roleLabel: { Faculty: "My batches" },
+        anyOf: [PERMISSIONS.STUDENTS_VIEW],
+      },
+      {
         icon: UserCheck,
+        href: "/educator/students",
         label: "Students",
+        anyOf: [PERMISSIONS.STUDENTS_VIEW],
+      },
+      {
+        icon: UserPlus,
         href: "/educator/learners",
-        workspace: "lms",
-      });
-      items.push({
+        label: "Invite students",
+        anyOf: [PERMISSIONS.STUDENTS_VIEW],
+      },
+      {
         icon: CalendarCheck,
-        label: "Attendance",
         href: "/educator/attendance",
-        workspace: "lms",
-      });
-      items.push({
-        icon: CalendarClock,
-        label: "Timetable",
-        href: "/educator/timetable",
-        workspace: "lms",
-      });
-      items.push({
+        label: "Attendance (mark)",
+        roleLabel: { Faculty: "Attendance" },
+        anyOf: [PERMISSIONS.STUDENTS_VIEW],
+      },
+      {
         icon: CalendarCheck,
-        label: "Attendance Overview",
         href: "/educator/attendance-overview",
-        workspace: "lms",
-      });
-    }
-
-    if (!isEmployee || hasPermission(PERMISSIONS.CONTENT_VIEW)) {
-      items.push({
+        label: "Attendance overview",
+        roleLabel: { Ops: "Attendance" },
+        anyOf: [PERMISSIONS.STUDENTS_VIEW],
+      },
+      {
+        icon: CalendarClock,
+        href: "/educator/timetable",
+        label: "Timetable",
+        anyOf: [PERMISSIONS.STUDENTS_VIEW],
+      },
+      {
         icon: Layers,
-        label: "Curriculum",
         href: "/educator/curriculum",
-        workspace: "lms",
-      });
-    }
-
-    if (!isEmployee || hasPermission(PERMISSIONS.ANALYTICS_VIEW)) {
-      // Mixes student-growth (LMS) and attempt/score (Test Platform) metrics —
-      // shown in both workspaces rather than picking one.
-      items.push({
+        label: "Curriculum",
+        anyOf: [PERMISSIONS.CONTENT_VIEW],
+      },
+      {
         icon: BarChart3,
-        label: "Analytics",
         href: "/educator/analytics",
-        workspace: "both",
-      });
-    }
-
-    // Build Test Series children based on permissions
-    const testChildren: SubItem[] = [];
-    if (!isEmployee || hasPermission(PERMISSIONS.QB_VIEW)) {
-      testChildren.push({
-        icon: Database,
-        label: "Question Bank",
-        href: "/educator/question-bank",
-      });
-    }
-    if (!isEmployee || hasPermission(PERMISSIONS.TESTS_CREATE)) {
-      testChildren.push({
-        icon: ClipboardList,
-        label: "Test Upload Request",
-        href: "/educator/question-papers",
-      });
-    }
-    if (!isEmployee || hasPermission(PERMISSIONS.DPPS_MANAGE)) {
-      testChildren.push({ icon: Zap, label: "DPP Generator", href: "/educator/dpp" });
-    }
-    if (
-      !isEmployee ||
-      hasPermission(PERMISSIONS.TESTS_VIEW) ||
-      hasPermission(PERMISSIONS.TESTS_CREATE) ||
-      hasPermission(PERMISSIONS.TESTS_PUBLISH)
-    ) {
-      testChildren.push({
-        icon: CalendarDays,
-        label: "Exam Schedule",
-        href: "/educator/exam-schedule",
-      });
-    }
-    if (!isEmployee || hasPermission(PERMISSIONS.TESTS_VIEW)) {
-      testChildren.push({
-        icon: AlertTriangle,
-        label: "Reported Questions",
-        href: "/educator/reported-questions",
-      });
-      testChildren.push({
-        icon: ClipboardCheck,
-        label: "Review Answers",
-        href: "/educator/review-submissions",
-        badge: pendingReviewCount || undefined,
-      });
-    }
-
-    const showTests =
-      objectiveEnabled &&
-      (!isEmployee ||
-        hasPermission(PERMISSIONS.TESTS_VIEW) ||
-        hasPermission(PERMISSIONS.TESTS_CREATE) ||
-        hasPermission(PERMISSIONS.TESTS_PUBLISH) ||
-        hasPermission(PERMISSIONS.QB_VIEW) ||
-        hasPermission(PERMISSIONS.DPPS_MANAGE));
-    if (showTests) {
-      items.push({
+        label: "Analytics",
+        anyOf: [PERMISSIONS.ANALYTICS_VIEW],
+      },
+      {
         icon: FileText,
-        label: "Objective Exams",
+        href: "/educator/testing",
+        label: "Testing overview",
+        enabled: objectiveEnabled,
+        anyOf: [
+          PERMISSIONS.TESTS_VIEW,
+          PERMISSIONS.TESTS_CREATE,
+          PERMISSIONS.QB_VIEW,
+          PERMISSIONS.DPPS_MANAGE,
+        ],
+      },
+      {
+        icon: FileText,
         href: "/educator/test-series",
-        children: testChildren.length > 0 ? testChildren : undefined,
-        workspace: "test",
-      });
-    }
-
-    if (!isEmployee || hasPermission(PERMISSIONS.CONTENT_VIEW)) {
-      items.push({ icon: BookOpen, label: "Content", href: "/educator/content", workspace: "lms" });
-    }
-
-    if (subjectiveEnabled && (!isEmployee || hasPermission(PERMISSIONS.TESTS_VIEW))) {
-      items.push({
+        label: "Test series",
+        enabled: objectiveEnabled,
+        anyOf: [
+          PERMISSIONS.TESTS_VIEW,
+          PERMISSIONS.TESTS_CREATE,
+          PERMISSIONS.QB_VIEW,
+          PERMISSIONS.DPPS_MANAGE,
+        ],
+      },
+      {
+        icon: CalendarDays,
+        href: "/educator/exam-schedule",
+        label: "Exam schedule",
+        anyOf: [PERMISSIONS.TESTS_VIEW, PERMISSIONS.TESTS_CREATE, PERMISSIONS.TESTS_PUBLISH],
+      },
+      {
         icon: FileCheck2,
-        label: "Subjective Exams",
         href: "/educator/exam-grading",
-        workspace: "test",
-      });
-    }
+        label: "Tests & grading",
+        anyOf: [PERMISSIONS.TESTS_VIEW],
+      },
+      {
+        icon: Zap,
+        href: "/educator/dpp",
+        label: "DPP generator",
+        anyOf: [PERMISSIONS.DPPS_MANAGE],
+      },
+      {
+        icon: Zap,
+        href: "/educator/scheduled-dpps",
+        label: "Daily practice",
+        anyOf: [PERMISSIONS.DPPS_MANAGE],
+      },
+      {
+        icon: Building2,
+        href: "/educator/organization",
+        label: "Staff & access",
+        ownerOnly: true,
+      },
+      {
+        icon: CreditCard,
+        href: "/educator/billing",
+        label: "Subscription & seats",
+        ownerOnly: true,
+      },
+      {
+        icon: Palette,
+        href: "/educator/website-pages",
+        label: "Portal & branding",
+        anyOf: [PERMISSIONS.WEBSITE_MANAGE],
+      },
+      {
+        icon: BookOpen,
+        href: "/educator/content",
+        label: "Content",
+        anyOf: [PERMISSIONS.CONTENT_VIEW],
+      },
+      {
+        icon: Database,
+        href: "/educator/question-bank",
+        label: "Question Bank",
+        anyOf: [PERMISSIONS.QB_VIEW],
+      },
+      {
+        icon: ClipboardList,
+        href: "/educator/question-papers",
+        label: "Test Upload Request",
+        anyOf: [PERMISSIONS.TESTS_CREATE],
+      },
+      {
+        icon: AlertTriangle,
+        href: "/educator/reported-questions",
+        label: "Reported Questions",
+        anyOf: [PERMISSIONS.TESTS_VIEW],
+      },
+      {
+        icon: ClipboardCheck,
+        href: "/educator/review-submissions",
+        label: "Review Answers",
+        anyOf: [PERMISSIONS.TESTS_VIEW],
+        badge: pendingReviewCount || undefined,
+      },
+      {
+        icon: Files,
+        href: "/educator/access-codes",
+        label: "Access Codes",
+        anyOf: [PERMISSIONS.CODES_VIEW],
+      },
+    ];
+  }, [examConfig, pendingReviewCount]);
 
-    return items;
-  }, [isEmployee, empLoading, hasPermission, pendingReviewCount, examConfig]);
+  const visibleNavCatalog = useMemo(() => {
+    if (isEmployee && empLoading) return [];
+    return navCatalog.filter((item) => {
+      if (item.enabled === false) return false;
+      if (!isEmployee) return true;
+      if (item.ownerOnly) return false;
+      if (!item.anyOf || item.anyOf.length === 0) return true;
+      return item.anyOf.some((p) => hasPermission(p));
+    });
+  }, [navCatalog, isEmployee, empLoading, hasPermission]);
 
-  const visibleSidebarItems = useMemo(
-    () =>
-      sidebarItems.filter(
-        (item) => !item.workspace || item.workspace === "both" || item.workspace === workspace
-      ),
-    [sidebarItems, workspace]
-  );
+  const primaryNav = useMemo<SidebarItem[]>(() => {
+    const byHref = new Map(visibleNavCatalog.map((item) => [item.href, item]));
+    return PRIMARY_NAV_ORDER[role]
+      .map((href) => byHref.get(href))
+      .filter((item): item is NavCatalogItem => !!item)
+      .map((item) => ({
+        icon: item.icon,
+        href: item.href,
+        label: resolveLabel(item, role),
+        badge: item.badge,
+      }));
+  }, [visibleNavCatalog, role]);
+
+  // Routes reachable but not part of this role's design nav (BUILD-NOTES §02:
+  // "Routes that exist but aren't in the design's nav ... stay reachable from
+  // a short 'More' group at the bottom of the sidebar so no feature is lost").
+  const moreNav = useMemo<SidebarItem[]>(() => {
+    const primaryHrefs = new Set(PRIMARY_NAV_ORDER[role]);
+    return visibleNavCatalog
+      .filter((item) => !primaryHrefs.has(item.href))
+      .map((item) => ({
+        icon: item.icon,
+        href: item.href,
+        label: resolveLabel(item, role),
+        badge: item.badge,
+      }));
+  }, [visibleNavCatalog, role]);
 
   const isActive = (href: string) => {
     if (href === "/educator/dashboard")
@@ -365,29 +479,9 @@ function EducatorLayoutInner() {
     return location.pathname === href;
   };
 
-  const isChildActive = (item: SidebarItem) =>
-    !!item.children?.some((c) => location.pathname === c.href.split("?")[0]);
-
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(() => new Set());
-
-  const toggleExpanded = (href: string) => {
-    setExpandedItems((prev) => {
-      const next = new Set(prev);
-      if (next.has(href)) next.delete(href);
-      else next.add(href);
-      return next;
-    });
-  };
-
-  useEffect(() => {
-    sidebarItems.forEach((item) => {
-      if (item.children?.some((c) => location.pathname === c.href)) {
-        setExpandedItems((prev) => new Set([...prev, item.href]));
-      }
-    });
-  }, [location.pathname, sidebarItems]);
-
-  const pageTitle = useMemo(() => {
+  const activeLabel = useMemo(() => {
+    const match = [...primaryNav, ...moreNav].find((item) => isActive(item.href));
+    if (match) return match.label;
     if (location.pathname.startsWith("/educator/learners/")) return "Learner Deep Dive";
     if (location.pathname.startsWith("/educator/students/")) {
       const parts = location.pathname.split("/");
@@ -395,7 +489,7 @@ function EducatorLayoutInner() {
     }
     const tail = location.pathname.split("/").pop() || "dashboard";
     return tail.replace(/-/g, " ");
-  }, [location.pathname]);
+  }, [primaryNav, moreNav, location.pathname]);
 
   const handleLogout = async () => {
     try {
@@ -443,47 +537,30 @@ function EducatorLayoutInner() {
 
         <aside
           className={cn(
-            "fixed left-0 top-0 z-50 h-[100dvh] w-64 border-r border-border bg-card transition-all duration-300 lg:static lg:top-0 lg:translate-x-0 print:hidden",
-            sidebarCollapsed ? "lg:w-20" : "lg:w-64",
+            "fixed left-0 top-0 z-50 h-[100dvh] w-[236px] border-r border-ds-ink/[.09] bg-ds-surface transition-transform duration-300 lg:static lg:top-0 lg:translate-x-0 print:hidden",
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           )}
         >
           <div className="flex h-full flex-col">
-            <div className="flex h-16 items-center justify-between border-b border-border px-4">
-              <Link
-                to="/educator/dashboard"
-                className={cn(
-                  "flex items-center gap-2.5 overflow-hidden",
-                  sidebarCollapsed && "lg:w-full lg:justify-center"
-                )}
-              >
+            <div className="flex items-center justify-between gap-2 border-b border-ds-ink/[.07] px-[18px] py-[14px]">
+              <Link to="/educator/dashboard" className="flex items-center gap-2.5 overflow-hidden">
                 {logoUrl ? (
                   <img
                     src={logoUrl}
                     alt={instituteName || "Logo"}
-                    className="h-9 w-9 rounded-md object-contain"
+                    className="h-[30px] w-[30px] rounded-md object-contain"
                   />
                 ) : (
-                  <img src="/logo-compact.png" alt="Logo" className="h-9 w-9 object-contain" />
+                  <img
+                    src="/logo-compact.png"
+                    alt="Logo"
+                    className="h-[30px] w-[30px] object-contain"
+                  />
                 )}
-                {!sidebarCollapsed && (
-                  <span className="truncate font-display text-base font-bold text-foreground">
-                    {instituteName || "PrepareKaro"}
-                  </span>
-                )}
+                <span className="truncate font-ds-sans text-[13px] font-semibold text-ds-ink">
+                  {instituteName || "PrepareKaro"}
+                </span>
               </Link>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="hidden lg:inline-flex"
-                onClick={() => setSidebarCollapsed((prev) => !prev)}
-              >
-                {sidebarCollapsed ? (
-                  <ChevronRight className="h-5 w-5" />
-                ) : (
-                  <ChevronLeft className="h-5 w-5" />
-                )}
-              </Button>
               <Button
                 variant="ghost"
                 size="icon"
@@ -494,247 +571,124 @@ function EducatorLayoutInner() {
               </Button>
             </div>
 
-            {!sidebarCollapsed && (
-              <div className="border-b border-border p-3">
-                <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
-                  <button
-                    type="button"
-                    onClick={() => setWorkspaceAndPersist("lms")}
-                    className={cn(
-                      "rounded-md px-2 py-1.5 text-xs font-semibold transition-colors",
-                      workspace === "lms"
-                        ? "bg-card text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    Academics
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setWorkspaceAndPersist("test")}
-                    className={cn(
-                      "rounded-md px-2 py-1.5 text-xs font-semibold transition-colors",
-                      workspace === "test"
-                        ? "bg-card text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    Test Platform
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <nav className="flex-1 space-y-1 overflow-y-auto p-4">
+            <nav className="flex-1 space-y-0.5 overflow-y-auto p-2.5">
               {isEmployee && empLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <div className="h-5 w-5 animate-spin rounded-full border-2 border-border border-t-muted-foreground" />
                 </div>
-              ) : null}
-              {visibleSidebarItems.map((item) => {
-                const active = isActive(item.href);
-                const childActive = isChildActive(item);
-                const hasChildren = !!item.children?.length;
-                const expanded = expandedItems.has(item.href);
-                const parentHighlighted = active || (sidebarCollapsed && childActive);
-                const childBadgeTotal =
-                  item.children?.reduce((sum, c) => sum + (c.badge ?? 0), 0) ?? 0;
-
-                return (
-                  <div key={item.href}>
-                    <div
-                      className={cn(
-                        "relative flex items-center overflow-hidden rounded-lg",
-                        parentHighlighted ? "text-primary-foreground" : "text-muted-foreground"
-                      )}
-                    >
-                      {parentHighlighted && (
-                        <motion.div
-                          layoutId="activeTab"
-                          className="gradient-bg absolute inset-0 rounded-lg"
-                          transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                        />
-                      )}
+              ) : (
+                <>
+                  {primaryNav.map((item) => {
+                    const active = isActive(item.href);
+                    return (
                       <Link
+                        key={item.href}
                         to={item.href}
-                        onClick={() => {
-                          setSidebarOpen(false);
-                          if (hasChildren && !sidebarCollapsed) toggleExpanded(item.href);
-                        }}
+                        onClick={() => setSidebarOpen(false)}
                         className={cn(
-                          "relative z-10 flex flex-1 items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors",
-                          sidebarCollapsed && "lg:justify-center lg:px-2",
-                          !parentHighlighted && "rounded-lg hover:bg-muted hover:text-foreground"
+                          "flex items-center gap-2.5 rounded-[7px] px-2.5 py-2 font-ds-sans text-[13px] font-medium transition-colors",
+                          active
+                            ? "bg-ds-fill text-ds-ink"
+                            : "text-ds-ink/70 hover:bg-ds-fill/60 hover:text-ds-ink"
                         )}
-                        title={sidebarCollapsed ? item.label : undefined}
                       >
-                        <span className="relative flex-shrink-0">
-                          <item.icon className={cn("h-5 w-5", parentHighlighted && "text-white")} />
-                          {sidebarCollapsed && childBadgeTotal > 0 && (
-                            <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-amber-500" />
-                          )}
-                        </span>
-                        {!sidebarCollapsed && (
-                          <span className={cn(parentHighlighted && "text-white")}>
-                            {item.label}
-                          </span>
-                        )}
-                        {!sidebarCollapsed && item.badge && (
-                          <Badge
-                            variant="secondary"
-                            className={cn(
-                              "ml-auto text-xs",
-                              parentHighlighted && "bg-white/20 text-white"
-                            )}
-                          >
+                        <item.icon className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">{item.label}</span>
+                        {item.badge ? (
+                          <Badge variant="secondary" className="ml-auto text-xs">
                             {item.badge}
                           </Badge>
-                        )}
+                        ) : null}
                       </Link>
-                      {!sidebarCollapsed && hasChildren && (
-                        <button
-                          onClick={() => toggleExpanded(item.href)}
-                          className={cn(
-                            "relative z-10 mr-1 flex-shrink-0 rounded-md p-2 transition-colors",
-                            parentHighlighted
-                              ? "text-white/80 hover:bg-white/10 hover:text-white"
-                              : "hover:bg-muted hover:text-foreground"
-                          )}
-                          aria-label={expanded ? "Collapse" : "Expand"}
-                        >
-                          <ChevronDown
-                            className={cn(
-                              "h-3.5 w-3.5 transition-transform duration-200",
-                              expanded && "rotate-180"
-                            )}
-                          />
-                        </button>
-                      )}
-                    </div>
+                    );
+                  })}
 
-                    {!sidebarCollapsed && hasChildren && (
-                      <AnimatePresence initial={false}>
-                        {expanded && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: "auto", opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2, ease: "easeInOut" }}
-                            className="overflow-hidden"
+                  {moreNav.length > 0 && (
+                    <div className="mt-3 border-t border-ds-ink/[.07] pt-3">
+                      <div className="px-2.5 pb-1.5 font-ds-sans text-[10.5px] font-medium uppercase tracking-[.05em] text-ds-ink/40">
+                        More
+                      </div>
+                      {moreNav.map((item) => {
+                        const active = isActive(item.href);
+                        return (
+                          <Link
+                            key={item.href}
+                            to={item.href}
+                            onClick={() => setSidebarOpen(false)}
+                            className={cn(
+                              "flex items-center gap-2.5 rounded-[7px] px-2.5 py-2 font-ds-sans text-[13px] font-medium transition-colors",
+                              active
+                                ? "bg-ds-fill text-ds-ink"
+                                : "text-ds-ink/60 hover:bg-ds-fill/60 hover:text-ds-ink"
+                            )}
                           >
-                            <div className="ml-4 mt-1 space-y-0.5 border-l border-border pb-1 pl-3">
-                              {item.children!.map((child) => {
-                                const childPath = child.href.split("?")[0];
-                                const cActive = location.pathname === childPath;
-                                return (
-                                  <div key={child.href}>
-                                    <Link
-                                      to={child.href}
-                                      onClick={() => setSidebarOpen(false)}
-                                      className={cn(
-                                        "relative flex items-center gap-2.5 overflow-hidden rounded-lg px-3 py-2 text-xs font-medium transition-all duration-200",
-                                        cActive
-                                          ? "text-primary-foreground"
-                                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                                      )}
-                                    >
-                                      {cActive && (
-                                        <motion.div
-                                          layoutId="activeTab"
-                                          className="gradient-bg absolute inset-0 rounded-lg"
-                                          transition={{
-                                            type: "spring",
-                                            bounce: 0.2,
-                                            duration: 0.6,
-                                          }}
-                                        />
-                                      )}
-                                      <child.icon
-                                        className={cn(
-                                          "relative z-10 h-3.5 w-3.5 flex-shrink-0",
-                                          cActive && "text-white"
-                                        )}
-                                      />
-                                      <span
-                                        className={cn("relative z-10", cActive && "text-white")}
-                                      >
-                                        {child.label}
-                                      </span>
-                                      {child.badge && (
-                                        <Badge
-                                          variant="secondary"
-                                          className={cn(
-                                            "relative z-10 ml-auto text-xs",
-                                            cActive && "bg-white/20 text-white"
-                                          )}
-                                        >
-                                          {child.badge}
-                                        </Badge>
-                                      )}
-                                    </Link>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    )}
-                  </div>
-                );
-              })}
+                            <item.icon className="h-4 w-4 flex-shrink-0" />
+                            <span className="truncate">{item.label}</span>
+                            {item.badge ? (
+                              <Badge variant="secondary" className="ml-auto text-xs">
+                                {item.badge}
+                              </Badge>
+                            ) : null}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
             </nav>
 
-            <div className="mt-auto space-y-2 border-t border-border p-4">
+            <div className="space-y-2 border-t border-ds-ink/[.07] p-3">
               {(!isEmployee || hasPermission(PERMISSIONS.MESSAGES_VIEW)) && (
                 <Button
                   variant="ghost"
-                  className={cn(
-                    "w-full text-muted-foreground hover:text-white",
-                    sidebarCollapsed ? "justify-center px-0" : "justify-start"
-                  )}
+                  className="w-full justify-start text-ds-ink/70 hover:text-ds-ink"
                   onClick={() => {
                     setSidebarOpen(false);
                     navigate("/educator/messages");
                   }}
-                  title={sidebarCollapsed ? "Help & Support" : undefined}
                 >
-                  <div className={cn("relative flex items-center", !sidebarCollapsed && "mr-3")}>
-                    <MessageSquare className="h-5 w-5 hover:text-white" />
-                    {sidebarCollapsed && unreadMessages > 0 && (
-                      <span className="absolute -right-1 -top-1 flex h-2 w-2 rounded-full bg-primary" />
+                  <div className="relative mr-3 flex items-center">
+                    <MessageSquare className="h-4 w-4" />
+                  </div>
+                  <div className="flex flex-1 items-center justify-between">
+                    <span>Help & Support</span>
+                    {unreadMessages > 0 && (
+                      <Badge variant="secondary" className="ml-2 text-xs">
+                        {unreadMessages}
+                      </Badge>
                     )}
                   </div>
-                  {!sidebarCollapsed && (
-                    <div className="flex flex-1 items-center justify-between">
-                      <span>Help & Support</span>
-                      {unreadMessages > 0 && (
-                        <Badge variant="secondary" className="ml-2 text-xs">
-                          {unreadMessages}
-                        </Badge>
-                      )}
-                    </div>
-                  )}
                 </Button>
               )}
               <Button
                 variant="ghost"
-                className={cn(
-                  "w-full text-muted-foreground hover:text-destructive",
-                  sidebarCollapsed ? "justify-center px-0" : "justify-start"
-                )}
+                className="w-full justify-start text-ds-ink/70 hover:text-destructive"
                 onClick={handleLogout}
-                title={sidebarCollapsed ? "Logout" : undefined}
               >
-                <LogOut className={cn("h-5 w-5", !sidebarCollapsed && "mr-3")} />
-                {!sidebarCollapsed && "Logout"}
+                <LogOut className="mr-3 h-4 w-4" />
+                Logout
               </Button>
+              <div className="flex items-center gap-2.5 px-1 pt-1">
+                <Avatar className="h-[30px] w-[30px]">
+                  {photoURL && <AvatarImage src={photoURL} />}
+                  <AvatarFallback style={{ backgroundColor: stringToColor(userInitials) }}>
+                    {userInitials}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <div className="truncate font-ds-sans text-[12px] font-semibold text-ds-ink">
+                    {educatorName}
+                  </div>
+                  <div className="truncate font-ds-sans text-[11px] text-ds-ink/50">{role}</div>
+                </div>
+              </div>
             </div>
           </div>
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card px-4 lg:px-6 print:hidden">
+          <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-ds-ink/[.09] bg-ds-surface px-4 lg:px-[22px] print:hidden">
             <div className="flex items-center gap-4">
               <Button
                 variant="ghost"
@@ -744,10 +698,8 @@ function EducatorLayoutInner() {
               >
                 <Menu className="h-5 w-5" />
               </Button>
-              <div className="hidden items-center gap-2 text-sm sm:flex">
-                <span className="text-muted-foreground">Educator</span>
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium capitalize text-foreground">{pageTitle}</span>
+              <div className="hidden items-center font-ds-mono text-[12px] text-ds-ink/45 sm:flex">
+                {role} / {activeLabel}
               </div>
             </div>
 
@@ -850,9 +802,7 @@ function EducatorLayoutInner() {
 export default function EducatorLayout() {
   return (
     <EmployeeProvider>
-      <EducatorWorkspaceProvider>
-        <EducatorLayoutInner />
-      </EducatorWorkspaceProvider>
+      <EducatorLayoutInner />
     </EmployeeProvider>
   );
 }

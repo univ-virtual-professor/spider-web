@@ -9,6 +9,8 @@ type EmployeeContextValue = {
   empLoading: boolean;
   permissions: Set<Permission>;
   branchIds: string[];
+  /** Name of the employee's assigned role template (e.g. "Front Desk / Ops"), null until loaded. */
+  roleName: string | null;
   hasPermission: (p: Permission) => boolean;
   inBranchScope: (branchId: string) => boolean;
 };
@@ -18,6 +20,7 @@ const EmployeeContext = createContext<EmployeeContextValue>({
   empLoading: false,
   permissions: new Set(),
   branchIds: [],
+  roleName: null,
   hasPermission: () => true,
   inBranchScope: () => true,
 });
@@ -27,6 +30,7 @@ export function EmployeeProvider({ children }: { children: ReactNode }) {
   const [empLoading, setEmpLoading] = useState(false);
   const [permissions, setPermissions] = useState<Set<Permission>>(new Set());
   const [branchIds, setBranchIds] = useState<string[]>([]);
+  const [roleName, setRoleName] = useState<string | null>(null);
 
   const isEmployee = !!profile?.isEmployee;
   const orgUid = profile?.orgUid;
@@ -36,6 +40,7 @@ export function EmployeeProvider({ children }: { children: ReactNode }) {
     if (!isEmployee || !orgUid || !employeeDocId) {
       setPermissions(new Set());
       setBranchIds([]);
+      setRoleName(null);
       return;
     }
 
@@ -53,7 +58,9 @@ export function EmployeeProvider({ children }: { children: ReactNode }) {
 
         const roleSnap = await getDoc(doc(db, "roles", empData.roleId));
         if (roleSnap.exists()) {
-          setPermissions(new Set((roleSnap.data() as any).permissions || []));
+          const roleData = roleSnap.data() as any;
+          setPermissions(new Set(roleData.permissions || []));
+          setRoleName(typeof roleData.name === "string" ? roleData.name : null);
         }
 
         setBranchIds(empData.scope?.branchIds || []);
@@ -78,7 +85,15 @@ export function EmployeeProvider({ children }: { children: ReactNode }) {
 
   return (
     <EmployeeContext.Provider
-      value={{ isEmployee, empLoading, permissions, branchIds, hasPermission, inBranchScope }}
+      value={{
+        isEmployee,
+        empLoading,
+        permissions,
+        branchIds,
+        roleName,
+        hasPermission,
+        inBranchScope,
+      }}
     >
       {children}
     </EmployeeContext.Provider>

@@ -14,8 +14,6 @@ import {
   X,
   Moon,
   Sun,
-  ChevronLeft,
-  ChevronRight,
   BookOpen,
   Bot,
   BarChart2,
@@ -26,10 +24,10 @@ import {
   CalendarClock,
   CalendarDays,
   GraduationCap,
+  FileCheck2,
 } from "lucide-react";
 import { Button } from "@shared/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@shared/ui/avatar";
-import { Badge } from "@shared/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,11 +47,32 @@ import { getAuth, signOut } from "firebase/auth";
 import ImpersonationBanner from "@shared/components/ImpersonationBanner";
 import NotificationBell from "@shared/components/NotificationBell";
 import { WelcomeModal } from "./components/WelcomeModal";
-import {
-  StudentWorkspaceProvider,
-  useStudentWorkspace,
-  type StudentWorkspace,
-} from "@shared/contexts/StudentWorkspaceContext";
+
+// Student's design nav (BUILD-NOTES §04) — flat, no workspace switcher.
+// "Live test" has no standalone route (it's only reachable with a testId from
+// Tests & results) so it isn't a sidebar entry; everything else not listed
+// here stays reachable from the "More" group.
+type StudentNavItem = { icon: any; label: string; href: string };
+
+const STUDENT_PRIMARY_NAV: StudentNavItem[] = [
+  { icon: LayoutDashboard, label: "Home", href: "/student/dashboard" },
+  { icon: Layers, label: "Courses", href: "/student/curriculum" },
+  { icon: Sparkles, label: "Practice", href: "/student/practice" },
+  { icon: FileText, label: "Tests & results", href: "/student/tests" },
+  { icon: CalendarDays, label: "Exams", href: "/student/exam-schedule" },
+  { icon: BarChart2, label: "Analysis", href: "/student/reports" },
+  { icon: CalendarClock, label: "Timetable", href: "/student/timetable" },
+  { icon: FileCheck2, label: "Report card", href: "/student/report-card" },
+];
+
+const STUDENT_MORE_NAV: StudentNavItem[] = [
+  { icon: ClipboardList, label: "My Results", href: "/student/my-results" },
+  { icon: CalendarCheck, label: "Attendance", href: "/student/attendance" },
+  { icon: GraduationCap, label: "Grades", href: "/student/grades" },
+  { icon: BookOpen, label: "Content", href: "/student/content" },
+  { icon: Bot, label: "AI Tutor", href: "/student/chatbot" },
+  { icon: Trophy, label: "Rankings", href: "/student/rankings" },
+];
 
 type UserDoc = {
   displayName?: string;
@@ -82,12 +101,9 @@ function safeStr(v: any, fallback = "") {
 
 function StudentLayoutInner() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
-
-  const { workspace, setWorkspace: setWorkspaceAndPersist } = useStudentWorkspace();
 
   // See the matching effect in EducatorLayout.tsx for why this toggles on
   // <body> rather than relying on the layout root's own ds-scope class alone
@@ -272,58 +288,6 @@ function StudentLayoutInner() {
     return safeStr(userDoc?.batchName) || safeStr(userDoc?.batch) || "Batch";
   }, [userDoc, profile, tenant]);
 
-  const sidebarItems = useMemo<
-    {
-      icon: any;
-      label: string;
-      href: string;
-      badge?: string | number | null;
-      workspace?: StudentWorkspace;
-    }[]
-  >(
-    () => [
-      {
-        icon: LayoutDashboard,
-        label: "Dashboard",
-        href: "/student/dashboard",
-        workspace: "course",
-      },
-      { icon: FileText, label: "Tests", href: "/student/tests", workspace: "test" },
-      {
-        icon: CalendarDays,
-        label: "Exam Schedule",
-        href: "/student/exam-schedule",
-        workspace: "test",
-      },
-      { icon: ClipboardList, label: "My Results", href: "/student/my-results", workspace: "test" },
-      { icon: Layers, label: "Curriculum", href: "/student/curriculum", workspace: "course" },
-      {
-        icon: CalendarClock,
-        label: "Timetable",
-        href: "/student/timetable",
-        workspace: "course",
-      },
-      {
-        icon: CalendarCheck,
-        label: "Attendance",
-        href: "/student/attendance",
-        workspace: "course",
-      },
-      { icon: GraduationCap, label: "Grades", href: "/student/grades", workspace: "course" },
-      { icon: BookOpen, label: "Content", href: "/student/content", workspace: "course" },
-      { icon: Bot, label: "AI Tutor", href: "/student/chatbot", workspace: "course" },
-      { icon: BarChart2, label: "Reports", href: "/student/reports", workspace: "test" },
-      { icon: Sparkles, label: "Practice for Me", href: "/student/practice", workspace: "test" },
-      { icon: Trophy, label: "Rankings", href: "/student/rankings", workspace: "test" },
-    ],
-    []
-  );
-
-  const visibleSidebarItems = useMemo(
-    () => sidebarItems.filter((item) => !item.workspace || item.workspace === workspace),
-    [sidebarItems, workspace]
-  );
-
   const isActive = (href: string) => {
     if (href === "/student/tests") return location.pathname.startsWith("/student/tests");
     if (href === "/student/my-results") {
@@ -336,6 +300,11 @@ function StudentLayoutInner() {
     }
     return location.pathname === href;
   };
+
+  const activeLabel = useMemo(() => {
+    const match = [...STUDENT_PRIMARY_NAV, ...STUDENT_MORE_NAV].find((item) => isActive(item.href));
+    return match?.label || location.pathname.split("/").pop()?.replace(/-/g, " ") || "Home";
+  }, [location.pathname]);
 
   const handleLogout = async () => {
     try {
@@ -395,49 +364,31 @@ function StudentLayoutInner() {
         {/* Sidebar: sticky + no scroll */}
         <aside
           className={cn(
-            "fixed left-0 top-0 z-50 h-[100dvh] w-64 border-r border-border bg-card transition-all duration-300 lg:static lg:translate-x-0 print:hidden",
-            sidebarCollapsed ? "lg:w-20" : "lg:w-64",
+            "fixed left-0 top-0 z-50 h-[100dvh] w-[236px] border-r border-ds-ink/[.09] bg-ds-surface transition-transform duration-300 lg:static lg:translate-x-0 print:hidden",
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
           )}
         >
           <div className="flex h-full flex-col overflow-hidden">
             {/* Logo Section */}
-            <div className="flex h-16 shrink-0 items-center justify-between border-b border-border px-4">
-              <Link
-                to="/student/dashboard"
-                className={cn(
-                  "flex items-center gap-2.5 overflow-hidden",
-                  sidebarCollapsed && "lg:w-full lg:justify-center"
-                )}
-              >
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-ds-ink/[.07] px-[18px] py-[14px]">
+              <Link to="/student/dashboard" className="flex items-center gap-2.5 overflow-hidden">
                 {logoUrl ? (
                   <img
                     src={logoUrl}
                     alt={instituteName || "Logo"}
-                    className="h-9 w-9 rounded-md object-contain"
+                    className="h-[30px] w-[30px] rounded-md object-contain"
                   />
                 ) : (
-                  <img src="/logo-compact.png" alt="Logo" className="h-9 w-9 object-contain" />
+                  <img
+                    src="/logo-compact.png"
+                    alt="Logo"
+                    className="h-[30px] w-[30px] object-contain"
+                  />
                 )}
-                {!sidebarCollapsed && (
-                  <span className="truncate font-display text-base font-bold text-foreground">
-                    {instituteName || "PrepareKaro"}
-                  </span>
-                )}
+                <span className="truncate font-ds-sans text-[13px] font-semibold text-ds-ink">
+                  {instituteName || "PrepareKaro"}
+                </span>
               </Link>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="hidden lg:inline-flex"
-                onClick={() => setSidebarCollapsed((prev) => !prev)}
-              >
-                {sidebarCollapsed ? (
-                  <ChevronRight className="h-5 w-5" />
-                ) : (
-                  <ChevronLeft className="h-5 w-5" />
-                )}
-              </Button>
-
               <Button
                 variant="ghost"
                 size="icon"
@@ -449,55 +400,24 @@ function StudentLayoutInner() {
             </div>
 
             {/* Student Info */}
-            <div
-              className={cn("shrink-0 border-b border-border p-4", sidebarCollapsed && "lg:hidden")}
-            >
-              <div className="flex items-center gap-3 rounded-xl bg-pastel-mint p-3">
-                <Avatar className="h-10 w-10 border-2 border-primary/20">
+            <div className="shrink-0 border-b border-ds-ink/[.07] p-3">
+              <div className="flex items-center gap-2.5 rounded-[7px] bg-ds-fill p-2.5">
+                <Avatar className="h-8 w-8">
                   <AvatarImage src={avatarUrl} />
                   <AvatarFallback>{initials(displayName)}</AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-foreground">{displayName}</p>
-                  <p className="truncate text-xs text-muted-foreground">{batchLabel}</p>
+                  <p className="truncate font-ds-sans text-[12px] font-semibold text-ds-ink">
+                    {displayName}
+                  </p>
+                  <p className="truncate font-ds-sans text-[11px] text-ds-ink/50">{batchLabel}</p>
                 </div>
               </div>
             </div>
 
-            {!sidebarCollapsed && (
-              <div className="shrink-0 border-b border-border p-3">
-                <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
-                  <button
-                    type="button"
-                    onClick={() => setWorkspaceAndPersist("course")}
-                    className={cn(
-                      "rounded-md px-2 py-1.5 text-xs font-semibold transition-colors",
-                      workspace === "course"
-                        ? "bg-card text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    Academics
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setWorkspaceAndPersist("test")}
-                    className={cn(
-                      "rounded-md px-2 py-1.5 text-xs font-semibold transition-colors",
-                      workspace === "test"
-                        ? "bg-card text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    Test Platform
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Navigation (no scroll) */}
-            <nav className="shrink-0 space-y-1 p-4">
-              {visibleSidebarItems.map((item) => {
+            {/* Navigation */}
+            <nav className="flex-1 space-y-0.5 overflow-y-auto p-2.5">
+              {STUDENT_PRIMARY_NAV.map((item) => {
                 const active = isActive(item.href);
                 return (
                   <Link
@@ -505,55 +425,53 @@ function StudentLayoutInner() {
                     to={item.href}
                     onClick={() => setSidebarOpen(false)}
                     className={cn(
-                      "group relative flex items-center gap-3 overflow-hidden rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
-                      sidebarCollapsed && "lg:justify-center lg:px-2",
+                      "flex items-center gap-2.5 rounded-[7px] px-2.5 py-2 font-ds-sans text-[13px] font-medium transition-colors",
                       active
-                        ? "text-primary-foreground"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                        ? "bg-ds-fill text-ds-ink"
+                        : "text-ds-ink/70 hover:bg-ds-fill/60 hover:text-ds-ink"
                     )}
-                    title={sidebarCollapsed ? item.label : undefined}
                   >
-                    {active && (
-                      <motion.div
-                        layoutId="studentActiveTab"
-                        className="gradient-bg absolute inset-0 rounded-xl"
-                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                      />
-                    )}
-                    <item.icon className={cn("relative z-10 h-5 w-5", active && "text-white")} />
-                    {!sidebarCollapsed && <span className="relative z-10">{item.label}</span>}
-                    {item.badge != null && (
-                      <Badge
-                        variant="secondary"
-                        className={cn(
-                          "relative z-10 ml-auto text-xs",
-                          active && "bg-white/20 text-white",
-                          sidebarCollapsed && "lg:hidden"
-                        )}
-                      >
-                        {item.badge}
-                      </Badge>
-                    )}
+                    <item.icon className="h-4 w-4 flex-shrink-0" />
+                    <span className="truncate">{item.label}</span>
                   </Link>
                 );
               })}
+
+              <div className="mt-3 border-t border-ds-ink/[.07] pt-3">
+                <div className="px-2.5 pb-1.5 font-ds-sans text-[10.5px] font-medium uppercase tracking-[.05em] text-ds-ink/40">
+                  More
+                </div>
+                {STUDENT_MORE_NAV.map((item) => {
+                  const active = isActive(item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      to={item.href}
+                      onClick={() => setSidebarOpen(false)}
+                      className={cn(
+                        "flex items-center gap-2.5 rounded-[7px] px-2.5 py-2 font-ds-sans text-[13px] font-medium transition-colors",
+                        active
+                          ? "bg-ds-fill text-ds-ink"
+                          : "text-ds-ink/60 hover:bg-ds-fill/60 hover:text-ds-ink"
+                      )}
+                    >
+                      <item.icon className="h-4 w-4 flex-shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
             </nav>
 
-            <div className="flex-1" />
-
             {/* Logout */}
-            <div className="shrink-0 border-t border-border p-4">
+            <div className="shrink-0 space-y-2 border-t border-ds-ink/[.07] p-3">
               <Button
                 variant="ghost"
-                className={cn(
-                  "w-full rounded-xl text-muted-foreground hover:text-destructive",
-                  sidebarCollapsed ? "justify-center px-0" : "justify-start"
-                )}
+                className="w-full justify-start text-ds-ink/70 hover:text-destructive"
                 onClick={handleLogout}
-                title={sidebarCollapsed ? "Logout" : undefined}
               >
-                <LogOut className={cn("h-5 w-5", !sidebarCollapsed && "mr-3")} />
-                {!sidebarCollapsed && "Logout"}
+                <LogOut className="mr-3 h-4 w-4" />
+                Logout
               </Button>
             </div>
           </div>
@@ -562,7 +480,7 @@ function StudentLayoutInner() {
         {/* Main */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* Top Navbar */}
-          <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-border bg-card px-4 lg:px-6 print:hidden">
+          <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between border-b border-ds-ink/[.09] bg-ds-surface px-4 lg:px-[22px] print:hidden">
             <div className="flex items-center gap-4">
               <Button
                 variant="ghost"
@@ -574,12 +492,8 @@ function StudentLayoutInner() {
               </Button>
 
               {/* Breadcrumb */}
-              <div className="hidden items-center gap-2 text-sm sm:flex">
-                <span className="text-muted-foreground">Student</span>
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                <span className="font-medium capitalize text-foreground">
-                  {location.pathname.split("/").pop()?.replace("-", " ") || "Dashboard"}
-                </span>
+              <div className="hidden items-center font-ds-mono text-[12px] text-ds-ink/45 sm:flex">
+                Student / {activeLabel}
               </div>
             </div>
 
@@ -691,9 +605,5 @@ function StudentLayoutInner() {
 }
 
 export default function StudentLayout() {
-  return (
-    <StudentWorkspaceProvider>
-      <StudentLayoutInner />
-    </StudentWorkspaceProvider>
-  );
+  return <StudentLayoutInner />;
 }
