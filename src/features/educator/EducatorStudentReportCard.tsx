@@ -29,5 +29,12 @@ export default function EducatorStudentReportCard() {
     );
   }
 
-  return <ReportCard educatorId={educatorId} studentUid={studentId} studentName={studentName} />;
+  return (
+    <ReportCard
+      educatorId={educatorId}
+      studentUid={studentId}
+      studentName={studentName}
+      canEditRemark
+    />
+  );
 }
