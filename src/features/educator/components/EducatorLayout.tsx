@@ -54,11 +54,13 @@ import { EmployeeProvider, useEmployee } from "@shared/contexts/EmployeeContext"
 import { PERMISSIONS, type Permission } from "@shared/lib/rolesConfig";
 import { useAppTokenBootstrap } from "@shared/hooks/useAppTokenBootstrap";
 
-// Owner / Faculty / Ops per BUILD-NOTES §02 — Student has its own layout
-// (StudentLayout.tsx). Resolved from what already exists: the org head (not
-// an employee) is Owner; an employee on the "Front Desk / Ops" role template
-// is Ops; any other educator employee is Faculty.
-export type EducatorPortalRole = "Owner" | "Faculty" | "Ops";
+import {
+  type EducatorPortalRole,
+  PRIMARY_NAV_ORDER,
+  resolveEducatorPortalRole,
+} from "../lib/educatorRole";
+
+export type { EducatorPortalRole };
 
 type SidebarItem = {
   icon: any;
@@ -80,46 +82,6 @@ type NavCatalogItem = {
   anyOf?: Permission[];
   enabled?: boolean;
   badge?: number;
-};
-
-// Exact per-role primary-nav order from the design's NAV constant
-// (Desktop Portal.dc.html, BUILD-NOTES §04) — a flat href list rather than
-// navCatalog's own array order, since each role orders the same items
-// differently.
-//
-// Omitted deliberately (see design.md):
-// - "Create test" (fa_create): a dialog reached from the "Tests & grading" page, not a
-//   standalone route.
-// - "Sheet review": the per-sheet drill-down (/educator/exam-grading/:examId/review/:sheetId),
-//   like "Live test" on the student side — not a top-level screen.
-// - "Student analysis" on Faculty's primary nav (owner's call): in the design it's actually
-//   per-student (an Analysis tab on that student's detail page), not a standalone list for
-//   Faculty today. /educator/analytics stays reachable from More as "Analytics".
-const PRIMARY_NAV_ORDER: Record<EducatorPortalRole, string[]> = {
-  Owner: [
-    "/educator/dashboard",
-    "/educator/batches",
-    "/educator/organization",
-    "/educator/billing",
-    "/educator/website-pages",
-  ],
-  Faculty: [
-    "/educator/dashboard",
-    "/educator/batches",
-    "/educator/curriculum",
-    "/educator/attendance",
-    "/educator/exam-grading",
-    "/educator/exam-schedule",
-    "/educator/scheduled-dpps",
-    "/educator/students",
-  ],
-  Ops: [
-    "/educator/timetable",
-    "/educator/exam-schedule",
-    "/educator/enrolments",
-    "/educator/students",
-    "/educator/attendance-overview",
-  ],
 };
 
 function resolveLabel(item: NavCatalogItem, role: EducatorPortalRole) {
@@ -163,11 +125,7 @@ function EducatorLayoutInner() {
 
   const { profile } = useAuth();
   const { isEmployee, hasPermission, empLoading, roleName } = useEmployee();
-  const role: EducatorPortalRole = !isEmployee
-    ? "Owner"
-    : roleName === "Front Desk / Ops"
-      ? "Ops"
-      : "Faculty";
+  const role: EducatorPortalRole = resolveEducatorPortalRole(isEmployee, roleName);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [instituteName, setInstituteName] = useState<string | null>(null);
 
