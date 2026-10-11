@@ -10,13 +10,16 @@
 // ticket's own instruction ("omit a block rather than invent data"), this view does not render
 // a "where marks are lost" block, an exhaustive "every topic tested" table, or an avg-time/
 // last-tested column — none of that data exists yet.
-import { AlertTriangle, BookOpen, Lock, RefreshCw } from "lucide-react";
 import {
   DsCard,
   DsCardHeader,
+  DsEmpty,
+  DsInlineError,
   DsKpiRow,
   DsMeter,
   DsPageHeader,
+  DsPermissionNotice,
+  DsSkeletonRows,
   DsStatusPill,
   DsTableHead,
   DsTableRow,
@@ -52,63 +55,6 @@ function pct(v: number) {
   return `${Math.round(v * 100)}%`;
 }
 
-// ── Minimal local states (BUILD-NOTES §03) ───────────────────────────────
-// Ticket 1 (acf188ba) is adding shared DsEmpty/DsSkeletonRows/DsInlineError to
-// src/shared/ui/ds/index.tsx; it hadn't landed on master_revamped as of this ticket, so these
-// are local, minimal stand-ins scoped to this file. Swap for the shared versions once ticket 1
-// merges.
-function LocalSkeletonRows({ count = 5 }: { count?: number }) {
-  return (
-    <div className="divide-y divide-ds-ink/[.055]">
-      {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="flex items-center gap-3 px-4 py-3">
-          <div className="h-3.5 w-40 animate-pulse rounded bg-ds-fill" />
-          <div className="ml-auto h-3.5 w-16 animate-pulse rounded bg-ds-fill" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function LocalEmpty({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
-      <BookOpen className="h-8 w-8 text-ds-ink/25" />
-      <p className="font-ds-sans text-[13px] font-semibold text-ds-ink">{title}</p>
-      <p className="max-w-xs font-ds-sans text-[12px] text-ds-ink/45">{body}</p>
-    </div>
-  );
-}
-
-// BUILD-NOTES §03 "Permission": out-of-scope routes/records resolve to a short explanation, not
-// an error. Local stand-in for the shared DsPermissionNotice ticket 1 is adding.
-function LocalPermissionNotice({ message }: { message: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
-      <Lock className="h-7 w-7 text-ds-ink/25" />
-      <p className="font-ds-sans text-[12.5px] text-ds-ink/60">{message}</p>
-    </div>
-  );
-}
-
-function LocalInlineError({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-      <AlertTriangle className="h-7 w-7 text-ds-accent" />
-      <p className="font-ds-sans text-[12.5px] text-ds-ink/70">{message}</p>
-      {onRetry && (
-        <button
-          onClick={onRetry}
-          className="flex h-8 items-center gap-1.5 rounded-md border border-ds-ink/15 px-3 font-ds-sans text-[12px] font-semibold text-ds-ink hover:bg-ds-fill"
-        >
-          <RefreshCw className="h-3.5 w-3.5" />
-          Retry
-        </button>
-      )}
-    </div>
-  );
-}
-
 const TREND_LABEL: Record<AnalysisTrend, string> = {
   improving: "Improving",
   declining: "Declining",
@@ -125,7 +71,7 @@ export function AnalysisView({
   error,
   onRetry,
   permissionDenied,
-  permissionMessage,
+  permissionBackHref,
   data,
   onPracticeTopic,
   noDataHint,
@@ -139,9 +85,9 @@ export function AnalysisView({
   onRetry?: () => void;
   // BUILD-NOTES §03 "Permission": set when the caller's own scope excludes this record (e.g. a
   // batch-scoped faculty report endpoint 404s because the student isn't in one of their
-  // batches) — shown as a short explanation, not an error.
+  // batches) — shown via the shared DsPermissionNotice rather than an error.
   permissionDenied?: boolean;
-  permissionMessage?: string;
+  permissionBackHref?: string;
   data: AnalysisData | null;
   onPracticeTopic?: (topic: AnalysisTopic) => void;
   noDataHint: string;
@@ -166,7 +112,7 @@ export function AnalysisView({
       <div className="space-y-4 font-ds-sans">
         {header}
         <DsCard>
-          <LocalSkeletonRows count={6} />
+          <DsSkeletonRows rows={6} cols="1.8fr .7fr 1.1fr .8fr" />
         </DsCard>
       </div>
     );
@@ -176,11 +122,7 @@ export function AnalysisView({
     return (
       <div className="space-y-4 font-ds-sans">
         {header}
-        <DsCard>
-          <LocalPermissionNotice
-            message={permissionMessage || "You don't have access to this student's analysis."}
-          />
-        </DsCard>
+        <DsPermissionNotice backHref={permissionBackHref} />
       </div>
     );
   }
@@ -189,9 +131,7 @@ export function AnalysisView({
     return (
       <div className="space-y-4 font-ds-sans">
         {header}
-        <DsCard>
-          <LocalInlineError message={error} onRetry={onRetry} />
-        </DsCard>
+        <DsInlineError message={error} onRetry={onRetry} />
       </div>
     );
   }
@@ -201,7 +141,7 @@ export function AnalysisView({
       <div className="space-y-4 font-ds-sans">
         {header}
         <DsCard>
-          <LocalEmpty title="No analysis yet" body={noDataHint} />
+          <DsEmpty title="No analysis yet" body={noDataHint} />
         </DsCard>
       </div>
     );
@@ -244,7 +184,7 @@ export function AnalysisView({
             meta={`${data.topics.length} flagged${data.topics.length === 1 ? "" : "s"}`}
           />
           {data.topics.length === 0 ? (
-            <LocalEmpty
+            <DsEmpty
               title="Nothing flagged yet"
               body="No topic has crossed the weak (<50%) or strong (>75%) accuracy threshold yet."
             />
