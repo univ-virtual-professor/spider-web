@@ -1,0 +1,27 @@
+src/shared/lib/examModel.ts
+  28def1481053587f 10-23,49-52
+src/features/shared/ReportCard.tsx
+  28def1481053587f 230-234,244,246-248,251-253,255-261,268-271,536,587-588,619
+src/features/educator/ExamSchedule.tsx
+  28def1481053587f 14,522-528,538-551,559-563
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "47d232b2f3e390ef7d3ff4e5b3862c9c9a6b5296",
+  "prompts": {
+    "28def1481053587f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e90cf844-3897-41e6-acbd-6e75ec6da262",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 81,
+      "total_deletions": 46,
+      "accepted_lines": 72,
+      "overriden_lines": 0
+    }
+  }
+}
