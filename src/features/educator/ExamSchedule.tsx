@@ -11,6 +11,7 @@ import {
   Timestamp,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import { toast } from "sonner";
 
@@ -518,6 +519,13 @@ export default function ExamSchedule() {
           });
         })
       );
+      // Rank is computed and stored here, not read client-side by the report card — a
+      // student's browser has no business querying classmates' marks (see examModel.ts). If
+      // results for this exam are already released, re-recording marks must recompute ranks
+      // so a released report card never shows a stale one.
+      if (marksExam.resultsReleased) {
+        await recomputeRanks(marksExam.id);
+      }
       toast.success("Marks saved");
       setMarksExam(null);
     } catch {
@@ -527,6 +535,20 @@ export default function ExamSchedule() {
     }
   }
 
+  // Writes `rank` + `totalStudents` onto every examResults doc for this exam. Rank is a
+  // standard competition rank (ties share a rank; 1 + count of strictly higher marks).
+  async function recomputeRanks(examId: string) {
+    const snap = await getDocs(query(collection(db, "examResults"), where("examId", "==", examId)));
+    const docs = snap.docs.map((d) => ({ ref: d.ref, marks: (d.data() as any).marks as number }));
+    const totalStudents = docs.length;
+    const batch = writeBatch(db);
+    for (const d of docs) {
+      const higher = docs.filter((o) => o.marks > d.marks).length;
+      batch.update(d.ref, { rank: higher + 1, totalStudents });
+    }
+    if (docs.length > 0) await batch.commit();
+  }
+
   async function toggleResultsReleased(exam: ExamDoc, released: boolean) {
     try {
       await updateDoc(doc(db, "educators", educatorId, "exams", exam.id), {
@@ -534,6 +556,11 @@ export default function ExamSchedule() {
         resultsReleasedAt: released ? Timestamp.now() : null,
         updatedAt: Timestamp.now(),
       });
+      // Un-releasing leaves ranks on the examResults docs as-is — harmless, since the report
+      // card gates on the exam's resultsReleased flag and won't show them either way.
+      if (released) {
+        await recomputeRanks(exam.id);
+      }
       toast.success(released ? "Results released to report cards" : "Results unreleased");
     } catch {
       toast.error("Failed to update results");

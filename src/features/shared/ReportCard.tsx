@@ -80,9 +80,7 @@ export default function ReportCard({
   const [branchId, setBranchId] = useState<string | undefined>();
   const [batchName, setBatchName] = useState("");
   const [studentLoaded, setStudentLoaded] = useState(false);
-  const [remark, setRemark] = useState<{ text: string; by: string; at: Date | null } | null>(
-    null
-  );
+  const [remark, setRemark] = useState<{ text: string; by: string; at: Date | null } | null>(null);
   const [remarkDraft, setRemarkDraft] = useState("");
   const [savingRemark, setSavingRemark] = useState(false);
 
@@ -143,7 +141,17 @@ export default function ReportCard({
       return;
     }
     getDoc(
-      doc(db, "educators", educatorId, "branches", branchId, "courses", courseId, "batches", batchId)
+      doc(
+        db,
+        "educators",
+        educatorId,
+        "branches",
+        branchId,
+        "courses",
+        courseId,
+        "batches",
+        batchId
+      )
     ).then((snap) => {
       setBatchName(snap.exists() ? String(snap.data().name || "") : "");
     });
@@ -219,12 +227,13 @@ export default function ReportCard({
     [attemptRows, manualRows]
   );
 
-  // Curriculum exams: educators/{id}/exams targeting this student's batch, gated by rule #1
-  // (reportCardEligible) + rule #8 (resultsReleased) — see examCountsTowardReportCard. Marks and
-  // rank come from the top-level `examResults` collection (one query per exam for the rank,
-  // since Firestore can't aggregate "how many scored higher" server-side).
+  // Curriculum exams: read only this student's own `examResults` docs (query by studentId) —
+  // never a cross-student query. Rank and totalStudents are written once by the educator at
+  // release time (ExamSchedule.tsx's `recomputeRanks`), not computed here, specifically so a
+  // student's browser never needs read access to classmates' marks. Gated by rule #1
+  // (reportCardEligible) + rule #8 (resultsReleased) — see examCountsTowardReportCard.
   useEffect(() => {
-    if (!educatorId || !studentUid || !batchId) {
+    if (!educatorId || !studentUid) {
       setCurriculumRows([]);
       setCurriculumLoaded(true);
       return;
@@ -232,44 +241,36 @@ export default function ReportCard({
     let cancelled = false;
     (async () => {
       try {
-        const examsSnap = await getDocs(
+        const resultsSnap = await getDocs(
           query(
-            collection(db, "educators", educatorId, "exams"),
-            where("targetBatches", "array-contains", batchId)
+            collection(db, "examResults"),
+            where("educatorId", "==", educatorId),
+            where("studentId", "==", studentUid)
           )
         );
-        const exams = examsSnap.docs
-          .map((d) => ({ id: d.id, ...(d.data() as any) }) as CurriculumExamDoc)
-          .filter(examCountsTowardReportCard);
-
-        const rows = await Promise.all(
-          exams.map(async (exam) => {
-            const [mineSnap, allSnap] = await Promise.all([
-              getDoc(doc(db, "examResults", `${exam.id}_${studentUid}`)),
-              getDocs(query(collection(db, "examResults"), where("examId", "==", exam.id))),
-            ]);
-            if (!mineSnap.exists()) return null;
-            const mine = mineSnap.data() as any;
-            const allMarks = allSnap.docs.map((d) => (d.data() as any).marks as number);
-            const higher = allMarks.filter((m) => m > mine.marks).length;
-            return {
-              examId: exam.id,
-              title: exam.title,
-              subject: exam.courseName,
-              date: exam.examDate,
-              marks: mine.marks,
-              maxMarks: mine.maxMarks,
-              rank: higher + 1,
-              totalStudents: allMarks.length,
-            } as CurriculumRow;
-          })
+        const results = resultsSnap.docs.map((d) => d.data() as any);
+        const exams = await Promise.all(
+          results.map((r) => getDoc(doc(db, "educators", educatorId, "exams", r.examId)))
         );
+        const rows: CurriculumRow[] = [];
+        results.forEach((mine, i) => {
+          const examSnap = exams[i];
+          if (!examSnap.exists()) return;
+          const exam = { id: examSnap.id, ...(examSnap.data() as any) } as CurriculumExamDoc;
+          if (!examCountsTowardReportCard(exam)) return;
+          rows.push({
+            examId: exam.id,
+            title: exam.title,
+            subject: exam.courseName,
+            date: exam.examDate,
+            marks: mine.marks,
+            maxMarks: mine.maxMarks,
+            rank: typeof mine.rank === "number" ? mine.rank : null,
+            totalStudents: typeof mine.totalStudents === "number" ? mine.totalStudents : 0,
+          });
+        });
         if (!cancelled) {
-          setCurriculumRows(
-            rows
-              .filter((r): r is CurriculumRow => r !== null)
-              .sort((a, b) => b.date.localeCompare(a.date))
-          );
+          setCurriculumRows(rows.sort((a, b) => b.date.localeCompare(a.date)));
         }
       } finally {
         if (!cancelled) setCurriculumLoaded(true);
@@ -278,7 +279,7 @@ export default function ReportCard({
     return () => {
       cancelled = true;
     };
-  }, [educatorId, studentUid, batchId]);
+  }, [educatorId, studentUid]);
 
   // Attendance: this student's batch sessions, grouped by month for the mini bars.
   useEffect(() => {
@@ -473,7 +474,10 @@ export default function ReportCard({
                     <div className="h-[5px] w-[70px] overflow-hidden rounded-full bg-ds-fill">
                       <div
                         className="h-full rounded-full"
-                        style={{ width: `${Math.max(0, Math.min(100, s.avg))}%`, background: tone(s.avg) }}
+                        style={{
+                          width: `${Math.max(0, Math.min(100, s.avg))}%`,
+                          background: tone(s.avg),
+                        }}
                       />
                     </div>
                     <div
@@ -529,7 +533,7 @@ export default function ReportCard({
                       {r.marks}/{r.maxMarks}
                     </div>
                     <div className="text-right font-ds-mono text-[11.5px] font-medium text-ds-ink/60">
-                      {r.rank} / {r.totalStudents}
+                      {r.rank != null ? `${r.rank} / ${r.totalStudents}` : "—"}
                     </div>
                   </DsTableRow>
                 ))}
@@ -580,8 +584,8 @@ export default function ReportCard({
           </div>
         </DsCard>
 
-        <div className="flex flex-col gap-3.5 print:hidden">
-          <DsCard className="p-4">
+        <div className="flex flex-col gap-3.5 print:mt-4 print:flex-row print:gap-3">
+          <DsCard className="p-4 print:flex-1 print:border print:p-3">
             <div className="mb-3 font-ds-sans text-[13.5px] font-semibold text-ds-ink">
               Attendance
             </div>
@@ -602,14 +606,17 @@ export default function ReportCard({
                     <div className="w-[34px] font-ds-mono text-[11px] text-ds-ink/45">
                       {m.month}
                     </div>
-                    <DsMeter pct={m.pct} tone={m.pct < 50 ? "accent" : m.pct < 75 ? "info" : "positive"} />
+                    <DsMeter
+                      pct={m.pct}
+                      tone={m.pct < 50 ? "accent" : m.pct < 75 ? "info" : "positive"}
+                    />
                   </div>
                 ))}
               </>
             )}
           </DsCard>
 
-          <DsCard className="flex-1 p-4">
+          <DsCard className="flex-1 p-4 print:border print:p-3">
             <div className="mb-3 font-ds-sans text-[13.5px] font-semibold text-ds-ink">
               Test average over time
             </div>

@@ -7,9 +7,20 @@
 // and never appears in the "curriculum exams" section of the report card.
 //
 // A curriculum exam's marks live in the top-level `examResults` collection (one doc per
-// exam+student, id `${examId}_${studentId}`) rather than nested under the student, so a
-// student's rank can be computed with a single query across everyone who sat that exam — the
-// same pattern `attempts` already uses for online-test rankings (see StudentRankings.tsx).
+// exam+student, id `${examId}_${studentId}`) rather than nested under the student. Rank is
+// computed once, server-side-equivalent, by the educator when they release results
+// (ExamSchedule.tsx's `recomputeRanks`) and stored directly on each student's own doc — the
+// report card then only ever reads docs where `studentId` is the signed-in student, never a
+// cross-student query, since a student's browser has no business reading classmates' marks.
+//
+// IMPORTANT — no Firestore security rule exists yet for `examResults` (rules are managed
+// outside this repo). Until one is added, writes to this collection will be rejected in
+// production. The rule this collection needs: create/update/delete only by the owning
+// educator (`request.auth.uid == resource.data.educatorId`, or one of that educator's
+// employees with the `tests.publish` permission) for students belonging to their own
+// institute; read allowed for that same educator, and additionally for a student but only on
+// docs where `studentId == request.auth.uid` (never a wider read — that's what would leak
+// classmates' marks). See docs/agents/risks.md.
 
 export type CurriculumExamDoc = {
   id: string;
@@ -35,6 +46,10 @@ export type ExamResultDoc = {
   courseName: string; // subject
   marks: number;
   maxMarks: number;
+  // Written once by the educator at release time (ExamSchedule.tsx's `recomputeRanks`), not
+  // computed client-side — see the file header note on why.
+  rank?: number;
+  totalStudents?: number;
   createdAt?: unknown;
   updatedAt?: unknown;
 };
@@ -42,10 +57,9 @@ export type ExamResultDoc = {
 // Rule #1 (only curriculum exams reach the report card) combined with rule #8 (students only
 // ever see released results) — a result only belongs on a report card once both the exam is
 // published, the educator has opted it into the report card, and results have been released.
-export function examCountsTowardReportCard(exam: Pick<
-  CurriculumExamDoc,
-  "status" | "reportCardEligible" | "resultsReleased"
->): boolean {
+export function examCountsTowardReportCard(
+  exam: Pick<CurriculumExamDoc, "status" | "reportCardEligible" | "resultsReleased">
+): boolean {
   return exam.status === "published" && exam.reportCardEligible && !!exam.resultsReleased;
 }
 
