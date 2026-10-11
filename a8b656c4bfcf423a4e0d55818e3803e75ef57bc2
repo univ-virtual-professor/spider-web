@@ -1,0 +1,29 @@
+src/features/student/practice/usePracticeHistory.ts
+  28def1481053587f 1-127
+src/features/student/components/PracticePlayerView.tsx
+  28def1481053587f 1-292
+src/features/student/StudentCBTAttempt.tsx
+  28def1481053587f 10,127-130,146-147,286-288,292-294,353,436-438,526-559,643,678,892-893,896-899,901-903,983-994,998-999,1003,1134-1171,1686,1688,1737,1858-1948,1957-1960,1966,1969,1972,1975,1978,1980,2500,2503,2505-2506,2513-2518,2524-2536,2543,2552,3346-3347,3353,3361,3364-3367,3372,3381-3386,3391,3399-3402,3404-3405,3410,3418-3421,3423-3424,3429,3510-3533,3551-3552,3794-3860
+src/features/student/components/QuestionElapsedTimer.tsx
+  28def1481053587f 1-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.15",
+  "base_commit_sha": "a8b656c4bfcf423a4e0d55818e3803e75ef57bc2",
+  "prompts": {
+    "28def1481053587f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e90cf844-3897-41e6-acbd-6e75ec6da262",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Maulik Gupta <guptamaulik16@gmail.com>",
+      "messages": [],
+      "total_additions": 841,
+      "total_deletions": 94,
+      "accepted_lines": 811,
+      "overriden_lines": 0
+    }
+  }
+}
