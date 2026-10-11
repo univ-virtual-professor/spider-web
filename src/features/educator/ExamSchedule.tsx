@@ -7,6 +7,7 @@ import {
   getDocs,
   onSnapshot,
   query,
+  setDoc,
   Timestamp,
   updateDoc,
   where,
@@ -14,6 +15,7 @@ import {
 import { toast } from "sonner";
 
 import { db } from "@shared/lib/firebase";
+import { examResultId } from "@shared/lib/examModel";
 import { useAuth } from "@app/providers/AuthProvider";
 import { useEmployee } from "@shared/contexts/EmployeeContext";
 import { PERMISSIONS } from "@shared/lib/rolesConfig";
@@ -68,6 +70,14 @@ type ExamDoc = {
   reportCardEligible: boolean;
   status: "draft" | "published";
   seatingPlan?: SeatAssignment[];
+  // Rule #1 (BUILD-NOTES §05): this collection is the source of truth for curriculum exams —
+  // everything else a student is marked on (online test attempts, manual grades) is ad-hoc.
+  // Marks live in the top-level `examResults` collection so a student's rank can be computed
+  // with one query across everyone who sat the exam; resultsReleased gates rule #8 (students
+  // only ever see released results) before a result reaches the report card.
+  maxMarks?: number;
+  resultsReleased?: boolean;
+  resultsReleasedAt?: Timestamp;
 };
 
 export default function ExamSchedule() {
@@ -109,6 +119,15 @@ export default function ExamSchedule() {
   const [seatAssignments, setSeatAssignments] = useState<SeatAssignment[]>([]);
   const [seatingLoading, setSeatingLoading] = useState(false);
   const [seatingSaving, setSeatingSaving] = useState(false);
+
+  const [marksExam, setMarksExam] = useState<ExamDoc | null>(null);
+  const [marksStudents, setMarksStudents] = useState<
+    { id: string; name: string; batchId: string }[]
+  >([]);
+  const [marksValues, setMarksValues] = useState<Record<string, string>>({});
+  const [marksMax, setMarksMax] = useState("");
+  const [marksLoading, setMarksLoading] = useState(false);
+  const [marksSaving, setMarksSaving] = useState(false);
 
   useEffect(() => {
     if (!educatorId) return;
@@ -428,6 +447,99 @@ export default function ExamSchedule() {
     }
   }
 
+  async function openMarks(exam: ExamDoc) {
+    setMarksExam(exam);
+    setMarksMax(exam.maxMarks != null ? String(exam.maxMarks) : "");
+    setMarksLoading(true);
+    try {
+      const batchIds = (exam.targetBatches || []).slice(0, 30);
+      if (batchIds.length === 0) {
+        setMarksStudents([]);
+        setMarksValues({});
+        return;
+      }
+      const [studentsSnap, resultsSnap] = await Promise.all([
+        getDocs(
+          query(
+            collection(db, "educators", educatorId, "students"),
+            where("batchId", "in", batchIds)
+          )
+        ),
+        getDocs(query(collection(db, "examResults"), where("examId", "==", exam.id))),
+      ]);
+      setMarksStudents(
+        studentsSnap.docs.map((d) => ({
+          id: d.id,
+          name: String(d.data().name || d.data().displayName || "Unnamed"),
+          batchId: d.data().batchId,
+        }))
+      );
+      const existing: Record<string, string> = {};
+      resultsSnap.docs.forEach((d) => {
+        const data = d.data() as any;
+        existing[data.studentId] = String(data.marks ?? "");
+      });
+      setMarksValues(existing);
+    } catch {
+      toast.error("Failed to load students for marks entry");
+    } finally {
+      setMarksLoading(false);
+    }
+  }
+
+  async function saveMarks() {
+    if (!marksExam) return;
+    const max = Number(marksMax);
+    if (!Number.isFinite(max) || max <= 0) {
+      toast.error("Enter a valid max marks for this exam");
+      return;
+    }
+    setMarksSaving(true);
+    try {
+      await updateDoc(doc(db, "educators", educatorId, "exams", marksExam.id), {
+        maxMarks: max,
+        updatedAt: Timestamp.now(),
+      });
+      const entries = marksStudents.filter((s) => marksValues[s.id]?.trim());
+      await Promise.all(
+        entries.map((s) => {
+          const marks = Number(marksValues[s.id]);
+          if (!Number.isFinite(marks)) return Promise.resolve();
+          return setDoc(doc(db, "examResults", examResultId(marksExam.id, s.id)), {
+            examId: marksExam.id,
+            educatorId,
+            studentId: s.id,
+            studentName: s.name,
+            courseName: marksExam.courseName,
+            marks,
+            maxMarks: max,
+            updatedAt: Timestamp.now(),
+            createdAt: Timestamp.now(),
+          });
+        })
+      );
+      toast.success("Marks saved");
+      setMarksExam(null);
+    } catch {
+      toast.error("Failed to save marks");
+    } finally {
+      setMarksSaving(false);
+    }
+  }
+
+  async function toggleResultsReleased(exam: ExamDoc, released: boolean) {
+    try {
+      await updateDoc(doc(db, "educators", educatorId, "exams", exam.id), {
+        resultsReleased: released,
+        resultsReleasedAt: released ? Timestamp.now() : null,
+        updatedAt: Timestamp.now(),
+      });
+      toast.success(released ? "Results released to report cards" : "Results unreleased");
+    } catch {
+      toast.error("Failed to update results");
+    }
+  }
+
   async function deleteExam(exam: ExamDoc) {
     if (!window.confirm(`Delete "${exam.title}"?`)) return;
     try {
@@ -609,6 +721,9 @@ export default function ExamSchedule() {
                 <div className="mb-3 mt-1 font-ds-sans text-[11.5px] text-ds-ink/50">
                   {selectedExam.courseName}
                   {selectedExam.reportCardEligible ? " · report-card eligible" : ""}
+                  {selectedExam.reportCardEligible && selectedExam.resultsReleased
+                    ? " · results released"
+                    : ""}
                 </div>
 
                 {[
@@ -698,6 +813,32 @@ export default function ExamSchedule() {
                   >
                     Seating plan &amp; invigilators
                   </button>
+                  {canPublish && selectedExam.status === "published" && (
+                    <button
+                      onClick={() => openMarks(selectedExam)}
+                      className="h-8 rounded-md border border-ds-ink/15 font-ds-sans text-[12.5px] font-medium text-ds-ink hover:bg-ds-fill"
+                    >
+                      Record marks
+                    </button>
+                  )}
+                  {canPublish &&
+                    selectedExam.status === "published" &&
+                    selectedExam.reportCardEligible && (
+                      <button
+                        onClick={() =>
+                          toggleResultsReleased(selectedExam, !selectedExam.resultsReleased)
+                        }
+                        className={
+                          selectedExam.resultsReleased
+                            ? "h-8 rounded-md border border-ds-ink/15 font-ds-sans text-[12.5px] font-medium text-ds-ink hover:bg-ds-fill"
+                            : "h-[34px] rounded-md bg-ds-positive font-ds-sans text-[12.5px] font-semibold text-white hover:bg-ds-positive/90"
+                        }
+                      >
+                        {selectedExam.resultsReleased
+                          ? "Unrelease results"
+                          : "Release results to report cards"}
+                      </button>
+                    )}
                   {canCreate && (
                     <button
                       onClick={() => deleteExam(selectedExam)}
@@ -954,6 +1095,58 @@ export default function ExamSchedule() {
                 Save
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!marksExam} onOpenChange={(open) => !open && setMarksExam(null)}>
+        <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Record marks — {marksExam?.title}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label>Max marks</Label>
+            <Input
+              type="number"
+              min={1}
+              value={marksMax}
+              onChange={(e) => setMarksMax(e.target.value)}
+              placeholder="e.g. 90"
+            />
+          </div>
+          {marksLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : marksStudents.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              No students found in this exam's target batches.
+            </p>
+          ) : (
+            <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg border p-2">
+              {marksStudents.map((s) => (
+                <div key={s.id} className="flex items-center gap-2 text-sm">
+                  <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                  <Input
+                    className="h-7 w-20 text-xs"
+                    type="number"
+                    min={0}
+                    value={marksValues[s.id] ?? ""}
+                    onChange={(e) =>
+                      setMarksValues((prev) => ({ ...prev, [s.id]: e.target.value }))
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMarksExam(null)}>
+              Close
+            </Button>
+            <Button onClick={saveMarks} disabled={marksSaving || marksStudents.length === 0}>
+              Save marks
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
