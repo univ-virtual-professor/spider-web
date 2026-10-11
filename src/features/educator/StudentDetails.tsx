@@ -56,6 +56,71 @@ import {
   type AnalysisData,
 } from "@shared/components/analysis/AnalysisView";
 
+const MONKEY_KING_API = import.meta.env.VITE_MONKEY_KING_API_URL as string;
+
+// Same shape GET /api/reports/my returns (see StudentReports.tsx) — the faculty-facing
+// GET /api/reports/students/{id} wraps it as {"report": FacultyReport | null}.
+type FacultyReportArea = {
+  subject: string;
+  chapter: string;
+  topic: string;
+  weighted_accuracy: number;
+  attempt_count: number;
+};
+type FacultyReport = {
+  status: "full" | "partial" | "no_data";
+  weak_areas_full: FacultyReportArea[];
+  strong_holds_full: FacultyReportArea[];
+  subject_breakdown: {
+    subject: string;
+    weighted_accuracy: number;
+    trend: string;
+    attempt_count: number;
+  }[];
+  total_attempts: number;
+  total_questions_analyzed: number;
+};
+
+const EMPTY_REPORT: AnalysisData = {
+  status: "no_data",
+  totalAttempts: 0,
+  totalQuestionsAnalyzed: 0,
+  topics: [],
+  subjects: [],
+};
+
+function toAnalysisData(report: FacultyReport): AnalysisData {
+  return {
+    status: report.status,
+    totalAttempts: report.total_attempts,
+    totalQuestionsAnalyzed: report.total_questions_analyzed,
+    topics: [
+      ...report.weak_areas_full.map((w) => ({
+        subject: w.subject,
+        chapter: w.chapter,
+        topic: w.topic,
+        accuracy: w.weighted_accuracy,
+        attempts: w.attempt_count,
+        tone: "weak" as const,
+      })),
+      ...report.strong_holds_full.map((s) => ({
+        subject: s.subject,
+        chapter: s.chapter,
+        topic: s.topic,
+        accuracy: s.weighted_accuracy,
+        attempts: s.attempt_count,
+        tone: "strong" as const,
+      })),
+    ],
+    subjects: report.subject_breakdown.map((s) => ({
+      subject: s.subject,
+      accuracy: s.weighted_accuracy,
+      trend: s.trend as AnalysisData["subjects"][number]["trend"],
+      attempts: s.attempt_count,
+    })),
+  };
+}
+
 type LearnerDoc = {
   uid?: string;
   name?: string;
@@ -194,55 +259,34 @@ export default function StudentDetails() {
   const [report, setReport] = useState<AnalysisData | null>(null);
   const [reportLoading, setReportLoading] = useState(true);
   const [reportError, setReportError] = useState<string | null>(null);
+  const [reportPermissionDenied, setReportPermissionDenied] = useState(false);
   const [reportReloadKey, setReportReloadKey] = useState(0);
 
-  // monkey-king has no faculty-facing report endpoint yet (only GET /api/reports/my, scoped
-  // to the signed-in student) — read the same cached computation straight from Firestore
-  // (users/{studentId}/reports/summary, written by monkey-king's report_manager.compute_report)
-  // instead. See docs/agents/risks.md for the access-rule caveat.
+  // monkey-king's batch-scoped faculty report endpoints (ticket 9a / monkey-king PR #3; see
+  // docs/agents/mockups/revamp/faculty-report-api.md). Same fetch pattern as StudentReports.tsx:
+  // VITE_MONKEY_KING_API_URL + the signed-in educator's Firebase ID token. A 404 means this
+  // student isn't in one of the caller's batches (rule #7 scope), never a 403.
   useEffect(() => {
-    if (!studentId) return;
+    if (!studentId || !firebaseUser) return;
     let cancelled = false;
     setReportLoading(true);
     setReportError(null);
+    setReportPermissionDenied(false);
     (async () => {
       try {
-        const snap = await getDoc(doc(db, "users", studentId, "reports", "summary"));
+        const token = await firebaseUser.getIdToken();
+        const res = await fetch(`${MONKEY_KING_API}/api/reports/students/${studentId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         if (cancelled) return;
-        if (!snap.exists()) {
-          setReport({
-            status: "no_data",
-            totalAttempts: 0,
-            totalQuestionsAnalyzed: 0,
-            topics: [],
-            subjects: [],
-          });
-        } else {
-          const d = snap.data() as any;
-          const mapArea = (a: any, tone: "weak" | "strong") => ({
-            subject: String(a?.subject || ""),
-            chapter: String(a?.chapter || ""),
-            topic: String(a?.topic || ""),
-            accuracy: Number(a?.weighted_accuracy ?? 0),
-            attempts: Number(a?.attempt_count ?? 0),
-            tone,
-          });
-          setReport({
-            status: d.status || "no_data",
-            totalAttempts: Number(d.totalAttempts || 0),
-            totalQuestionsAnalyzed: Number(d.totalQuestionsAnalyzed || 0),
-            topics: [
-              ...((d.weakAreasFull || []) as any[]).map((a) => mapArea(a, "weak")),
-              ...((d.strongHoldsFull || []) as any[]).map((a) => mapArea(a, "strong")),
-            ],
-            subjects: ((d.subjectBreakdown || []) as any[]).map((s) => ({
-              subject: String(s?.subject || ""),
-              accuracy: Number(s?.weighted_accuracy ?? 0),
-              trend: (s?.trend || "insufficient_data") as AnalysisData["subjects"][number]["trend"],
-              attempts: Number(s?.attempt_count ?? 0),
-            })),
-          });
+        if (res.status === 404) {
+          setReportPermissionDenied(true);
+          setReport(null);
+          return;
         }
+        if (!res.ok) throw new Error(`Failed to load report (${res.status})`);
+        const body = (await res.json()) as { report: FacultyReport | null };
+        setReport(body.report ? toAnalysisData(body.report) : { ...EMPTY_REPORT });
       } catch {
         if (!cancelled) setReportError("Could not load this student's analysis.");
       } finally {
@@ -252,7 +296,7 @@ export default function StudentDetails() {
     return () => {
       cancelled = true;
     };
-  }, [studentId, reportReloadKey]);
+  }, [studentId, firebaseUser, reportReloadKey]);
 
   useEffect(() => {
     if (!educatorId || !studentId) return;
@@ -927,23 +971,23 @@ export default function StudentDetails() {
             loading={reportLoading}
             error={reportError}
             onRetry={() => setReportReloadKey((k) => k + 1)}
+            permissionDenied={reportPermissionDenied}
+            permissionMessage="This student isn't in one of your batches."
             data={report}
             onPracticeTopic={() => nav("/educator/dpp")}
             noDataHint="This student hasn't taken enough tests yet to unlock topic-level analysis."
           />
           {report && report.topics.length > 0 && (
             <div className="mt-3 flex justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => nav("/educator/dpp")}
-              >
+              <Button variant="outline" size="sm" onClick={() => nav("/educator/dpp")}>
                 Assign practice
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => downloadCsv(`${learner?.name || studentId}-analysis.csv`, topicsToCsv(report))}
+                onClick={() =>
+                  downloadCsv(`${learner?.name || studentId}-analysis.csv`, topicsToCsv(report))
+                }
               >
                 Export
               </Button>

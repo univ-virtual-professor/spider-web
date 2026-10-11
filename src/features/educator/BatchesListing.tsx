@@ -9,8 +9,10 @@ import {
   doc,
   getDocs,
   onSnapshot,
+  query,
   Timestamp,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
@@ -102,9 +104,9 @@ export default function BatchesListing() {
     Record<string, { done: number; total: number }>
   >({});
   const [batchFaculty, setBatchFaculty] = useState<Record<string, string[]>>({});
-  const [batchAttendance, setBatchAttendance] = useState<Record<string, { present: number; total: number }>>(
-    {}
-  );
+  const [batchAttendance, setBatchAttendance] = useState<
+    Record<string, { present: number; total: number }>
+  >({});
   const [myBatchIds, setMyBatchIds] = useState<Set<string>>(new Set());
 
   // Wizard
@@ -292,7 +294,16 @@ export default function BatchesListing() {
     Promise.all(
       courses.map(async (c) => {
         const moduleSnap = await getDocs(
-          collection(db, "educators", educatorId, "branches", c.branchId, "courses", c.id, "modules")
+          collection(
+            db,
+            "educators",
+            educatorId,
+            "branches",
+            c.branchId,
+            "courses",
+            c.id,
+            "modules"
+          )
         );
         let done = 0;
         let total = 0;
@@ -333,33 +344,78 @@ export default function BatchesListing() {
     };
   }, [educatorId, courses]);
 
-  // Faculty + attendance per batch, from its own timetable/sessions subcollections.
+  // Faculty per batch, from its own (small) timetable subcollection — cheap enough to read for
+  // every batch, since it's just a handful of weekly slot docs. Also how "my batches" (the ones
+  // this signed-in employee teaches) gets determined.
   useEffect(() => {
     if (!educatorId || batches.length === 0) {
       setBatchFaculty({});
-      setBatchAttendance({});
       setMyBatchIds(new Set());
       return;
     }
     let cancelled = false;
     Promise.all(
       batches.map(async (b) => {
-        const [ttSnap, sessSnap] = await Promise.all([
-          getDocs(
-            collection(
-              db,
-              "educators",
-              educatorId,
-              "branches",
-              b.branchId,
-              "courses",
-              b.courseId,
-              "batches",
-              b.id,
-              "timetable"
-            )
-          ),
-          getDocs(
+        const ttSnap = await getDocs(
+          collection(
+            db,
+            "educators",
+            educatorId,
+            "branches",
+            b.branchId,
+            "courses",
+            b.courseId,
+            "batches",
+            b.id,
+            "timetable"
+          )
+        );
+        const teacherUids = new Set<string>();
+        const names = new Set<string>();
+        ttSnap.docs.forEach((d) => {
+          const data = d.data() as any;
+          if (data.teacherUid) teacherUids.add(data.teacherUid);
+          if (data.teacherName) names.add(data.teacherName);
+        });
+        return {
+          batchId: b.id,
+          names: Array.from(names),
+          isMine: firebaseUser?.uid ? teacherUids.has(firebaseUser.uid) : false,
+        };
+      })
+    ).then((results) => {
+      if (cancelled) return;
+      const faculty: Record<string, string[]> = {};
+      const mine = new Set<string>();
+      results.forEach((r) => {
+        faculty[r.batchId] = r.names;
+        if (r.isMine) mine.add(r.batchId);
+      });
+      setBatchFaculty(faculty);
+      setMyBatchIds(mine);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [educatorId, batches, firebaseUser?.uid]);
+
+  // Attendance per batch — only ever shown in the "My batches" section, so only fetched for the
+  // signed-in faculty member's own batches, and only the last 120 days of sessions (not the
+  // batch's full history).
+  useEffect(() => {
+    if (!educatorId || myBatchIds.size === 0) {
+      setBatchAttendance({});
+      return;
+    }
+    let cancelled = false;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 120);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const myBatches = batches.filter((b) => myBatchIds.has(b.id));
+    Promise.all(
+      myBatches.map(async (b) => {
+        const sessSnap = await getDocs(
+          query(
             collection(
               db,
               "educators",
@@ -371,16 +427,10 @@ export default function BatchesListing() {
               "batches",
               b.id,
               "sessions"
-            )
-          ),
-        ]);
-        const teacherUids = new Set<string>();
-        const names = new Set<string>();
-        ttSnap.docs.forEach((d) => {
-          const data = d.data() as any;
-          if (data.teacherUid) teacherUids.add(data.teacherUid);
-          if (data.teacherName) names.add(data.teacherName);
-        });
+            ),
+            where("date", ">=", cutoffStr)
+          )
+        );
         let present = 0;
         let total = 0;
         sessSnap.docs.forEach((d) => {
@@ -391,32 +441,20 @@ export default function BatchesListing() {
             if (status === "present" || status === "late") present += 1;
           });
         });
-        return {
-          batchId: b.id,
-          names: Array.from(names),
-          isMine: firebaseUser?.uid ? teacherUids.has(firebaseUser.uid) : false,
-          present,
-          total,
-        };
+        return { batchId: b.id, present, total };
       })
     ).then((results) => {
       if (cancelled) return;
-      const faculty: Record<string, string[]> = {};
       const attendance: Record<string, { present: number; total: number }> = {};
-      const mine = new Set<string>();
       results.forEach((r) => {
-        faculty[r.batchId] = r.names;
         attendance[r.batchId] = { present: r.present, total: r.total };
-        if (r.isMine) mine.add(r.batchId);
       });
-      setBatchFaculty(faculty);
       setBatchAttendance(attendance);
-      setMyBatchIds(mine);
     });
     return () => {
       cancelled = true;
     };
-  }, [educatorId, batches, firebaseUser?.uid]);
+  }, [educatorId, batches, myBatchIds]);
 
   const totalAvailableSeats = pools.reduce((sum, p) => sum + p.availableSeats, 0);
   const totalInUse = pools.reduce((sum, p) => sum + p.allocatedSeats, 0);
@@ -725,7 +763,9 @@ export default function BatchesListing() {
     );
   }
 
-  const batchStatusTone = (batch: Batch): { label: string; tone: "accent" | "info" | "positive" | "slate" } => {
+  const batchStatusTone = (
+    batch: Batch
+  ): { label: string; tone: "accent" | "info" | "positive" | "slate" } => {
     const today = new Date().toISOString().slice(0, 10);
     if (batch.endDate && batch.endDate < today) return { label: "Ended", tone: "slate" };
     if (batch.startDate && batch.startDate > today) return { label: "Upcoming", tone: "info" };
@@ -772,9 +812,11 @@ export default function BatchesListing() {
               const course = courses.find((c) => c.id === batch.courseId);
               const count = studentCounts[batch.id] ?? 0;
               const progress = course ? curriculumProgress[course.id] : undefined;
-              const progressPct = progress && progress.total > 0 ? (progress.done / progress.total) * 100 : 0;
+              const progressPct =
+                progress && progress.total > 0 ? (progress.done / progress.total) * 100 : 0;
               const att = batchAttendance[batch.id];
-              const attPct = att && att.total > 0 ? Math.round((att.present / att.total) * 100) : null;
+              const attPct =
+                att && att.total > 0 ? Math.round((att.present / att.total) * 100) : null;
               return (
                 <DsCard key={batch.id} className="p-4">
                   <div className="flex items-baseline gap-2">

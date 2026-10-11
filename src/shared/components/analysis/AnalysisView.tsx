@@ -10,7 +10,7 @@
 // ticket's own instruction ("omit a block rather than invent data"), this view does not render
 // a "where marks are lost" block, an exhaustive "every topic tested" table, or an avg-time/
 // last-tested column — none of that data exists yet.
-import { AlertTriangle, BookOpen, RefreshCw } from "lucide-react";
+import { AlertTriangle, BookOpen, Lock, RefreshCw } from "lucide-react";
 import {
   DsCard,
   DsCardHeader,
@@ -80,6 +80,17 @@ function LocalEmpty({ title, body }: { title: string; body: string }) {
   );
 }
 
+// BUILD-NOTES §03 "Permission": out-of-scope routes/records resolve to a short explanation, not
+// an error. Local stand-in for the shared DsPermissionNotice ticket 1 is adding.
+function LocalPermissionNotice({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
+      <Lock className="h-7 w-7 text-ds-ink/25" />
+      <p className="font-ds-sans text-[12.5px] text-ds-ink/60">{message}</p>
+    </div>
+  );
+}
+
 function LocalInlineError({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
@@ -113,6 +124,8 @@ export function AnalysisView({
   loading,
   error,
   onRetry,
+  permissionDenied,
+  permissionMessage,
   data,
   onPracticeTopic,
   noDataHint,
@@ -124,6 +137,11 @@ export function AnalysisView({
   loading: boolean;
   error?: string | null;
   onRetry?: () => void;
+  // BUILD-NOTES §03 "Permission": set when the caller's own scope excludes this record (e.g. a
+  // batch-scoped faculty report endpoint 404s because the student isn't in one of their
+  // batches) — shown as a short explanation, not an error.
+  permissionDenied?: boolean;
+  permissionMessage?: string;
   data: AnalysisData | null;
   onPracticeTopic?: (topic: AnalysisTopic) => void;
   noDataHint: string;
@@ -132,9 +150,13 @@ export function AnalysisView({
     <DsPageHeader
       title={title}
       subtitle={subtitle}
-      primary={primaryAction ? { label: primaryAction.label, onClick: primaryAction.onClick } : undefined}
+      primary={
+        primaryAction ? { label: primaryAction.label, onClick: primaryAction.onClick } : undefined
+      }
       secondary={
-        secondaryAction ? { label: secondaryAction.label, onClick: secondaryAction.onClick } : undefined
+        secondaryAction
+          ? { label: secondaryAction.label, onClick: secondaryAction.onClick }
+          : undefined
       }
     />
   );
@@ -145,6 +167,19 @@ export function AnalysisView({
         {header}
         <DsCard>
           <LocalSkeletonRows count={6} />
+        </DsCard>
+      </div>
+    );
+  }
+
+  if (permissionDenied) {
+    return (
+      <div className="space-y-4 font-ds-sans">
+        {header}
+        <DsCard>
+          <LocalPermissionNotice
+            message={permissionMessage || "You don't have access to this student's analysis."}
+          />
         </DsCard>
       </div>
     );
@@ -222,14 +257,19 @@ export function AnalysisView({
               {data.topics.map((t, i) => (
                 <DsTableRow key={`${t.subject}-${t.topic}-${i}`} cols="1.8fr .7fr 1.1fr .8fr">
                   <div className="min-w-0">
-                    <div className="truncate font-semibold">{t.topic || t.chapter || t.subject}</div>
+                    <div className="truncate font-semibold">
+                      {t.topic || t.chapter || t.subject}
+                    </div>
                     <div className="truncate font-ds-sans text-[11px] text-ds-ink/45">
                       {[t.subject, t.chapter].filter(Boolean).join(" › ")}
                     </div>
                   </div>
                   <div className="font-ds-mono text-[12px] text-ds-ink/60">{t.attempts}</div>
                   <div className="pr-4">
-                    <DsMeter pct={t.accuracy * 100} tone={t.tone === "weak" ? "accent" : "positive"} />
+                    <DsMeter
+                      pct={t.accuracy * 100}
+                      tone={t.tone === "weak" ? "accent" : "positive"}
+                    />
                   </div>
                   <div className="flex justify-end">
                     <DsStatusPill tone={t.tone === "weak" ? "accent" : "positive"}>
@@ -299,7 +339,8 @@ export function AnalysisView({
                       {t.topic || t.chapter || t.subject}
                     </div>
                     <div className="truncate font-ds-sans text-[11px] text-ds-ink/45">
-                      {pct(t.accuracy)} accuracy over {t.attempts} attempt{t.attempts === 1 ? "" : "s"}
+                      {pct(t.accuracy)} accuracy over {t.attempts} attempt
+                      {t.attempts === 1 ? "" : "s"}
                     </div>
                   </div>
                   {onPracticeTopic && (

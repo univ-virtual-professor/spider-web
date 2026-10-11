@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Search, X, ChevronRight, Users, ArrowLeft, ArrowLeftRight } from "lucide-react";
-import { collection, doc, getDoc, getDocs, onSnapshot, query, orderBy, writeBatch } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDocs,
+  onSnapshot,
+  query,
+  orderBy,
+  writeBatch,
+} from "firebase/firestore";
 import { db } from "@shared/lib/firebase";
 import { useAuth } from "@app/providers/AuthProvider";
 import { useEmployee } from "@shared/contexts/EmployeeContext";
@@ -37,10 +45,11 @@ type Branch = { id: string; name: string };
 type Course = { id: string; name: string; branchId: string };
 type Batch = { id: string; name: string; courseId: string; branchId: string };
 
-// Bounded per-student readiness lookup — only fetched once a single batch is selected, so this
-// stays a few dozen reads at most, not one per student in the whole institute.
-type ReadinessInfo = { weakTopics: string[]; weakCount: number; strongCount: number };
-const MAX_READINESS_LOOKUPS = 150;
+const MONKEY_KING_API = import.meta.env.VITE_MONKEY_KING_API_URL as string;
+
+// One batch-scoped call (GET /api/reports/batches/{batch_id}/students — monkey-king PR #3) once a
+// single batch is selected, instead of a per-student Firestore read for the whole roster.
+type ReadinessInfo = { weakTopics: string[]; readiness: number | null };
 
 export default function StudentsListing() {
   const navigate = useNavigate();
@@ -188,67 +197,91 @@ export default function StudentsListing() {
     });
   }, [students, branchFilter, programFilter, batchFilter, searchQuery, branches, courses, batches]);
 
-  // Readiness/weakest-topics lookup — only when a single batch is selected, so the read count
-  // stays bounded to that batch's roster (BUILD-NOTES' fa_students: "weakest first, at risk").
+  // Readiness/weakest-topics lookup — only when a single batch is selected, one call for the
+  // whole batch roster (BUILD-NOTES' fa_students: "weakest first, at risk").
   useEffect(() => {
-    if (batchFilter === "All" || filteredStudents.length === 0 || filteredStudents.length > MAX_READINESS_LOOKUPS) {
+    const selectedBatch = batches.find((b) => b.name === batchFilter);
+    if (!selectedBatch || !firebaseUser) {
       setReadiness({});
       return;
     }
     let cancelled = false;
     setReadinessLoading(true);
-    Promise.all(
-      filteredStudents.map(async (s) => {
-        try {
-          const snap = await getDoc(doc(db, "users", s.id, "reports", "summary"));
-          if (!snap.exists()) return [s.id, null] as const;
-          const d = snap.data() as any;
-          const weak = (d.weakAreasFull || d.weakAreas || []) as any[];
-          const strong = (d.strongHoldsFull || d.strongHolds || []) as any[];
-          const weakTopics = weak
-            .slice(0, 2)
-            .map((w) => String(w.topic || w.chapter || w.subject || "").trim())
-            .filter(Boolean);
-          return [s.id, { weakTopics, weakCount: weak.length, strongCount: strong.length }] as const;
-        } catch {
-          return [s.id, null] as const;
+    (async () => {
+      try {
+        const token = await firebaseUser.getIdToken();
+        const res = await fetch(
+          `${MONKEY_KING_API}/api/reports/batches/${selectedBatch.id}/students`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (cancelled) return;
+        if (!res.ok) {
+          // 404 ("not one of your batches") or any other failure: degrade quietly — the roster
+          // itself still works, it just loses the weakest-topics/at-risk/sort extras.
+          setReadiness({});
+          return;
         }
-      })
-    ).then((pairs) => {
-      if (cancelled) return;
-      const next: Record<string, ReadinessInfo> = {};
-      pairs.forEach(([id, info]) => {
-        if (info) next[id] = info;
-      });
-      setReadiness(next);
-      setReadinessLoading(false);
-    });
+        const body = (await res.json()) as {
+          students: {
+            studentId: string;
+            readiness: number | null;
+            weakAreas: {
+              subject: string;
+              chapter: string;
+              topic: string;
+              weighted_accuracy: number;
+            }[];
+          }[];
+        };
+        const next: Record<string, ReadinessInfo> = {};
+        body.students.forEach((s) => {
+          next[s.studentId] = {
+            readiness: s.readiness,
+            weakTopics: (s.weakAreas || [])
+              .slice(0, 2)
+              .map((w) => String(w.topic || w.chapter || w.subject || "").trim())
+              .filter(Boolean),
+          };
+        });
+        setReadiness(next);
+      } catch {
+        if (!cancelled) setReadiness({});
+      } finally {
+        if (!cancelled) setReadinessLoading(false);
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [batchFilter, filteredStudents]);
+  }, [batchFilter, batches, firebaseUser]);
 
   const hasReadiness = batchFilter !== "All" && Object.keys(readiness).length > 0;
+
+  // "Below 45% average" at-risk threshold, matching the mockup (ow_students KPI: "At risk · below
+  // 45% average"). A student with no readiness score yet falls back to "has any weak topic".
+  const isAtRisk = (info: ReadinessInfo | undefined) =>
+    info ? (info.readiness !== null ? info.readiness < 45 : info.weakTopics.length > 0) : false;
 
   const visibleStudents = useMemo(() => {
     let list = filteredStudents;
     if (atRiskOnly && hasReadiness) {
-      list = list.filter((s) => (readiness[s.id]?.weakCount || 0) >= 3);
+      list = list.filter((s) => isAtRisk(readiness[s.id]));
     }
     if (hasReadiness) {
       list = [...list].sort((a, b) => {
-        const ra = readiness[a.id];
-        const rb = readiness[b.id];
-        const scoreA = ra ? ra.weakCount - ra.strongCount : 0;
-        const scoreB = rb ? rb.weakCount - rb.strongCount : 0;
-        return scoreB - scoreA; // weakest first
+        const ra = readiness[a.id]?.readiness;
+        const rb = readiness[b.id]?.readiness;
+        if (ra == null && rb == null) return 0;
+        if (ra == null) return 1;
+        if (rb == null) return -1;
+        return ra - rb; // weakest (lowest readiness) first
       });
     }
     return list;
   }, [filteredStudents, atRiskOnly, hasReadiness, readiness]);
 
   const atRiskCount = useMemo(
-    () => filteredStudents.filter((s) => (readiness[s.id]?.weakCount || 0) >= 3).length,
+    () => filteredStudents.filter((s) => isAtRisk(readiness[s.id])).length,
     [filteredStudents, readiness]
   );
 
@@ -308,19 +341,34 @@ export default function StudentsListing() {
     setTransferOpen(true);
   };
 
+  // Mirrors Learners.tsx's saveAssignBatch (single-student transfer) — same three docs, same
+  // fields. Firestore batched writes cap out at 500 operations; 3 writes/student means at most
+  // ~166 students per batch, so chunk well under that.
+  const TRANSFER_WRITES_PER_STUDENT = 3;
+  const TRANSFER_CHUNK_SIZE = Math.floor(450 / TRANSFER_WRITES_PER_STUDENT);
+
   const runTransfer = async () => {
     if (!educatorId || !transferBatchId || selectedIds.size === 0) return;
     setTransferring(true);
     try {
-      const batchWrite = writeBatch(db);
-      selectedIds.forEach((id) => {
-        batchWrite.update(doc(db, "educators", educatorId, "students", id), {
-          branchId: transferBranchId,
-          courseId: transferCourseId,
-          batchId: transferBatchId,
+      const ids = Array.from(selectedIds);
+      const fields = {
+        branchId: transferBranchId,
+        courseId: transferCourseId,
+        batchId: transferBatchId,
+      };
+      for (let i = 0; i < ids.length; i += TRANSFER_CHUNK_SIZE) {
+        const chunk = ids.slice(i, i + TRANSFER_CHUNK_SIZE);
+        const batchWrite = writeBatch(db);
+        chunk.forEach((id) => {
+          batchWrite.set(doc(db, "educators", educatorId, "students", id), fields, { merge: true });
+          batchWrite.update(doc(db, "users", id), fields);
+          batchWrite.set(doc(db, "educators", educatorId, "billingSeats", id), fields, {
+            merge: true,
+          });
         });
-      });
-      await batchWrite.commit();
+        await batchWrite.commit();
+      }
       toast.success(`Moved ${selectedIds.size} student${selectedIds.size === 1 ? "" : "s"}.`);
       setSelectedIds(new Set());
       setTransferOpen(false);
@@ -335,7 +383,14 @@ export default function StudentsListing() {
     const header = "Name,Email,Batch,Status,Guardian,Guardian phone";
     const rows = visibleStudents.map((s) => {
       const batchName = batches.find((b) => b.id === s.batchId)?.name || "";
-      return [s.name || "", s.email || "", batchName, s.status || "", s.guardianName || "", s.guardianPhone || ""]
+      return [
+        s.name || "",
+        s.email || "",
+        batchName,
+        s.status || "",
+        s.guardianName || "",
+        s.guardianPhone || "",
+      ]
         .map((v) => `"${String(v).replace(/"/g, '""')}"`)
         .join(",");
     });
@@ -492,10 +547,19 @@ export default function StudentsListing() {
             <DsTableHead
               columns={
                 canManage
-                  ? ["", "Student", "Batch", "Guardian", hasReadiness ? "Weakest topics" : "Status", ""]
+                  ? [
+                      "",
+                      "Student",
+                      "Batch",
+                      "Guardian",
+                      hasReadiness ? "Weakest topics" : "Status",
+                      "",
+                    ]
                   : ["Student", "Batch", "Guardian", hasReadiness ? "Weakest topics" : "Status", ""]
               }
-              cols={canManage ? "32px 1.4fr 1.1fr 1.2fr 1.3fr .6fr" : "1.5fr 1.1fr 1.2fr 1.3fr .6fr"}
+              cols={
+                canManage ? "32px 1.4fr 1.1fr 1.2fr 1.3fr .6fr" : "1.5fr 1.1fr 1.2fr 1.3fr .6fr"
+              }
             />
             {visibleStudents.map((student) => {
               const studentBatch = batches.find((b) => b.id === student.batchId);
@@ -511,7 +575,9 @@ export default function StudentsListing() {
               return (
                 <DsTableRow
                   key={student.id}
-                  cols={canManage ? "32px 1.4fr 1.1fr 1.2fr 1.3fr .6fr" : "1.5fr 1.1fr 1.2fr 1.3fr .6fr"}
+                  cols={
+                    canManage ? "32px 1.4fr 1.1fr 1.2fr 1.3fr .6fr" : "1.5fr 1.1fr 1.2fr 1.3fr .6fr"
+                  }
                   height={56}
                 >
                   {canManage && (
@@ -608,7 +674,9 @@ export default function StudentsListing() {
       <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Transfer {selectedIds.size} student{selectedIds.size === 1 ? "" : "s"}</DialogTitle>
+            <DialogTitle>
+              Transfer {selectedIds.size} student{selectedIds.size === 1 ? "" : "s"}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <Select
@@ -649,7 +717,11 @@ export default function StudentsListing() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={transferBatchId} onValueChange={setTransferBatchId} disabled={!transferCourseId}>
+            <Select
+              value={transferBatchId}
+              onValueChange={setTransferBatchId}
+              disabled={!transferCourseId}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Target batch" />
               </SelectTrigger>
