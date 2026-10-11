@@ -49,6 +49,12 @@ import {
 } from "firebase/firestore";
 import { Skeleton } from "@shared/ui/skeleton";
 import { cn } from "@shared/lib/utils";
+import {
+  AnalysisView,
+  downloadCsv,
+  topicsToCsv,
+  type AnalysisData,
+} from "@shared/components/analysis/AnalysisView";
 
 type LearnerDoc = {
   uid?: string;
@@ -184,6 +190,69 @@ export default function StudentDetails() {
   const [gradeMarks, setGradeMarks] = useState("");
   const [gradeMax, setGradeMax] = useState("");
   const [gradeRemark, setGradeRemark] = useState("");
+
+  const [report, setReport] = useState<AnalysisData | null>(null);
+  const [reportLoading, setReportLoading] = useState(true);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [reportReloadKey, setReportReloadKey] = useState(0);
+
+  // monkey-king has no faculty-facing report endpoint yet (only GET /api/reports/my, scoped
+  // to the signed-in student) — read the same cached computation straight from Firestore
+  // (users/{studentId}/reports/summary, written by monkey-king's report_manager.compute_report)
+  // instead. See docs/agents/risks.md for the access-rule caveat.
+  useEffect(() => {
+    if (!studentId) return;
+    let cancelled = false;
+    setReportLoading(true);
+    setReportError(null);
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "users", studentId, "reports", "summary"));
+        if (cancelled) return;
+        if (!snap.exists()) {
+          setReport({
+            status: "no_data",
+            totalAttempts: 0,
+            totalQuestionsAnalyzed: 0,
+            topics: [],
+            subjects: [],
+          });
+        } else {
+          const d = snap.data() as any;
+          const mapArea = (a: any, tone: "weak" | "strong") => ({
+            subject: String(a?.subject || ""),
+            chapter: String(a?.chapter || ""),
+            topic: String(a?.topic || ""),
+            accuracy: Number(a?.weighted_accuracy ?? 0),
+            attempts: Number(a?.attempt_count ?? 0),
+            tone,
+          });
+          setReport({
+            status: d.status || "no_data",
+            totalAttempts: Number(d.totalAttempts || 0),
+            totalQuestionsAnalyzed: Number(d.totalQuestionsAnalyzed || 0),
+            topics: [
+              ...((d.weakAreasFull || []) as any[]).map((a) => mapArea(a, "weak")),
+              ...((d.strongHoldsFull || []) as any[]).map((a) => mapArea(a, "strong")),
+            ],
+            subjects: ((d.subjectBreakdown || []) as any[]).map((s) => ({
+              subject: String(s?.subject || ""),
+              accuracy: Number(s?.weighted_accuracy ?? 0),
+              trend: (s?.trend || "insufficient_data") as AnalysisData["subjects"][number]["trend"],
+              attempts: Number(s?.attempt_count ?? 0),
+            })),
+          });
+        }
+      } catch {
+        if (!cancelled) setReportError("Could not load this student's analysis.");
+      } finally {
+        if (!cancelled) setReportLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [studentId, reportReloadKey]);
 
   useEffect(() => {
     if (!educatorId || !studentId) return;
@@ -522,6 +591,7 @@ export default function StudentDetails() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
           <TabsTrigger value="grades">Grades</TabsTrigger>
+          <TabsTrigger value="analysis">Analysis</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-8 pt-4">
@@ -850,6 +920,35 @@ export default function StudentDetails() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="analysis" className="pt-4">
+          <AnalysisView
+            loading={reportLoading}
+            error={reportError}
+            onRetry={() => setReportReloadKey((k) => k + 1)}
+            data={report}
+            onPracticeTopic={() => nav("/educator/dpp")}
+            noDataHint="This student hasn't taken enough tests yet to unlock topic-level analysis."
+          />
+          {report && report.topics.length > 0 && (
+            <div className="mt-3 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => nav("/educator/dpp")}
+              >
+                Assign practice
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => downloadCsv(`${learner?.name || studentId}-analysis.csv`, topicsToCsv(report))}
+              >
+                Export
+              </Button>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
